@@ -70,7 +70,7 @@ A modern, minimalist web interface for SyncVault that lets users browse files, m
 - Per-folder breakdown (sorted by size)
 - Per-user breakdown
 - Version storage usage
-- Retention policy settings per folder
+- Retention policy settings per folder: form with daily (days), weekly (weeks), monthly (months), yearly (keep forever toggle), max versions slider, rotation algorithm select (FIFO/Intelliversioning). "Clean up now" button per folder
 
 ### 9. Admin: Activity Log (`/admin/activity`)
 - Filterable table: date, user, action, resource, details
@@ -91,7 +91,7 @@ The following endpoints must be added to the Go backend:
 - `GET /api/files/{id}/shares` — list share links for a file
 - `DELETE /api/shares/{id}` — delete share link
 - `GET /api/shares/mine` — list all share links by current user
-- `GET /s/{token}` — public share download page (no auth required)
+- `GET /s/{token}` — public share page: shows file name, size, download button, password prompt if protected (no auth required, server-rendered HTML not SPA)
 - `GET /s/{token}/download` — public file download (no auth, checks password/expiry/limit)
 
 ### Team Endpoints
@@ -109,10 +109,10 @@ The following endpoints must be added to the Go backend:
 - `POST /api/admin/users/{id}/reset-password` — reset password
 - `GET /api/admin/storage` — storage overview (total, per-user, per-folder)
 - `GET /api/admin/activity` — activity log with filters
-- `GET /api/admin/devices` — connected devices
+- `GET /api/admin/devices` — connected devices (shown in Users page as expandable row)
 
 ### File Operations
-- `PUT /api/files/{id}` — rename/move file
+- `PUT /api/files/{id}` — rename/move file (body: `{name, parent_id}`)
 - `DELETE /api/files/{id}` — soft delete (trash)
 - `POST /api/files/{id}/restore` — restore from trash
 - `DELETE /api/files/{id}/permanent` — permanent delete
@@ -172,7 +172,13 @@ var spaFiles embed.FS
 // Serve SPA: try static file first, fallback to index.html for SPA routing
 ```
 
-The SvelteKit build output goes to `internal/api/rest/dist/`. The Go binary embeds these files and serves them. API routes take precedence over SPA routes.
+The SvelteKit build output goes to `internal/api/rest/dist/`. The Go binary embeds these files and serves them.
+
+**Routing priority** (in chi router order):
+1. `/api/*` — REST API endpoints (highest priority)
+2. `/s/{token}` and `/s/{token}/download` — public share routes
+3. Static files from embedded SPA (JS, CSS, images)
+4. Everything else → `index.html` (SPA catch-all for client-side routing)
 
 ## Build Pipeline
 
@@ -190,9 +196,18 @@ The SvelteKit build output goes to `internal/api/rest/dist/`. The Go binary embe
 - **Tables**: clean with hover states, sortable columns
 - **Modals**: centered overlay with backdrop blur
 
+## Notes
+
+- `POST /api/files` with `is_dir: true` already exists for creating folders
+- `POST /api/files/upload` already exists for file uploads
+- Permanent delete and empty trash available to all users for their own files (admin can delete anyone's)
+
 ## Out of Scope
 
 - Real-time updates (WebSocket) — files refresh on navigation
 - File preview (images, PDFs) — just download for now
 - Drag & drop file organization (move via context menu)
 - Dark mode toggle (dark sidebar only)
+- Folder sharing via link (only file sharing for now)
+- Conflict resolution UI (deferred to macOS app phase)
+- Connected devices as separate admin page (shown inline in users table)
