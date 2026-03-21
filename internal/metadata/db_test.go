@@ -28,6 +28,7 @@ var expectedTables = []string{
 	"share_links",
 	"retention_policies",
 	"sync_state",
+	"sync_tasks",
 }
 
 func TestDB_AllTablesExist(t *testing.T) {

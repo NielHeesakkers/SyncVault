@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import FileProvider
 
 @MainActor
 class AppState: ObservableObject {
@@ -63,6 +64,39 @@ class AppState: ObservableObject {
     static var configDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("SyncVault")
+    }
+
+    // MARK: - On-Demand Sync (File Provider)
+
+    func setupOnDemandSync(folderID: String) async throws {
+        guard isConnected else { throw APIError.unauthorized }
+
+        // Store folder ID and server URL in shared app group defaults
+        SharedConfig.setOnDemandFolderID(folderID)
+        SharedConfig.sharedDefaults.set(serverURL, forKey: "serverURL")
+
+        // Store auth token in shared keychain for the extension to access
+        if let token = KeychainHelper.load(key: "access_token") {
+            KeychainHelper.saveShared(key: "access_token", value: token)
+        }
+
+        // Register the File Provider domain
+        let domainIdentifier = NSFileProviderDomainIdentifier("com.syncvault.\(username)")
+        let domain = NSFileProviderDomain(
+            identifier: domainIdentifier,
+            displayName: "SyncVault - \(username)"
+        )
+
+        try await NSFileProviderManager.add(domain)
+    }
+
+    func removeOnDemandSync() async throws {
+        let domainIdentifier = NSFileProviderDomainIdentifier("com.syncvault.\(username)")
+        let domain = NSFileProviderDomain(
+            identifier: domainIdentifier,
+            displayName: "SyncVault - \(username)"
+        )
+        try await NSFileProviderManager.remove(domain)
     }
 }
 

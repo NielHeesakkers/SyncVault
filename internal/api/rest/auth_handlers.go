@@ -190,6 +190,11 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create user's root folder.
+	if _, err := s.db.CreateFile("", user.ID, user.Username, true, 0, "", ""); err != nil {
+		log.Printf("warning: could not create user root folder: %v", err)
+	}
+
 	// Send welcome email; log but do not fail on error.
 	if s.email != nil && s.email.Enabled() {
 		if err := s.email.SendWelcome(user.Email, user.Username, req.Password); err != nil {

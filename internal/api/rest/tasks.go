@@ -1,0 +1,189 @@
+package rest
+
+import (
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/NielHeesakkers/SyncVault/internal/auth"
+	"github.com/NielHeesakkers/SyncVault/internal/metadata"
+	"github.com/go-chi/chi/v5"
+)
+
+// createTaskRequest is the body for POST /api/tasks.
+type createTaskRequest struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	LocalPath string `json:"local_path"`
+}
+
+// taskResponse is the response returned when a task is created or listed.
+type taskResponse struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	LocalPath  string `json:"local_path,omitempty"`
+	Status     string `json:"status"`
+	FolderID   string `json:"folder_id"`
+	FolderName string `json:"folder_name"`
+}
+
+// toTaskResponse converts a SyncTask and folder name into a taskResponse.
+func toTaskResponse(t *metadata.SyncTask, folderName string) taskResponse {
+	return taskResponse{
+		ID:         t.ID,
+		Name:       t.Name,
+		Type:       t.Type,
+		LocalPath:  t.LocalPath,
+		Status:     t.Status,
+		FolderID:   t.FolderID,
+		FolderName: folderName,
+	}
+}
+
+// folderNameForTask builds the folder name from the task type and name.
+// e.g. type="sync", name="Documents" → "Sync-Documents"
+// e.g. type="ondemand" → "OnDemand"
+func folderNameForTask(taskType, taskName string) string {
+	switch taskType {
+	case "ondemand":
+		return "OnDemand"
+	case "backup":
+		return fmt.Sprintf("Backup-%s", taskName)
+	default: // "sync"
+		return fmt.Sprintf("Sync-%s", taskName)
+	}
+}
+
+// handleListTasks handles GET /api/tasks.
+func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+
+	tasks, err := s.db.ListSyncTasks(claims.UserID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list tasks"})
+		return
+	}
+
+	resp := make([]taskResponse, 0, len(tasks))
+	for i := range tasks {
+		t := &tasks[i]
+		folder, err := s.db.GetFileByID(t.FolderID)
+		folderName := ""
+		if err == nil {
+			folderName = folder.Name
+		}
+		resp = append(resp, toTaskResponse(t, folderName))
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleCreateTask handles POST /api/tasks.
+func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+
+	var req createTaskRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	req.Type = strings.ToLower(strings.TrimSpace(req.Type))
+
+	if req.Type == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type is required"})
+		return
+	}
+	if req.Type != "sync" && req.Type != "backup" && req.Type != "ondemand" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be sync, backup, or ondemand"})
+		return
+	}
+	if req.Type != "ondemand" && req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required for sync and backup tasks"})
+		return
+	}
+
+	// Use "OnDemand" as the task name for ondemand tasks.
+	taskName := req.Name
+	if req.Type == "ondemand" {
+		taskName = "OnDemand"
+	}
+
+	// Find the user's root folder.
+	rootFolder, err := s.db.GetUserRootFolder(claims.UserID)
+	if err != nil {
+		if errors.Is(err, metadata.ErrRootFolderNotFound) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "user root folder not found; cannot create task"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not find user root folder"})
+		return
+	}
+
+	// Create the subfolder under the root folder.
+	subFolderName := folderNameForTask(req.Type, taskName)
+	subFolder, err := s.db.CreateFile(rootFolder.ID, claims.UserID, subFolderName, true, 0, "", "")
+	if err != nil {
+		if errors.Is(err, metadata.ErrDuplicateFile) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "a folder with this name already exists"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create task folder"})
+		return
+	}
+
+	// Create the sync task record.
+	task, err := s.db.CreateSyncTask(claims.UserID, subFolder.ID, taskName, req.Type, req.LocalPath)
+	if err != nil {
+		if errors.Is(err, metadata.ErrOnDemandExists) {
+			// Roll back the folder we just created.
+			_ = s.db.SoftDeleteFile(subFolder.ID)
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "user already has an ondemand task"})
+			return
+		}
+		if errors.Is(err, metadata.ErrDuplicateTask) {
+			// Roll back the folder we just created.
+			_ = s.db.SoftDeleteFile(subFolder.ID)
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "a task with this name already exists"})
+			return
+		}
+		// Roll back the folder we just created.
+		_ = s.db.SoftDeleteFile(subFolder.ID)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create task"})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, toTaskResponse(task, subFolder.Name))
+}
+
+// handleDeleteTask handles DELETE /api/tasks/{id}.
+// The associated folder is kept for safety; only the task record is removed.
+func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	id := chi.URLParam(r, "id")
+
+	// Verify the task exists and belongs to the requesting user.
+	task, err := s.db.GetSyncTask(id)
+	if err != nil {
+		if errors.Is(err, metadata.ErrTaskNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get task"})
+		return
+	}
+	if task.UserID != claims.UserID {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	if err := s.db.DeleteSyncTask(id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not delete task"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}

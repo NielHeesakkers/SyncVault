@@ -106,6 +106,19 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sync_tasks (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    folder_id   TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    type        TEXT NOT NULL CHECK(type IN ('sync', 'backup', 'ondemand')),
+    local_path  TEXT,
+    status      TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused')),
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_tasks_user ON sync_tasks(user_id);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_files_parent_id   ON files(parent_id);
 CREATE INDEX IF NOT EXISTS idx_files_owner_id    ON files(owner_id);

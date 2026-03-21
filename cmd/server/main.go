@@ -72,8 +72,13 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to hash admin password: %v", err)
 		}
-		if _, err := db.CreateUser("admin", "admin@localhost", hashed, "admin"); err != nil {
+		adminUser, err := db.CreateUser("admin", "admin@localhost", hashed, "admin")
+		if err != nil {
 			log.Fatalf("Failed to create default admin user: %v", err)
+		}
+		// Create admin's root folder.
+		if _, err := db.CreateFile("", adminUser.ID, adminUser.Username, true, 0, "", ""); err != nil {
+			log.Printf("WARNING: could not create admin root folder: %v", err)
 		}
 		log.Println("WARNING: Created default admin user (username: admin, password: admin) — change this immediately")
 	}
