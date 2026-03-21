@@ -1,0 +1,14 @@
+version: "3.8"
+services:
+  syncvault:
+    build: .
+    ports:
+      - "8080:8080"
+      - "6690:6690"
+    volumes:
+      - syncvault-data:/data
+    environment:
+      - SYNCVAULT_JWT_SECRET=${SYNCVAULT_JWT_SECRET:-change-me-in-production}
+    restart: unless-stopped
+volumes:
+  syncvault-data:
