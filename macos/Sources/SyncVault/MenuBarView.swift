@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuBarView: View {
     @ObservedObject var appState: AppState
+    @ObservedObject var updaterService: UpdaterService
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -76,6 +77,10 @@ struct MenuBarView: View {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             }
             .keyboardShortcut(",", modifiers: .command)
+
+            Button("Check for Updates...") {
+                updaterService.checkForUpdates()
+            }
 
             Divider()
 

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct GeneralTab: View {
+    @ObservedObject var updaterService: UpdaterService
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("showNotifications") private var showNotifications = true
 
@@ -12,6 +13,13 @@ struct GeneralTab: View {
 
             Section("Notifications") {
                 Toggle("Show sync notifications", isOn: $showNotifications)
+            }
+
+            Section("Updates") {
+                Toggle("Automatically check for updates", isOn: Binding(
+                    get: { updaterService.updater.automaticallyChecksForUpdates },
+                    set: { updaterService.updater.automaticallyChecksForUpdates = $0 }
+                ))
             }
         }
         .padding()
