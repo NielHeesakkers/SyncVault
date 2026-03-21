@@ -2,7 +2,7 @@ import Foundation
 
 enum SharedConfig {
     // App Group ID — must match entitlements
-    static let appGroupID = "TEAM_ID.com.syncvault.shared"
+    static let appGroupID = "DE59N86W33.com.syncvault.shared"
 
     static var sharedDefaults: UserDefaults {
         UserDefaults(suiteName: appGroupID)!

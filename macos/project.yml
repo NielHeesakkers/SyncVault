@@ -1,0 +1,85 @@
+name: SyncVault
+options:
+  bundleIdPrefix: com.syncvault
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: DE59N86W33
+    CODE_SIGN_IDENTITY: "Apple Development"
+    CODE_SIGN_STYLE: Automatic
+
+packages:
+  SQLite.swift:
+    url: https://github.com/stephencelis/SQLite.swift.git
+    from: "0.15.0"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle.git
+    from: "2.6.0"
+
+targets:
+  SyncVault:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/SyncVault
+    dependencies:
+      - package: SQLite.swift
+        product: SQLite
+      - package: Sparkle
+      - target: SyncVaultFileProvider
+    settings:
+      base:
+        INFOPLIST_FILE: Sources/SyncVault/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.syncvault.app
+        ENABLE_HARDENED_RUNTIME: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "@executable_path/../Frameworks"
+    entitlements:
+      path: Sources/SyncVault/SyncVault.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.application-groups:
+          - DE59N86W33.com.syncvault.shared
+    info:
+      path: Sources/SyncVault/Info.plist
+      properties:
+        CFBundleDisplayName: SyncVault
+        CFBundleName: SyncVault
+        CFBundleIdentifier: com.syncvault.app
+        CFBundleVersion: "1.1"
+        CFBundleShortVersionString: "1.1"
+        CFBundlePackageType: APPL
+        LSMinimumSystemVersion: "13.0"
+        LSUIElement: true
+        NSHighResolutionCapable: true
+        LSApplicationCategoryType: public.app-category.utilities
+
+  SyncVaultFileProvider:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: FileProvider
+    dependencies:
+      - package: SQLite.swift
+        product: SQLite
+    settings:
+      base:
+        INFOPLIST_FILE: FileProvider/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.syncvault.app.fileprovider
+        ENABLE_HARDENED_RUNTIME: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "@executable_path/../Frameworks"
+          - "@executable_path/../../../../Frameworks"
+    entitlements:
+      path: FileProvider/FileProvider.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.application-groups:
+          - DE59N86W33.com.syncvault.shared

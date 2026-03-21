@@ -40,14 +40,14 @@ enum KeychainHelper {
     // MARK: - Shared keychain (accessible by app group / File Provider extension)
 
     /// Saves a value to the shared keychain accessible by the app group.
-    /// The access group must match the App Group entitlement (TEAM_ID.com.syncvault.shared).
+    /// The access group must match the App Group entitlement (DE59N86W33.com.syncvault.shared).
     static func saveShared(key: String, value: String) {
         let data = value.data(using: .utf8)!
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecAttrService as String: "com.syncvault.shared",
-            kSecAttrAccessGroup as String: "TEAM_ID.com.syncvault.shared",
+            kSecAttrAccessGroup as String: "DE59N86W33.com.syncvault.shared",
             kSecValueData as String: data
         ]
         SecItemDelete(query as CFDictionary)
@@ -59,7 +59,7 @@ enum KeychainHelper {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecAttrService as String: "com.syncvault.shared",
-            kSecAttrAccessGroup as String: "TEAM_ID.com.syncvault.shared",
+            kSecAttrAccessGroup as String: "DE59N86W33.com.syncvault.shared",
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
