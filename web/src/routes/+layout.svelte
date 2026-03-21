@@ -166,7 +166,7 @@
 					{user?.username || ''}
 				</div>
 				<div class="px-3 py-1 text-xs text-white/20">
-					v1.0
+					v1.1
 				</div>
 			</div>
 		</aside>

@@ -1,3 +1,16 @@
+## [1.1] — 2026-03-21
+- Auto-create user root folder on user creation
+- Sync task management: create, list, delete tasks via /api/tasks
+- Task types: sync (two-way), backup (upload only), ondemand (one per user)
+- Auto-create task subfolders (Sync-X, Backup-X, OnDemand)
+- File Provider Extension for on-demand sync in macOS Finder
+- Changelog page in web UI
+- Version number shown in sidebar and /api/health
+- Faster Docker builds (arm64 only)
+- SMTP settings configurable via admin web UI
+- Fix: folder creation, file upload, user creation, storage page
+- Fix: SMTP settings save with numeric port
+
 ## [1.0] — 2026-03-21
 - Initial release
 - File sync and backup platform
