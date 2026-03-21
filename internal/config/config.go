@@ -24,15 +24,16 @@ type Config struct {
 }
 
 // Load reads configuration from environment variables, falling back to defaults.
+// Each setting is read from the SYNCVAULT_-prefixed name first, then the unprefixed name.
 func Load() *Config {
 	cfg := &Config{
-		DataDir:      getEnv("DATA_DIR", DefaultDataDir),
-		HTTPPort:     getEnvInt("HTTP_PORT", DefaultHTTPPort),
-		GRPCPort:     getEnvInt("GRPC_PORT", DefaultGRPCPort),
-		JWTSecret:    getEnv("JWT_SECRET", ""),
-		TLSCertFile:  getEnv("TLS_CERT_FILE", ""),
-		TLSKeyFile:   getEnv("TLS_KEY_FILE", ""),
-		MaxChunkSize: getEnvInt("MAX_CHUNK_SIZE", DefaultMaxChunkSize),
+		DataDir:      getEnvMulti("SYNCVAULT_DATA_DIR", "DATA_DIR", DefaultDataDir),
+		HTTPPort:     getEnvIntMulti("SYNCVAULT_HTTP_PORT", "HTTP_PORT", DefaultHTTPPort),
+		GRPCPort:     getEnvIntMulti("SYNCVAULT_GRPC_PORT", "GRPC_PORT", DefaultGRPCPort),
+		JWTSecret:    getEnvMulti("SYNCVAULT_JWT_SECRET", "JWT_SECRET", ""),
+		TLSCertFile:  getEnvMulti("SYNCVAULT_TLS_CERT_FILE", "TLS_CERT_FILE", ""),
+		TLSKeyFile:   getEnvMulti("SYNCVAULT_TLS_KEY_FILE", "TLS_KEY_FILE", ""),
+		MaxChunkSize: getEnvIntMulti("SYNCVAULT_MAX_CHUNK_SIZE", "MAX_CHUNK_SIZE", DefaultMaxChunkSize),
 	}
 	return cfg
 }
@@ -51,4 +52,22 @@ func getEnvInt(key string, defaultVal int) int {
 		}
 	}
 	return defaultVal
+}
+
+// getEnvMulti checks primary then fallback key, returning defaultVal if neither is set.
+func getEnvMulti(primary, fallback, defaultVal string) string {
+	if val, ok := os.LookupEnv(primary); ok {
+		return val
+	}
+	return getEnv(fallback, defaultVal)
+}
+
+// getEnvIntMulti checks primary then fallback key, returning defaultVal if neither is set.
+func getEnvIntMulti(primary, fallback string, defaultVal int) int {
+	if val, ok := os.LookupEnv(primary); ok {
+		if i, err := strconv.Atoi(val); err == nil {
+			return i
+		}
+	}
+	return getEnvInt(fallback, defaultVal)
 }
