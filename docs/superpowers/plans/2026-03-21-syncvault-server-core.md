@@ -4691,12 +4691,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
+// Note: min() is a builtin in Go 1.22+, no custom helper needed
 ```
 
 Update routes in `internal/api/rest/server.go` `setupRoutes()`:
