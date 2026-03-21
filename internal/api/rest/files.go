@@ -363,6 +363,86 @@ func (s *Server) handleListChanges(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// fileAtTimeResponse is the JSON representation of one file in the history view.
+type fileAtTimeResponse struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	IsDir       bool      `json:"is_dir"`
+	Size        int64     `json:"size"`
+	VersionNum  int       `json:"version_num"`
+	VersionID   string    `json:"version_id"`
+	ContentHash string    `json:"content_hash,omitempty"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// handleFilesAtTime handles GET /api/files/history?parent_id=X&at=<ISO8601>.
+// Returns the files as they existed at the given point in time.
+func (s *Server) handleFilesAtTime(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+
+	atStr := r.URL.Query().Get("at")
+	if atStr == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required query param: at"})
+		return
+	}
+
+	at, err := time.Parse(time.RFC3339, atStr)
+	if err != nil {
+		at, err = time.Parse(time.RFC3339Nano, atStr)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid at timestamp: must be ISO 8601 (e.g. 2026-03-20T15:00:00Z)"})
+			return
+		}
+	}
+
+	parentID := r.URL.Query().Get("parent_id")
+
+	files, err := s.db.ListFilesAtTime(parentID, claims.UserID, at)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list files at time"})
+		return
+	}
+
+	result := make([]fileAtTimeResponse, 0, len(files))
+	for _, f := range files {
+		result = append(result, fileAtTimeResponse{
+			ID:          f.ID,
+			Name:        f.Name,
+			IsDir:       f.IsDir,
+			Size:        f.Size,
+			VersionNum:  f.VersionNum,
+			VersionID:   f.VersionID,
+			ContentHash: f.ContentHash,
+			UpdatedAt:   f.UpdatedAt,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"at":    at.UTC().Format(time.RFC3339),
+		"files": result,
+	})
+}
+
+// handleChangeDates handles GET /api/files/history/dates?parent_id=X.
+// Returns a list of dates on which file versions were created.
+func (s *Server) handleChangeDates(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	parentID := r.URL.Query().Get("parent_id")
+
+	dates, err := s.db.ListChangeDates(parentID, claims.UserID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list change dates"})
+		return
+	}
+
+	dateStrs := make([]string, 0, len(dates))
+	for _, d := range dates {
+		dateStrs = append(dateStrs, d.Format("2006-01-02"))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"dates": dateStrs})
+}
+
 // handleDownloadFile streams a file's content from storage.
 func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")

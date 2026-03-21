@@ -10,7 +10,8 @@
 		Download,
 		Edit2,
 		Move,
-		Trash2
+		Trash2,
+		Clock
 	} from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores';
@@ -248,6 +249,9 @@
 					Uploading…
 				</div>
 			{/if}
+			<a href="/files/history" class="flex items-center gap-2 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-md px-4 py-2 transition-colors">
+				<Clock size={16} /> Version Explorer
+			</a>
 			<button
 				onclick={() => fileInput.click()}
 				class="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-md px-4 py-2 transition-colors"

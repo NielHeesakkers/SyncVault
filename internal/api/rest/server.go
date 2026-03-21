@@ -73,6 +73,9 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/files", s.handleListFiles)
 		r.Post("/api/files", s.handleCreateFile)
 		r.Post("/api/files/upload", s.handleUploadFile)
+		// History routes must be registered before {id} routes so they are not caught as an id param.
+		r.Get("/api/files/history", s.handleFilesAtTime)
+		r.Get("/api/files/history/dates", s.handleChangeDates)
 		r.Put("/api/files/{id}", s.handleUpdateFile)
 		r.Delete("/api/files/{id}", s.handleDeleteFile)
 		r.Post("/api/files/{id}/restore", s.handleRestoreFile)

@@ -343,6 +343,145 @@ func scanFileRow(rows *sql.Rows) (*File, error) {
 	return &f, nil
 }
 
+// FileAtTime represents a file as it existed at a particular point in time,
+// joined with the version that was current at that moment.
+type FileAtTime struct {
+	ID          string
+	Name        string
+	IsDir       bool
+	ParentID    sql.NullString
+	OwnerID     string
+	VersionNum  int
+	VersionID   string
+	ContentHash string
+	Size        int64
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// ListFilesAtTime returns the files that existed under parentID (owned by ownerID)
+// at the given point in time, together with the version that was current at that moment.
+func (d *DB) ListFilesAtTime(parentID string, ownerID string, at time.Time) ([]FileAtTime, error) {
+	atStr := at.UTC().Format(time.RFC3339Nano)
+
+	var rows *sql.Rows
+	var err error
+	if parentID == "" {
+		rows, err = d.db.Query(
+			`SELECT f.id, f.name, f.is_dir, f.parent_id, f.owner_id,
+			        COALESCE(v.version_num, 0) as version_num,
+			        COALESCE(v.id, '') as version_id,
+			        COALESCE(v.content_hash, f.content_hash, '') as content_hash,
+			        COALESCE(v.size, f.size) as size,
+			        f.created_at, f.updated_at
+			 FROM files f
+			 LEFT JOIN versions v ON v.file_id = f.id AND v.created_at <= ?
+			   AND v.version_num = (
+			     SELECT MAX(v2.version_num) FROM versions v2
+			     WHERE v2.file_id = f.id AND v2.created_at <= ?
+			   )
+			 WHERE f.owner_id = ?
+			   AND f.parent_id IS NULL
+			   AND f.created_at <= ?
+			   AND (f.deleted_at IS NULL OR f.deleted_at > ?)
+			 ORDER BY f.is_dir DESC, f.name`,
+			atStr, atStr, ownerID, atStr, atStr,
+		)
+	} else {
+		rows, err = d.db.Query(
+			`SELECT f.id, f.name, f.is_dir, f.parent_id, f.owner_id,
+			        COALESCE(v.version_num, 0) as version_num,
+			        COALESCE(v.id, '') as version_id,
+			        COALESCE(v.content_hash, f.content_hash, '') as content_hash,
+			        COALESCE(v.size, f.size) as size,
+			        f.created_at, f.updated_at
+			 FROM files f
+			 LEFT JOIN versions v ON v.file_id = f.id AND v.created_at <= ?
+			   AND v.version_num = (
+			     SELECT MAX(v2.version_num) FROM versions v2
+			     WHERE v2.file_id = f.id AND v2.created_at <= ?
+			   )
+			 WHERE f.owner_id = ?
+			   AND f.parent_id = ?
+			   AND f.created_at <= ?
+			   AND (f.deleted_at IS NULL OR f.deleted_at > ?)
+			 ORDER BY f.is_dir DESC, f.name`,
+			atStr, atStr, ownerID, parentID, atStr, atStr,
+		)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("metadata: list files at time: %w", err)
+	}
+	defer rows.Close()
+
+	var files []FileAtTime
+	for rows.Next() {
+		var f FileAtTime
+		var isDirInt int
+		var createdAt, updatedAt string
+		if err := rows.Scan(
+			&f.ID, &f.Name, &isDirInt, &f.ParentID, &f.OwnerID,
+			&f.VersionNum, &f.VersionID, &f.ContentHash, &f.Size,
+			&createdAt, &updatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("metadata: scan file at time: %w", err)
+		}
+		f.IsDir = isDirInt != 0
+		f.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+		f.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+		files = append(files, f)
+	}
+	return files, rows.Err()
+}
+
+// ListChangeDates returns the distinct dates (YYYY-MM-DD) on which versions were created
+// for files under parentID owned by ownerID, most recent first (up to 100).
+func (d *DB) ListChangeDates(parentID, ownerID string) ([]time.Time, error) {
+	var rows *sql.Rows
+	var err error
+	if parentID == "" {
+		rows, err = d.db.Query(
+			`SELECT DISTINCT date(v.created_at) as change_date
+			 FROM versions v
+			 JOIN files f ON f.id = v.file_id
+			 WHERE f.owner_id = ?
+			   AND f.parent_id IS NULL
+			 ORDER BY change_date DESC
+			 LIMIT 100`,
+			ownerID,
+		)
+	} else {
+		rows, err = d.db.Query(
+			`SELECT DISTINCT date(v.created_at) as change_date
+			 FROM versions v
+			 JOIN files f ON f.id = v.file_id
+			 WHERE f.owner_id = ?
+			   AND f.parent_id = ?
+			 ORDER BY change_date DESC
+			 LIMIT 100`,
+			ownerID, parentID,
+		)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("metadata: list change dates: %w", err)
+	}
+	defer rows.Close()
+
+	var dates []time.Time
+	for rows.Next() {
+		var dateStr string
+		if err := rows.Scan(&dateStr); err != nil {
+			return nil, fmt.Errorf("metadata: scan change date: %w", err)
+		}
+		t, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			continue
+		}
+		dates = append(dates, t)
+	}
+	return dates, rows.Err()
+}
+
 // nullStringVal returns nil if ns is not valid, else the string value.
 func nullStringVal(ns sql.NullString) interface{} {
 	if ns.Valid {

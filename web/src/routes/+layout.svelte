@@ -16,7 +16,8 @@
 		Settings,
 		Shield,
 		KeyRound,
-		BookOpen
+		BookOpen,
+		Clock
 	} from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { currentUser, showToast } from '$lib/stores';
@@ -83,6 +84,7 @@
 
 	const navItems = [
 		{ href: '/files', label: 'Files', icon: FolderOpen },
+		{ href: '/files/history', label: 'History', icon: Clock },
 		{ href: '/shared', label: 'Shared', icon: Link },
 		{ href: '/trash', label: 'Trash', icon: Trash2 },
 		{ href: '/changelog', label: 'Changelog', icon: BookOpen }
