@@ -13,6 +13,7 @@
 		279857F2C5F100802EE588FE /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2C14153ED8339A25D2318 /* APIClient.swift */; };
 		2B88568F36CADC4599DA338C /* SyncTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21276B1C44E0B61C8955956 /* SyncTask.swift */; };
 		2ED9B6B148FE6750B1DBF826 /* FileProviderExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B23A6820747CFA8BEA1964 /* FileProviderExtension.swift */; };
+		3A1F2B8C4E5D6789ABCDEF01 /* FPAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1F2B8C4E5D6789ABCDEF02 /* FPAPIClient.swift */; };
 		3924F2D440FDA20DB7209A53 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = DF0B7E2AEBAF5852041A4046 /* SQLite */; };
 		3E8C2BED14CC3889E99CB6B7 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 44164418F31752C621F6B67A /* Sparkle */; };
 		4FE5B71D31457C6AC1BA5AAE /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F74C8C1FCEBD361908B1935 /* AppState.swift */; };
@@ -58,6 +59,7 @@
 
 /* Begin PBXFileReference section */
 		0B5DF716BCC97ACDFA90DFF5 /* FileProviderEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderEnumerator.swift; sourceTree = "<group>"; };
+		3A1F2B8C4E5D6789ABCDEF02 /* FPAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FPAPIClient.swift; sourceTree = "<group>"; };
 		1101721817B68D9FDCC83C38 /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
 		1584B409E0C60E69FD3EE564 /* SyncDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncDatabase.swift; sourceTree = "<group>"; };
 		34330AC2DE1AF95341AE2396 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
@@ -121,6 +123,7 @@
 				0B5DF716BCC97ACDFA90DFF5 /* FileProviderEnumerator.swift */,
 				D1B23A6820747CFA8BEA1964 /* FileProviderExtension.swift */,
 				AA193C4380A489B50BA1C54F /* FileProviderItem.swift */,
+				3A1F2B8C4E5D6789ABCDEF02 /* FPAPIClient.swift */,
 				B56E34977DB1CFE5D9017DCA /* Info.plist */,
 				6F34AFDFCBC9BAA2A547677A /* SharedConfig.swift */,
 			);
@@ -256,6 +259,7 @@
 				DB327A44A1E0805BFC01C72E /* FileProviderEnumerator.swift in Sources */,
 				2ED9B6B148FE6750B1DBF826 /* FileProviderExtension.swift in Sources */,
 				A06DCBF7268A22A0D451BF7A /* FileProviderItem.swift in Sources */,
+				3A1F2B8C4E5D6789ABCDEF01 /* FPAPIClient.swift in Sources */,
 				C9DF29C4D68988A60C5E49B9 /* SharedConfig.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

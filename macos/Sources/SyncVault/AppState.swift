@@ -72,8 +72,9 @@ class AppState: ObservableObject {
         guard isConnected else { throw APIError.unauthorized }
 
         // Store folder ID and server URL in shared app group defaults
-        SharedConfig.setOnDemandFolderID(folderID)
-        SharedConfig.sharedDefaults.set(serverURL, forKey: "serverURL")
+        let sharedDefaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")!
+        sharedDefaults.set(folderID, forKey: "onDemandFolderID")
+        sharedDefaults.set(serverURL, forKey: "serverURL")
 
         // Store auth token in shared keychain for the extension to access
         if let token = KeychainHelper.load(key: "access_token") {

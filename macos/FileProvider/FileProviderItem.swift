@@ -9,7 +9,7 @@ class FileProviderItem: NSObject, NSFileProviderItem {
     let fileSize: Int64
     let contentHashValue: String?
     let modifiedDate: Date
-    let downloaded: Bool
+    let itemIsDownloaded: Bool
 
     var itemIdentifier: NSFileProviderItemIdentifier {
         return NSFileProviderItemIdentifier(id)
@@ -49,16 +49,17 @@ class FileProviderItem: NSObject, NSFileProviderItem {
         return NSFileProviderItemVersion(contentVersion: hash, metadataVersion: hash)
     }
 
-    var isDownloaded: Bool { downloaded }
+    // `downloaded` is a deprecated NSFileProviderItem property name; use `isDownloaded` instead.
+    var isDownloaded: Bool { itemIsDownloaded }
 
-    init(serverFile: ServerFile, isDownloaded: Bool = false) {
+    init(serverFile: FPServerFile, isDownloaded: Bool = false) {
         self.id = serverFile.id
         self.parentID = serverFile.parentID
         self.name = serverFile.name
         self.isFolder = serverFile.isDir
         self.fileSize = serverFile.size
         self.contentHashValue = serverFile.contentHash
-        self.downloaded = isDownloaded
+        self.itemIsDownloaded = isDownloaded
 
         let formatter = ISO8601DateFormatter()
         self.modifiedDate = formatter.date(from: serverFile.updatedAt) ?? Date()
@@ -82,7 +83,7 @@ class FileProviderItem: NSObject, NSFileProviderItem {
         self.isFolder = isFolder
         self.fileSize = 0
         self.contentHashValue = nil
-        self.downloaded = true
+        self.itemIsDownloaded = true
         self.modifiedDate = Date()
         super.init()
     }
