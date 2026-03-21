@@ -1,0 +1,65 @@
+name: Build macOS App
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build macOS app
+        run: |
+          cd macos
+          swift build -c release
+
+      - name: Create app bundle
+        run: |
+          mkdir -p SyncVault.app/Contents/MacOS
+          mkdir -p SyncVault.app/Contents/Resources
+          cp macos/.build/release/SyncVault SyncVault.app/Contents/MacOS/
+          cat > SyncVault.app/Contents/Info.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>SyncVault</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.syncvault.app</string>
+            <key>CFBundleName</key>
+            <string>SyncVault</string>
+            <key>CFBundleVersion</key>
+            <string>1.0.0</string>
+            <key>CFBundleShortVersionString</key>
+            <string>1.0.0</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>13.0</string>
+            <key>LSUIElement</key>
+            <true/>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "SyncVault" -srcfolder SyncVault.app -ov -format UDZO SyncVault.dmg
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SyncVault-macOS
+          path: SyncVault.dmg
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: SyncVault.dmg
