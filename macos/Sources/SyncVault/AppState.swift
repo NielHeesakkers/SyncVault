@@ -46,6 +46,15 @@ class AppState: ObservableObject {
 
         // Save password in Keychain for auto-reconnect
         KeychainHelper.save(key: "server_password", value: password)
+
+        // Also save token to shared keychain for File Provider extension
+        if let token = KeychainHelper.load(key: "access_token") {
+            KeychainHelper.saveShared(key: "access_token", value: token)
+        }
+        // Save server URL to shared UserDefaults
+        let sharedDefaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
+        sharedDefaults?.set(url, forKey: "serverURL")
+
         saveConfig()
 
         // Start sync loop
@@ -122,6 +131,18 @@ class AppState: ObservableObject {
         saveConfig()
     }
 
+    func deleteSyncTask(_ task: SyncTask) {
+        syncTasks.removeAll { $0.id == task.id }
+        saveConfig()
+    }
+
+    func updateSyncTask(_ task: SyncTask) {
+        if let index = syncTasks.firstIndex(where: { $0.id == task.id }) {
+            syncTasks[index] = task
+            saveConfig()
+        }
+    }
+
     // MARK: - Sync Loop
 
     func startSyncLoop() {
@@ -184,6 +205,7 @@ class AppState: ObservableObject {
 
     func setupOnDemandSync(folderID: String) async throws {
         guard isConnected else { throw APIError.unauthorized }
+        guard !folderID.isEmpty else { throw APIError.serverError(400) }
 
         let sharedDefaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")!
         sharedDefaults.set(folderID, forKey: "onDemandFolderID")

@@ -15,6 +15,7 @@ const (
 // Config holds all application configuration values.
 type Config struct {
 	DataDir      string
+	StorageDir   string // separate storage path for file chunks (default: DataDir/storage)
 	HTTPPort     int
 	GRPCPort     int
 	JWTSecret    string
@@ -34,8 +35,15 @@ type Config struct {
 // Load reads configuration from environment variables, falling back to defaults.
 // Each setting is read from the SYNCVAULT_-prefixed name first, then the unprefixed name.
 func Load() *Config {
+	dataDir := getEnvMulti("SYNCVAULT_DATA_DIR", "DATA_DIR", DefaultDataDir)
+	storageDir := getEnvMulti("SYNCVAULT_STORAGE_DIR", "STORAGE_DIR", "")
+	if storageDir == "" {
+		storageDir = dataDir + "/storage"
+	}
+
 	cfg := &Config{
-		DataDir:      getEnvMulti("SYNCVAULT_DATA_DIR", "DATA_DIR", DefaultDataDir),
+		DataDir:      dataDir,
+		StorageDir:   storageDir,
 		HTTPPort:     getEnvIntMulti("SYNCVAULT_HTTP_PORT", "HTTP_PORT", DefaultHTTPPort),
 		GRPCPort:     getEnvIntMulti("SYNCVAULT_GRPC_PORT", "GRPC_PORT", DefaultGRPCPort),
 		JWTSecret:    getEnvMulti("SYNCVAULT_JWT_SECRET", "JWT_SECRET", ""),

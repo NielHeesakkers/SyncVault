@@ -25,14 +25,14 @@ func main() {
 	cfg := config.Load()
 
 	log.Printf("Starting SyncVault server")
-	log.Printf("  Data directory: %s", cfg.DataDir)
-	log.Printf("  HTTP port:      %d", cfg.HTTPPort)
-	log.Printf("  gRPC port:      %d", cfg.GRPCPort)
-	log.Printf("  Max chunk size: %d bytes", cfg.MaxChunkSize)
+	log.Printf("  Data directory:    %s", cfg.DataDir)
+	log.Printf("  Storage directory: %s", cfg.StorageDir)
+	log.Printf("  HTTP port:         %d", cfg.HTTPPort)
+	log.Printf("  gRPC port:         %d", cfg.GRPCPort)
+	log.Printf("  Max chunk size:    %d bytes", cfg.MaxChunkSize)
 
 	// 2. Create data directories.
-	storagePath := filepath.Join(cfg.DataDir, "storage")
-	for _, dir := range []string{cfg.DataDir, storagePath} {
+	for _, dir := range []string{cfg.DataDir, cfg.StorageDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			log.Fatalf("Failed to create directory %s: %v", dir, err)
 		}
@@ -47,7 +47,7 @@ func main() {
 	defer db.Close()
 
 	// 4. Create storage Store.
-	store, err := storage.NewStore(storagePath, cfg.MaxChunkSize)
+	store, err := storage.NewStore(cfg.StorageDir, cfg.MaxChunkSize)
 	if err != nil {
 		log.Fatalf("Failed to create storage store: %v", err)
 	}

@@ -28,5 +28,7 @@
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSFileProviderDocumentGroup</key>
+	<string>DE59N86W33.com.syncvault.shared</string>
 </dict>
 </plist>

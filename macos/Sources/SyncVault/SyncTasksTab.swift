@@ -3,6 +3,9 @@ import SwiftUI
 struct SyncTasksTab: View {
     @ObservedObject var appState: AppState
     @State private var showingAddTask = false
+    @State private var taskToEdit: SyncTask?
+    @State private var taskToDelete: SyncTask?
+    @State private var showingDeleteConfirmation = false
 
     var body: some View {
         VStack {
@@ -41,18 +44,32 @@ struct SyncTasksTab: View {
                             Toggle("", isOn: Binding(
                                 get: { task.isEnabled },
                                 set: { newValue in
-                                    if let idx = appState.syncTasks.firstIndex(where: { $0.id == task.id }) {
-                                        appState.syncTasks[idx].isEnabled = newValue
-                                        appState.saveConfig()
-                                    }
+                                    var updated = task
+                                    updated.isEnabled = newValue
+                                    appState.updateSyncTask(updated)
                                 }
                             ))
                             .labelsHidden()
+
+                            Button {
+                                taskToEdit = task
+                            } label: {
+                                Image(systemName: "pencil.circle")
+                                    .foregroundColor(.accentColor)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Edit sync task")
+
+                            Button {
+                                taskToDelete = task
+                                showingDeleteConfirmation = true
+                            } label: {
+                                Image(systemName: "trash")
+                                    .foregroundColor(.red)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Delete sync task")
                         }
-                    }
-                    .onDelete { indexSet in
-                        appState.syncTasks.remove(atOffsets: indexSet)
-                        appState.saveConfig()
                     }
                 }
             }
@@ -80,6 +97,99 @@ struct SyncTasksTab: View {
         .sheet(isPresented: $showingAddTask) {
             AddSyncTaskView(appState: appState, isPresented: $showingAddTask)
         }
+        .sheet(item: $taskToEdit) { task in
+            EditSyncTaskView(appState: appState, task: task, isPresented: $taskToEdit)
+        }
+        .alert("Delete Sync Task", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                taskToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let task = taskToDelete {
+                    appState.deleteSyncTask(task)
+                    taskToDelete = nil
+                }
+            }
+        } message: {
+            if let task = taskToDelete {
+                Text("Are you sure you want to delete the sync task for \"\(URL(fileURLWithPath: task.localPath).lastPathComponent)\"? This will not delete any files.")
+            }
+        }
+    }
+}
+
+struct EditSyncTaskView: View {
+    @ObservedObject var appState: AppState
+    let task: SyncTask
+    @Binding var isPresented: SyncTask?
+
+    @State private var localPath: String
+    @State private var mode: SyncTask.SyncMode
+    @State private var isEnabled: Bool
+
+    init(appState: AppState, task: SyncTask, isPresented: Binding<SyncTask?>) {
+        self.appState = appState
+        self.task = task
+        self._isPresented = isPresented
+        self._localPath = State(initialValue: task.localPath)
+        self._mode = State(initialValue: task.mode)
+        self._isEnabled = State(initialValue: task.isEnabled)
+    }
+
+    var folderName: String {
+        localPath.isEmpty ? "" : URL(fileURLWithPath: localPath).lastPathComponent
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Edit Sync Task")
+                .font(.headline)
+
+            Form {
+                HStack {
+                    TextField("Local Folder", text: $localPath)
+                    Button("Browse...") {
+                        let panel = NSOpenPanel()
+                        panel.canChooseDirectories = true
+                        panel.canChooseFiles = false
+                        if panel.runModal() == .OK, let url = panel.url {
+                            localPath = url.path
+                        }
+                    }
+                }
+
+                if !folderName.isEmpty {
+                    LabeledContent("Remote Folder") {
+                        Text(task.remoteFolderName)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Picker("Mode", selection: $mode) {
+                    Text("Two-way Sync").tag(SyncTask.SyncMode.twoWay)
+                    Text("Upload Only (Backup)").tag(SyncTask.SyncMode.uploadOnly)
+                }
+
+                Toggle("Enabled", isOn: $isEnabled)
+            }
+
+            HStack {
+                Button("Cancel") {
+                    isPresented = nil
+                }
+                Button("Save") {
+                    var updated = task
+                    updated.localPath = localPath
+                    updated.mode = mode
+                    updated.isEnabled = isEnabled
+                    appState.updateSyncTask(updated)
+                    isPresented = nil
+                }
+                .disabled(localPath.isEmpty)
+            }
+        }
+        .padding()
+        .frame(width: 450)
     }
 }
 
