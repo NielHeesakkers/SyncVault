@@ -1,0 +1,200 @@
+package rest
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/NielHeesakkers/SyncVault/internal/auth"
+	"github.com/NielHeesakkers/SyncVault/internal/metadata"
+	"github.com/go-chi/chi/v5"
+)
+
+// fileResponse is the JSON representation of a file metadata entry.
+type fileResponse struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	IsDir       bool      `json:"is_dir"`
+	Size        int64     `json:"size"`
+	ContentHash string    `json:"content_hash,omitempty"`
+	MimeType    string    `json:"mime_type,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// toFileResponse converts a metadata.File to a fileResponse.
+func toFileResponse(f metadata.File) fileResponse {
+	fr := fileResponse{
+		ID:        f.ID,
+		Name:      f.Name,
+		IsDir:     f.IsDir,
+		Size:      f.Size,
+		CreatedAt: f.CreatedAt,
+		UpdatedAt: f.UpdatedAt,
+	}
+	if f.ContentHash.Valid {
+		fr.ContentHash = f.ContentHash.String
+	}
+	if f.MimeType.Valid {
+		fr.MimeType = f.MimeType.String
+	}
+	return fr
+}
+
+// handleListFiles lists files for the current user (filtered by parent_id query param).
+// Admins see all files; regular users see only their own.
+func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	parentID := r.URL.Query().Get("parent_id")
+
+	files, err := s.db.ListChildren(parentID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list files"})
+		return
+	}
+
+	// Non-admins only see their own files.
+	var result []fileResponse
+	for _, f := range files {
+		if claims.Role != "admin" && f.OwnerID != claims.UserID {
+			continue
+		}
+		result = append(result, toFileResponse(f))
+	}
+
+	if result == nil {
+		result = []fileResponse{}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"files": result})
+}
+
+// createFileRequest is the body for POST /api/files.
+type createFileRequest struct {
+	Name     string `json:"name"`
+	ParentID string `json:"parent_id"`
+	IsDir    bool   `json:"is_dir"`
+}
+
+// handleCreateFile creates a new folder or empty file entry.
+func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+
+	var req createFileRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	f, err := s.db.CreateFile(req.ParentID, claims.UserID, req.Name, req.IsDir, 0, "", "")
+	if err != nil {
+		if errors.Is(err, metadata.ErrDuplicateFile) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "file already exists"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create file"})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, toFileResponse(*f))
+}
+
+// handleUploadFile handles multipart file upload, stores content, and creates metadata + version.
+func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+
+	// Parse multipart form (limit to 32 MB in memory).
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "could not parse multipart form"})
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing file field"})
+		return
+	}
+	defer file.Close()
+
+	parentID := r.FormValue("parent_id")
+
+	// Read first 512 bytes for MIME detection.
+	buf := make([]byte, 512)
+	n, _ := file.Read(buf)
+	mimeType := http.DetectContentType(buf[:n])
+
+	// Seek back to beginning to store the full file.
+	type readSeeker interface {
+		io.Reader
+		io.Seeker
+	}
+	if rs, ok := file.(readSeeker); ok {
+		rs.Seek(0, io.SeekStart)
+	} else {
+		// Fallback: re-join the already-read bytes with the rest.
+		// This path is taken when the multipart file doesn't implement Seeker.
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not seek file"})
+		return
+	}
+
+	// Store in content-addressable storage.
+	contentHash, size, err := s.store.Put(file)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not store file"})
+		return
+	}
+
+	// Create file metadata entry.
+	f, err := s.db.CreateFile(parentID, claims.UserID, header.Filename, false, size, contentHash, mimeType)
+	if err != nil {
+		if errors.Is(err, metadata.ErrDuplicateFile) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "file already exists"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create file metadata"})
+		return
+	}
+
+	// Create version 1.
+	if _, err := s.db.CreateVersion(f.ID, 1, contentHash, "", size, claims.UserID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create version"})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, toFileResponse(*f))
+}
+
+// handleDownloadFile streams a file's content from storage.
+func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	f, err := s.db.GetFileByID(id)
+	if err != nil {
+		if errors.Is(err, metadata.ErrFileNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get file"})
+		return
+	}
+
+	if !f.ContentHash.Valid || f.ContentHash.String == "" {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "file has no content"})
+		return
+	}
+
+	mimeType := "application/octet-stream"
+	if f.MimeType.Valid && f.MimeType.String != "" {
+		mimeType = f.MimeType.String
+	}
+
+	w.Header().Set("Content-Type", mimeType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, f.Name))
+
+	if err := s.store.Get(f.ContentHash.String, w); err != nil {
+		// Headers already sent; we can't write a JSON error at this point.
+		return
+	}
+}
