@@ -78,7 +78,7 @@ func main() {
 		log.Println("WARNING: Created default admin user (username: admin, password: admin) — change this immediately")
 	}
 
-	// 7. Create email service.
+	// 7. Create email service from env-var config, then apply any DB overrides.
 	emailSvc := email.NewService(
 		cfg.SMTPHost,
 		cfg.SMTPPort,
@@ -87,8 +87,15 @@ func main() {
 		cfg.SMTPFrom,
 		cfg.SMTPEnabled,
 	)
-	if cfg.SMTPEnabled {
-		log.Printf("  SMTP enabled:   %s:%d (from: %s)", cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom)
+
+	// Load SMTP settings stored in the DB (admin UI overrides env vars).
+	if smtpSettings, err := db.GetSettingsWithPrefix("smtp."); err == nil && len(smtpSettings) > 0 {
+		emailSvc.UpdateFromSettings(smtpSettings)
+		log.Printf("  SMTP settings:  loaded from database (overriding env vars)")
+	}
+
+	if emailSvc.Enabled() {
+		log.Printf("  SMTP enabled:   true")
 	} else {
 		log.Printf("  SMTP enabled:   false (email notifications disabled)")
 	}

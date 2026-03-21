@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/smtp"
+	"strconv"
 	"text/template"
 )
 
@@ -32,6 +33,55 @@ func NewService(host string, port int, user, password, from string, enabled bool
 // Enabled reports whether the email service is configured and enabled.
 func (s *Service) Enabled() bool {
 	return s.enabled
+}
+
+// UpdateFromSettings updates the SMTP configuration from a settings map.
+// Recognised keys: smtp.enabled, smtp.host, smtp.port, smtp.user, smtp.password, smtp.from.
+// DB settings override the values set at startup (env vars).
+func (s *Service) UpdateFromSettings(settings map[string]string) {
+	if v, ok := settings["smtp.enabled"]; ok {
+		switch v {
+		case "true", "1", "yes":
+			s.enabled = true
+		case "false", "0", "no":
+			s.enabled = false
+		}
+	}
+	if v, ok := settings["smtp.host"]; ok && v != "" {
+		s.host = v
+	}
+	if v, ok := settings["smtp.port"]; ok && v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			s.port = p
+		}
+	}
+	if v, ok := settings["smtp.user"]; ok {
+		s.user = v
+	}
+	if v, ok := settings["smtp.password"]; ok {
+		s.password = v
+	}
+	if v, ok := settings["smtp.from"]; ok && v != "" {
+		s.from = v
+	}
+}
+
+var testEmailTmpl = template.Must(template.New("test_email").Parse(`Hello,
+
+This is a test email from SyncVault to confirm that your SMTP settings are working correctly.
+
+If you received this, your email configuration is set up properly.
+
+This is an automated message — please do not reply.
+`))
+
+// SendTestEmail sends a test email to the given address to verify SMTP settings.
+func (s *Service) SendTestEmail(toEmail string) error {
+	body, err := renderTemplate(testEmailTmpl, nil)
+	if err != nil {
+		return fmt.Errorf("render test email template: %w", err)
+	}
+	return s.send(toEmail, "SyncVault: SMTP test email", body)
 }
 
 var welcomeTmpl = template.Must(template.New("welcome").Parse(`Welcome to SyncVault!

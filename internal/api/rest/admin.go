@@ -12,6 +12,65 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// handleAdminGetSettings handles GET /api/admin/settings.
+func (s *Server) handleAdminGetSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := s.db.GetAllSettings()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load settings"})
+		return
+	}
+	writeJSON(w, http.StatusOK, settings)
+}
+
+// handleAdminPutSettings handles PUT /api/admin/settings.
+func (s *Server) handleAdminPutSettings(w http.ResponseWriter, r *http.Request) {
+	var incoming map[string]string
+	if err := readJSON(r, &incoming); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	for k, v := range incoming {
+		if err := s.db.SetSetting(k, v); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save setting: " + k})
+			return
+		}
+	}
+
+	// Reload SMTP config from DB and apply to email service.
+	if s.email != nil {
+		smtpSettings, err := s.db.GetSettingsWithPrefix("smtp.")
+		if err == nil {
+			s.email.UpdateFromSettings(smtpSettings)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "settings saved"})
+}
+
+// handleAdminTestEmail handles POST /api/admin/settings/test-email.
+func (s *Server) handleAdminTestEmail(w http.ResponseWriter, r *http.Request) {
+	if s.email == nil || !s.email.Enabled() {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "SMTP is not enabled"})
+		return
+	}
+
+	claims := auth.GetClaims(r.Context())
+	user, err := s.db.GetUserByID(claims.UserID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load user"})
+		return
+	}
+
+	if err := s.email.SendTestEmail(user.Email); err != nil {
+		log.Printf("admin: test email failed: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to send test email: " + err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "test email sent to " + user.Email})
+}
+
 // adminUserResponse is the JSON representation of a user with storage stats.
 type adminUserResponse struct {
 	ID           string    `json:"id"`

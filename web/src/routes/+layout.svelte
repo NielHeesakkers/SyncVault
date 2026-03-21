@@ -90,7 +90,8 @@
 		{ href: '/admin/users', label: 'Users', icon: Users },
 		{ href: '/admin/teams', label: 'Teams', icon: FolderTree },
 		{ href: '/admin/storage', label: 'Storage', icon: HardDrive },
-		{ href: '/admin/activity', label: 'Activity', icon: Activity }
+		{ href: '/admin/activity', label: 'Activity', icon: Activity },
+		{ href: '/admin/settings', label: 'Settings', icon: Settings }
 	];
 
 	function isActive(href: string): boolean {

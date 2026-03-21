@@ -101,6 +101,11 @@ CREATE TABLE IF NOT EXISTS sync_state (
     PRIMARY KEY (device_id, file_id)
 );
 
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_files_parent_id   ON files(parent_id);
 CREATE INDEX IF NOT EXISTS idx_files_owner_id    ON files(owner_id);
