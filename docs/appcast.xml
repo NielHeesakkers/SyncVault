@@ -18,8 +18,9 @@
 - Changelog in web UI
             </description>
             <enclosure
-                url="https://github.com/NielHeesakkers/SyncVault/releases/download/v1.2/SyncVault.dmg"
+                url="https://github.com/NielHeesakkers/SyncVault/releases/download/v1.2/SyncVault.zip"
                 sparkle:version="1.2"
+                length="1990000"
                 type="application/octet-stream"
             />
         </item>
