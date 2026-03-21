@@ -268,6 +268,40 @@ func (d *DB) StorageUsedByUser(userID string) (int64, error) {
 	return total.Int64, nil
 }
 
+// FolderSizeEntry holds a folder's ID, name, and total size of its contents.
+type FolderSizeEntry struct {
+	ID   string
+	Name string
+	Size int64
+}
+
+// ListTopFoldersBySize returns top-level folders ordered by total file size descending.
+func (d *DB) ListTopFoldersBySize() ([]FolderSizeEntry, error) {
+	rows, err := d.db.Query(
+		`SELECT f.id, f.name, COALESCE(SUM(c.size), 0) as total_size
+		 FROM files f
+		 LEFT JOIN files c ON c.parent_id = f.id AND c.is_dir = 0 AND c.deleted_at IS NULL
+		 WHERE f.is_dir = 1 AND f.parent_id IS NULL AND f.deleted_at IS NULL
+		 GROUP BY f.id, f.name
+		 ORDER BY total_size DESC
+		 LIMIT 50`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("metadata: list top folders by size: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []FolderSizeEntry
+	for rows.Next() {
+		var e FolderSizeEntry
+		if err := rows.Scan(&e.ID, &e.Name, &e.Size); err != nil {
+			return nil, fmt.Errorf("metadata: scan folder size entry: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 // scanFile scans a single File from a *sql.Row.
 func scanFile(row *sql.Row) (*File, error) {
 	var f File

@@ -36,6 +36,7 @@
 	let showResetPwd = $state(false);
 	let resetTarget = $state<UserRecord | null>(null);
 	let newPassword = $state('');
+	let confirmPassword = $state('');
 	let resettingPwd = $state(false);
 
 	// Delete
@@ -62,7 +63,7 @@
 	async function createUser() {
 		creating = true;
 		try {
-			const res = await api.post('/api/admin/users', createForm);
+			const res = await api.post('/api/users', createForm);
 			if (res.ok) {
 				showToast('User created', 'success');
 				showCreate = false;
@@ -113,14 +114,19 @@
 	function startResetPwd(user: UserRecord) {
 		resetTarget = user;
 		newPassword = '';
+		confirmPassword = '';
 		showResetPwd = true;
 	}
 
 	async function doResetPwd() {
 		if (!resetTarget || !newPassword.trim()) return;
+		if (newPassword !== confirmPassword) {
+			showToast('Passwords do not match', 'error');
+			return;
+		}
 		resettingPwd = true;
 		try {
-			const res = await api.post(`/api/admin/users/${resetTarget.id}/password`, {
+			const res = await api.post(`/api/admin/users/${resetTarget.id}/reset-password`, {
 				password: newPassword
 			});
 			if (res.ok) {
@@ -128,6 +134,7 @@
 				showResetPwd = false;
 				resetTarget = null;
 				newPassword = '';
+				confirmPassword = '';
 			} else {
 				showToast('Failed to reset password', 'error');
 			}
@@ -326,14 +333,24 @@
 {#if showResetPwd && resetTarget}
 	<Modal title="Reset Password: {resetTarget.username}" onclose={() => (showResetPwd = false)}>
 		{#snippet children()}
-			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">New password</label>
-				<input type="password" bind:value={newPassword} placeholder="Enter new password" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+			<div class="space-y-3">
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-1">New password</label>
+					<input type="password" bind:value={newPassword} placeholder="Enter new password" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+				</div>
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
+					<input type="password" bind:value={confirmPassword} placeholder="Confirm new password" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500
+						{confirmPassword && newPassword !== confirmPassword ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : ''}" />
+					{#if confirmPassword && newPassword !== confirmPassword}
+						<p class="text-xs text-red-500 mt-1">Passwords do not match</p>
+					{/if}
+				</div>
 			</div>
 		{/snippet}
 		{#snippet footer()}
 			<button onclick={() => (showResetPwd = false)} class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
-			<button onclick={doResetPwd} disabled={resettingPwd || !newPassword.trim()} class="rounded-md px-4 py-2 text-sm font-medium bg-yellow-500 hover:bg-yellow-600 disabled:bg-yellow-300 text-white transition-colors">
+			<button onclick={doResetPwd} disabled={resettingPwd || !newPassword.trim() || newPassword !== confirmPassword} class="rounded-md px-4 py-2 text-sm font-medium bg-yellow-500 hover:bg-yellow-600 disabled:bg-yellow-300 text-white transition-colors">
 				{resettingPwd ? 'Resetting…' : 'Reset Password'}
 			</button>
 		{/snippet}

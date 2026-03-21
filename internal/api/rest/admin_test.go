@@ -228,7 +228,7 @@ func TestAdminStorageWithFiles(t *testing.T) {
 	var resp storageOverviewResponse
 	json.NewDecoder(rr.Body).Decode(&resp)
 
-	if resp.TotalUsed < int64(len(content)) {
-		t.Errorf("TotalUsed = %d, want at least %d", resp.TotalUsed, len(content))
+	if resp.Used < int64(len(content)) {
+		t.Errorf("Used = %d, want at least %d", resp.Used, len(content))
 	}
 }

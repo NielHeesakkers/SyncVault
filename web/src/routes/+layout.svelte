@@ -14,11 +14,13 @@
 		ChevronDown,
 		LogOut,
 		Settings,
-		Shield
+		Shield,
+		KeyRound
 	} from 'lucide-svelte';
 	import { api } from '$lib/api';
-	import { currentUser } from '$lib/stores';
+	import { currentUser, showToast } from '$lib/stores';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
+	import Modal from '$lib/components/Modal.svelte';
 
 	let { children } = $props();
 
@@ -26,6 +28,11 @@
 	let isPublic = $derived(publicRoutes.some((r) => $page.url.pathname.startsWith(r)));
 	let userMenuOpen = $state(false);
 	let user = $derived($currentUser);
+
+	// Change password modal
+	let showChangePwd = $state(false);
+	let changePwdForm = $state({ current_password: '', new_password: '', confirm_password: '' });
+	let changingPwd = $state(false);
 
 	onMount(() => {
 		if (!isPublic) {
@@ -40,6 +47,37 @@
 
 	function closeUserMenu() {
 		userMenuOpen = false;
+	}
+
+	function openChangePwd() {
+		changePwdForm = { current_password: '', new_password: '', confirm_password: '' };
+		showChangePwd = true;
+		closeUserMenu();
+	}
+
+	async function doChangePassword() {
+		if (!changePwdForm.current_password || !changePwdForm.new_password) return;
+		if (changePwdForm.new_password !== changePwdForm.confirm_password) {
+			showToast('Passwords do not match', 'error');
+			return;
+		}
+		changingPwd = true;
+		try {
+			const res = await api.put('/api/me/password', {
+				current_password: changePwdForm.current_password,
+				new_password: changePwdForm.new_password
+			});
+			if (res.ok) {
+				showToast('Password changed successfully', 'success');
+				showChangePwd = false;
+				changePwdForm = { current_password: '', new_password: '', confirm_password: '' };
+			} else {
+				const data = await res.json().catch(() => ({}));
+				showToast(data.error || 'Failed to change password', 'error');
+			}
+		} finally {
+			changingPwd = false;
+		}
 	}
 
 	const navItems = [
@@ -151,7 +189,7 @@
 					{#if userMenuOpen}
 						<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 						<div
-							class="absolute right-0 top-full mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-40"
+							class="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-40"
 							onclick={(e) => e.stopPropagation()}
 						>
 							<a
@@ -161,6 +199,12 @@
 							>
 								<Settings size={15} /> Settings
 							</a>
+							<button
+								onclick={openChangePwd}
+								class="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+							>
+								<KeyRound size={15} /> Change Password
+							</button>
 							<hr class="my-1 border-gray-100" />
 							<button
 								onclick={() => api.logout()}
@@ -182,3 +226,39 @@
 {/if}
 
 <ToastContainer />
+
+<!-- Change Password modal -->
+{#if showChangePwd}
+	<Modal title="Change Password" onclose={() => (showChangePwd = false)}>
+		{#snippet children()}
+			<div class="space-y-3">
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-1">Current password</label>
+					<input type="password" bind:value={changePwdForm.current_password} placeholder="Enter current password" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+				</div>
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-1">New password</label>
+					<input type="password" bind:value={changePwdForm.new_password} placeholder="Enter new password" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+				</div>
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-1">Confirm new password</label>
+					<input type="password" bind:value={changePwdForm.confirm_password} placeholder="Confirm new password" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500
+						{changePwdForm.confirm_password && changePwdForm.new_password !== changePwdForm.confirm_password ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : ''}" />
+					{#if changePwdForm.confirm_password && changePwdForm.new_password !== changePwdForm.confirm_password}
+						<p class="text-xs text-red-500 mt-1">Passwords do not match</p>
+					{/if}
+				</div>
+			</div>
+		{/snippet}
+		{#snippet footer()}
+			<button onclick={() => (showChangePwd = false)} class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
+			<button
+				onclick={doChangePassword}
+				disabled={changingPwd || !changePwdForm.current_password || !changePwdForm.new_password || changePwdForm.new_password !== changePwdForm.confirm_password}
+				class="rounded-md px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white transition-colors"
+			>
+				{changingPwd ? 'Changing…' : 'Change Password'}
+			</button>
+		{/snippet}
+	</Modal>
+{/if}

@@ -109,9 +109,10 @@
 		if (!newFolderName.trim()) return;
 		creatingFolder = true;
 		try {
-			const res = await api.post('/api/folders', {
+			const res = await api.post('/api/files', {
 				name: newFolderName.trim(),
-				parent_id: folderId
+				parent_id: folderId,
+				is_dir: true
 			});
 			if (res.ok) {
 				showToast('Folder created', 'success');
@@ -135,7 +136,7 @@
 			const fd = new FormData();
 			fd.append('file', file);
 			fd.append('folder_id', folderId);
-			const res = await api.upload('/api/files', fd);
+			const res = await api.upload('/api/files/upload', fd);
 			if (res.ok) successCount++;
 		}
 
