@@ -1,4 +1,4 @@
-.PHONY: build run test clean
+.PHONY: build run test clean docker docker-run
 
 build:
 	go build ./cmd/server/
@@ -12,3 +12,9 @@ test:
 clean:
 	go clean
 	rm -f server
+
+docker:
+	docker build -t syncvault .
+
+docker-run:
+	docker compose up
