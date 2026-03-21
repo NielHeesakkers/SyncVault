@@ -56,7 +56,7 @@
 			const payload: Record<string, string> = {
 				'smtp.enabled': form['smtp.enabled'] ? 'true' : 'false',
 				'smtp.host': form['smtp.host'],
-				'smtp.port': form['smtp.port'],
+				'smtp.port': String(form['smtp.port']),
 				'smtp.user': form['smtp.user'],
 				'smtp.password': form['smtp.password'],
 				'smtp.from': form['smtp.from']

@@ -1,1 +1,0 @@
-import"../chunks/DsnmJJEf.js";import{i as p}from"../chunks/BGLSYrrw.js";import{p as a,o as s,f as r}from"../chunks/C2AFl-ro.js";import{g as o}from"../chunks/BNSch5PS.js";import{a as t}from"../chunks/DLGvPVKM.js";function c(m,i){a(i,!1),s(()=>{t.isLoggedIn()?o("/files"):o("/login")}),p(),r()}export{c as component};
