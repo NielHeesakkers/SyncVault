@@ -22,7 +22,7 @@ docker run -d \
 ```
 
 - Port **8080**: REST API + Web UI (HTTP or HTTPS)
-- Port **6690**: gRPC sync protocol (TLS)
+- Port **6690**: gRPC sync protocol (supports both plaintext and TLS; TLS termination can be handled by the server or by a reverse proxy with HTTP/2 passthrough)
 - Volume `/data`: all files, database, and configuration
 
 Accessible directly via open port or behind a reverse proxy (nginx, Caddy, Traefik). Supports both HTTP and HTTPS — TLS can be handled by the server itself or by the reverse proxy.
@@ -116,7 +116,7 @@ Users can configure which folders to sync, and filter rules to exclude:
 ### Conflict Resolution
 
 When the same file is modified on multiple devices before syncing:
-- The most recent modification wins by default
+- The server uses its own **receive timestamp** as the tiebreaker (not device clocks, which may have skew). The most recently received version wins by default.
 - The losing version is saved as a conflict copy: `filename_devicename_timestamp.ext`
 - Users can review and resolve conflicts through the macOS app or web UI
 
@@ -141,6 +141,8 @@ Automatic cleanup of old versions based on configurable rules:
 | Monthly versions | Keep for 6 months |
 | Yearly versions | Keep forever |
 
+Retention runs independently of version rotation (FIFO/Intelliversioning). Rotation manages the version count limit per file; retention manages the age-based cleanup across all files. Both may delete a version — whichever triggers first wins.
+
 - Configurable per folder — different policies for different data
 - **Manual deletion**: delete specific versions or all versions of a file
 - **Trash bin**: deleted files go to trash with a 30-day recovery period before permanent removal
@@ -162,7 +164,7 @@ Generate download links for files or folders to share with people outside the te
 - Configurable expiration date
 - Download limit (max N downloads)
 - Folders downloadable as .zip
-- Links remain valid even if the file is moved or renamed within SyncVault
+- Links reference files by internal ID (not path), so they remain valid even if the file is moved or renamed within SyncVault
 
 ### Activity Log
 
