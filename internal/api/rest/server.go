@@ -104,6 +104,9 @@ func (s *Server) setupRoutes() {
 			r.Get("/api/admin/activity", s.handleAdminActivity)
 		})
 	})
+
+	// SPA catch-all — serve frontend for all non-API routes
+	r.NotFound(ServeSPA().ServeHTTP)
 }
 
 // handleHealth returns a simple health check response.
