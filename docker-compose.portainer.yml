@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  syncvault:
+    image: ghcr.io/nielheesakkers/syncvault:latest
+    container_name: syncvault
+    ports:
+      - "8080:8080"
+      - "6690:6690"
+    volumes:
+      - syncvault-data:/data
+    environment:
+      - SYNCVAULT_JWT_SECRET=VERANDER-DIT-NAAR-EEN-LANG-RANDOM-WACHTWOORD
+      - SYNCVAULT_HTTP_PORT=8080
+      - SYNCVAULT_GRPC_PORT=6690
+    restart: unless-stopped
+
+volumes:
+  syncvault-data:
+    driver: local
