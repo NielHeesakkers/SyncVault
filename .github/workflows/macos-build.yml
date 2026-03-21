@@ -5,52 +5,32 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build macOS app
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
         run: |
           cd macos
-          swift build -c release
+          xcodegen generate
 
-      - name: Create app bundle
+      - name: Build with Xcode
         run: |
-          mkdir -p SyncVault.app/Contents/MacOS
-          mkdir -p SyncVault.app/Contents/Resources
-          cp macos/.build/release/SyncVault SyncVault.app/Contents/MacOS/
-          cat > SyncVault.app/Contents/Info.plist << 'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleExecutable</key>
-            <string>SyncVault</string>
-            <key>CFBundleIdentifier</key>
-            <string>com.syncvault.app</string>
-            <key>CFBundleName</key>
-            <string>SyncVault</string>
-            <key>CFBundleVersion</key>
-            <string>1.0.0</string>
-            <key>CFBundleShortVersionString</key>
-            <string>1.0.0</string>
-            <key>CFBundlePackageType</key>
-            <string>APPL</string>
-            <key>LSMinimumSystemVersion</key>
-            <string>13.0</string>
-            <key>LSUIElement</key>
-            <true/>
-            <key>NSHighResolutionCapable</key>
-            <true/>
-          </dict>
-          </plist>
-          PLIST
+          cd macos
+          xcodebuild -project SyncVault.xcodeproj -scheme SyncVault -configuration Release build CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO
 
-      - name: Create DMG
+      - name: Create app bundle and DMG
         run: |
-          hdiutil create -volname "SyncVault" -srcfolder SyncVault.app -ov -format UDZO SyncVault.dmg
+          BUILD_DIR=$(xcodebuild -project macos/SyncVault.xcodeproj -scheme SyncVault -configuration Release -showBuildSettings 2>/dev/null | grep " BUILT_PRODUCTS_DIR" | awk '{print $3}')
+          hdiutil create -volname "SyncVault" -srcfolder "$BUILD_DIR/SyncVault.app" -ov -format UDZO SyncVault.dmg
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
