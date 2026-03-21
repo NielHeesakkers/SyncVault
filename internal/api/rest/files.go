@@ -276,6 +276,93 @@ func (s *Server) handleListTrash(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"files": result})
 }
 
+// changeResponse is the JSON representation of a single change-feed entry.
+// It extends fileResponse with parent_id and deleted_at so clients can handle deletions and moves.
+type changeResponse struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	ParentID    *string `json:"parent_id"`
+	IsDir       bool    `json:"is_dir"`
+	Size        int64   `json:"size"`
+	ContentHash string  `json:"content_hash,omitempty"`
+	UpdatedAt   string  `json:"updated_at"`
+	DeletedAt   *string `json:"deleted_at"`
+}
+
+// toChangeResponse converts a metadata.File to a changeResponse.
+func toChangeResponse(f metadata.File) changeResponse {
+	cr := changeResponse{
+		ID:        f.ID,
+		Name:      f.Name,
+		IsDir:     f.IsDir,
+		Size:      f.Size,
+		UpdatedAt: f.UpdatedAt.UTC().Format(time.RFC3339),
+	}
+	if f.ParentID.Valid {
+		s := f.ParentID.String
+		cr.ParentID = &s
+	}
+	if f.ContentHash.Valid {
+		cr.ContentHash = f.ContentHash.String
+	}
+	if f.DeletedAt.Valid {
+		s := f.DeletedAt.String
+		cr.DeletedAt = &s
+	}
+	return cr
+}
+
+// handleListChanges handles GET /api/changes?since=<ISO8601>&folder_id=<optional>.
+// Returns all files changed (updated or deleted) after the given timestamp for the authenticated user.
+// The folder_id parameter, when provided, limits results to files whose parent_id matches.
+func (s *Server) handleListChanges(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+
+	sinceStr := r.URL.Query().Get("since")
+	if sinceStr == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required query param: since"})
+		return
+	}
+
+	// Try RFC3339Nano first (subsecond precision), then RFC3339
+	since, err := time.Parse(time.RFC3339Nano, sinceStr)
+	if err != nil {
+		since, err = time.Parse(time.RFC3339, sinceStr)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid since timestamp: must be ISO 8601 (e.g. 2026-03-21T15:00:00Z)"})
+			return
+		}
+	}
+
+	folderID := r.URL.Query().Get("folder_id")
+
+	changed, err := s.db.ListChangedFiles(since, claims.UserID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list changes"})
+		return
+	}
+
+	result := make([]changeResponse, 0, len(changed))
+	for _, f := range changed {
+		// Apply optional folder_id filter.
+		if folderID != "" {
+			parentID := ""
+			if f.ParentID.Valid {
+				parentID = f.ParentID.String
+			}
+			if parentID != folderID {
+				continue
+			}
+		}
+		result = append(result, toChangeResponse(f))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"changes":     result,
+		"server_time": time.Now().UTC().Format(time.RFC3339Nano),
+	})
+}
+
 // handleDownloadFile streams a file's content from storage.
 func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")

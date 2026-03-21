@@ -224,6 +224,34 @@ func (d *DB) UpdateFileContent(id, contentHash string, size int64) error {
 	return nil
 }
 
+// ListChangedFiles returns all files (including soft-deleted) owned by ownerID where updated_at or deleted_at
+// is strictly after the given since timestamp. This is used by sync clients to poll for remote changes.
+func (d *DB) ListChangedFiles(since time.Time, ownerID string) ([]File, error) {
+	sinceStr := since.UTC().Format(time.RFC3339Nano)
+	rows, err := d.db.Query(
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at
+		 FROM files
+		 WHERE owner_id = ?
+		   AND (updated_at > ? OR deleted_at > ?)
+		 ORDER BY updated_at ASC`,
+		ownerID, sinceStr, sinceStr,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("metadata: list changed files: %w", err)
+	}
+	defer rows.Close()
+
+	var files []File
+	for rows.Next() {
+		f, err := scanFileRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, *f)
+	}
+	return files, rows.Err()
+}
+
 // StorageUsedByUser returns the sum of sizes of all non-deleted, non-directory files owned by userID.
 func (d *DB) StorageUsedByUser(userID string) (int64, error) {
 	var total sql.NullInt64

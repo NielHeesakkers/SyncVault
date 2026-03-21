@@ -3,6 +3,7 @@ package metadata
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 // helper: create a user for file tests
@@ -180,6 +181,81 @@ func TestUpdateFileContent(t *testing.T) {
 	}
 	if got.Size != 200 {
 		t.Errorf("Size = %d, want 200", got.Size)
+	}
+}
+
+func TestListChangedFiles(t *testing.T) {
+	db := openTestDB(t)
+	u := mustCreateUser(t, db, "changefeed")
+
+	// Create a file that will be the baseline — should NOT appear in results.
+	old, _ := db.CreateFile("", u.ID, "old.txt", false, 10, "h1", "text/plain")
+
+	// Sleep to ensure a clear timestamp boundary
+	time.Sleep(50 * time.Millisecond)
+
+	// Capture the cutoff AFTER the old file was created
+	since := time.Now().UTC()
+
+	// Sleep again to ensure the next files are strictly after the cutoff
+	time.Sleep(50 * time.Millisecond)
+
+	// Create a new file after the cutoff — should appear.
+	recent, _ := db.CreateFile("", u.ID, "recent.txt", false, 20, "h2", "text/plain")
+
+	// Create and soft-delete a file after the cutoff — should appear (deletion is a change).
+	deleted, _ := db.CreateFile("", u.ID, "deleted.txt", false, 30, "h3", "text/plain")
+	if err := db.SoftDeleteFile(deleted.ID); err != nil {
+		t.Fatalf("SoftDeleteFile: %v", err)
+	}
+
+	changes, err := db.ListChangedFiles(since, u.ID)
+	if err != nil {
+		t.Fatalf("ListChangedFiles: %v", err)
+	}
+
+	// Build a map of returned IDs for easier lookup.
+	ids := make(map[string]bool, len(changes))
+	for _, f := range changes {
+		ids[f.ID] = true
+	}
+
+	if ids[old.ID] {
+		t.Errorf("old file (updated before since) should NOT appear in changes")
+	}
+	if !ids[recent.ID] {
+		t.Errorf("recent file should appear in changes")
+	}
+	if !ids[deleted.ID] {
+		t.Errorf("soft-deleted file should appear in changes")
+	}
+
+	// Verify that the deleted entry has DeletedAt set.
+	for _, f := range changes {
+		if f.ID == deleted.ID && !f.DeletedAt.Valid {
+			t.Errorf("deleted file should have DeletedAt set in change feed")
+		}
+	}
+}
+
+func TestListChangedFiles_OtherOwnerExcluded(t *testing.T) {
+	db := openTestDB(t)
+	alice := mustCreateUser(t, db, "alice_cf")
+	bob := mustCreateUser(t, db, "bob_cf")
+
+	since := time.Now().Add(-time.Second)
+
+	db.CreateFile("", alice.ID, "alices_file.txt", false, 10, "ha", "text/plain")
+	db.CreateFile("", bob.ID, "bobs_file.txt", false, 10, "hb", "text/plain")
+
+	changes, err := db.ListChangedFiles(since, alice.ID)
+	if err != nil {
+		t.Fatalf("ListChangedFiles: %v", err)
+	}
+	for _, f := range changes {
+		if f.OwnerID != alice.ID {
+			t.Errorf("change feed for alice returned file owned by %s", f.OwnerID)
+		}
 	}
 }
 

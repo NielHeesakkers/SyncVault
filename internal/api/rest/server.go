@@ -73,6 +73,7 @@ func (s *Server) setupRoutes() {
 		r.Post("/api/files/{id}/restore", s.handleRestoreFile)
 		r.Get("/api/files/{id}/download", s.handleDownloadFile)
 		r.Get("/api/trash", s.handleListTrash)
+		r.Get("/api/changes", s.handleListChanges)
 
 		// Version management.
 		r.Get("/api/files/{id}/versions", s.handleListVersions)
