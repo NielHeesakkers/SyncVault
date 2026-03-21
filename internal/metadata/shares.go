@@ -179,6 +179,38 @@ func scanShareLink(row *sql.Row) (*ShareLink, error) {
 	return &sl, nil
 }
 
+// ListShareLinksByUser returns all share links created by the given user, newest first.
+func (d *DB) ListShareLinksByUser(userID string) ([]ShareLink, error) {
+	rows, err := d.db.Query(
+		`SELECT id, file_id, token, password_hash, expires_at, max_downloads, download_count, created_by, created_at
+		 FROM share_links WHERE created_by = ? ORDER BY created_at DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("metadata: list share links by user: %w", err)
+	}
+	defer rows.Close()
+
+	var links []ShareLink
+	for rows.Next() {
+		sl, err := scanShareLinkRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		links = append(links, *sl)
+	}
+	return links, rows.Err()
+}
+
+// GetShareLinkByID returns the share link with the given ID.
+func (d *DB) GetShareLinkByID(id string) (*ShareLink, error) {
+	row := d.db.QueryRow(
+		`SELECT id, file_id, token, password_hash, expires_at, max_downloads, download_count, created_by, created_at
+		 FROM share_links WHERE id = ?`, id,
+	)
+	return scanShareLink(row)
+}
+
 // scanShareLinkRow scans a single ShareLink from *sql.Rows.
 func scanShareLinkRow(rows *sql.Rows) (*ShareLink, error) {
 	var sl ShareLink

@@ -51,6 +51,10 @@ func (s *Server) setupRoutes() {
 	r.Post("/api/auth/login", s.handleLogin)
 	r.Post("/api/auth/refresh", s.handleRefresh)
 
+	// Public share routes (no auth required).
+	r.Get("/s/{token}", s.handlePublicShare)
+	r.Post("/s/{token}/download", s.handlePublicDownload)
+
 	// Protected routes.
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAuth(s.jwt))
@@ -64,7 +68,41 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/files", s.handleListFiles)
 		r.Post("/api/files", s.handleCreateFile)
 		r.Post("/api/files/upload", s.handleUploadFile)
+		r.Put("/api/files/{id}", s.handleUpdateFile)
+		r.Delete("/api/files/{id}", s.handleDeleteFile)
+		r.Post("/api/files/{id}/restore", s.handleRestoreFile)
 		r.Get("/api/files/{id}/download", s.handleDownloadFile)
+		r.Get("/api/trash", s.handleListTrash)
+
+		// Version management.
+		r.Get("/api/files/{id}/versions", s.handleListVersions)
+		r.Get("/api/files/{id}/versions/{versionNum}/download", s.handleDownloadVersion)
+		r.Post("/api/files/{id}/versions/{versionNum}/restore", s.handleRestoreVersion)
+
+		// Share management.
+		r.Post("/api/files/{id}/shares", s.handleCreateShare)
+		r.Get("/api/files/{id}/shares", s.handleListShares)
+		r.Delete("/api/shares/{id}", s.handleDeleteShare)
+		r.Get("/api/shares/mine", s.handleListMyShares)
+
+		// Team management.
+		r.Get("/api/teams", s.handleListTeams)
+		r.With(auth.RequireAdmin).Post("/api/teams", s.handleCreateTeam)
+		r.With(auth.RequireAdmin).Delete("/api/teams/{id}", s.handleDeleteTeam)
+		r.Get("/api/teams/{id}/members", s.handleListTeamMembers)
+		r.Put("/api/teams/{id}/members/{userId}", s.handleSetTeamMember)
+		r.Delete("/api/teams/{id}/members/{userId}", s.handleRemoveTeamMember)
+
+		// Admin-only routes.
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAdmin)
+			r.Get("/api/admin/users", s.handleAdminListUsers)
+			r.Put("/api/admin/users/{id}", s.handleAdminUpdateUser)
+			r.Delete("/api/admin/users/{id}", s.handleAdminDeleteUser)
+			r.Post("/api/admin/users/{id}/reset-password", s.handleAdminResetPassword)
+			r.Get("/api/admin/storage", s.handleAdminStorage)
+			r.Get("/api/admin/activity", s.handleAdminActivity)
+		})
 	})
 }
 

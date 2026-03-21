@@ -166,6 +166,116 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toFileResponse(*f))
 }
 
+// updateFileRequest is the body for PUT /api/files/{id}.
+type updateFileRequest struct {
+	Name     string `json:"name"`
+	ParentID string `json:"parent_id"`
+}
+
+// handleUpdateFile handles PUT /api/files/{id} — rename or move.
+func (s *Server) handleUpdateFile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	f, err := s.db.GetFileByID(id)
+	if err != nil {
+		if errors.Is(err, metadata.ErrFileNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get file"})
+		return
+	}
+
+	var req updateFileRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	name := f.Name
+	if req.Name != "" {
+		name = req.Name
+	}
+	parentID := ""
+	if f.ParentID.Valid {
+		parentID = f.ParentID.String
+	}
+	if req.ParentID != "" {
+		parentID = req.ParentID
+	}
+
+	if err := s.db.MoveFile(id, parentID, name); err != nil {
+		if errors.Is(err, metadata.ErrFileNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+			return
+		}
+		if errors.Is(err, metadata.ErrDuplicateFile) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "file already exists at destination"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update file"})
+		return
+	}
+
+	updated, err := s.db.GetFileByID(id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get updated file"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toFileResponse(*updated))
+}
+
+// handleDeleteFile handles DELETE /api/files/{id} — soft delete.
+func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	if err := s.db.SoftDeleteFile(id); err != nil {
+		if errors.Is(err, metadata.ErrFileNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not delete file"})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRestoreFile handles POST /api/files/{id}/restore — restore from trash.
+func (s *Server) handleRestoreFile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	if err := s.db.RestoreFile(id); err != nil {
+		if errors.Is(err, metadata.ErrFileNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found or not in trash"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not restore file"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "restored"})
+}
+
+// handleListTrash handles GET /api/trash — list trashed files for the current user.
+func (s *Server) handleListTrash(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+
+	files, err := s.db.ListTrashedFiles(claims.UserID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list trashed files"})
+		return
+	}
+
+	result := make([]fileResponse, 0, len(files))
+	for _, f := range files {
+		result = append(result, toFileResponse(f))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"files": result})
+}
+
 // handleDownloadFile streams a file's content from storage.
 func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")

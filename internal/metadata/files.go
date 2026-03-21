@@ -166,6 +166,47 @@ func (d *DB) SoftDeleteFile(id string) error {
 	return nil
 }
 
+// RestoreFile clears the deleted_at field for the given file, restoring it from trash.
+func (d *DB) RestoreFile(id string) error {
+	now := time.Now().UTC()
+	res, err := d.db.Exec(
+		`UPDATE files SET deleted_at=NULL, updated_at=? WHERE id=? AND deleted_at IS NOT NULL`,
+		now.Format(time.RFC3339Nano), id,
+	)
+	if err != nil {
+		return fmt.Errorf("metadata: restore file: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrFileNotFound
+	}
+	return nil
+}
+
+// ListTrashedFiles returns all soft-deleted files owned by ownerID.
+func (d *DB) ListTrashedFiles(ownerID string) ([]File, error) {
+	rows, err := d.db.Query(
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at
+		 FROM files WHERE owner_id=? AND deleted_at IS NOT NULL
+		 ORDER BY deleted_at DESC`,
+		ownerID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("metadata: list trashed files: %w", err)
+	}
+	defer rows.Close()
+
+	var files []File
+	for rows.Next() {
+		f, err := scanFileRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, *f)
+	}
+	return files, rows.Err()
+}
+
 // UpdateFileContent updates the content hash and size of a file after a new version is stored.
 func (d *DB) UpdateFileContent(id, contentHash string, size int64) error {
 	now := time.Now().UTC()
