@@ -73,8 +73,8 @@ struct MenuBarView: View {
             }
             .disabled(!appState.isConnected)
 
-            Button("Settings...") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            SettingsLink {
+                Text("Settings...")
             }
             .keyboardShortcut(",", modifiers: .command)
 

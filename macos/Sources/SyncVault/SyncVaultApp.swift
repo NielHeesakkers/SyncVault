@@ -9,7 +9,8 @@ struct SyncVaultApp: App {
         MenuBarExtra {
             MenuBarView(appState: appState, updaterService: updaterService)
         } label: {
-            Image(systemName: appState.menuBarIcon)
+            Label("SyncVault", systemImage: appState.menuBarIcon)
+                .labelStyle(.iconOnly)
         }
         .menuBarExtraStyle(.window)
 

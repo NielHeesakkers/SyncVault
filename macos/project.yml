@@ -2,7 +2,7 @@ name: SyncVault
 options:
   bundleIdPrefix: com.syncvault
   deploymentTarget:
-    macOS: "13.0"
+    macOS: "26.0"
   xcodeVersion: "15.0"
 
 settings:

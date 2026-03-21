@@ -13,7 +13,6 @@
 		279857F2C5F100802EE588FE /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2C14153ED8339A25D2318 /* APIClient.swift */; };
 		2B88568F36CADC4599DA338C /* SyncTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21276B1C44E0B61C8955956 /* SyncTask.swift */; };
 		2ED9B6B148FE6750B1DBF826 /* FileProviderExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B23A6820747CFA8BEA1964 /* FileProviderExtension.swift */; };
-		3A1F2B8C4E5D6789ABCDEF01 /* FPAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1F2B8C4E5D6789ABCDEF02 /* FPAPIClient.swift */; };
 		3924F2D440FDA20DB7209A53 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = DF0B7E2AEBAF5852041A4046 /* SQLite */; };
 		3E8C2BED14CC3889E99CB6B7 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 44164418F31752C621F6B67A /* Sparkle */; };
 		4FE5B71D31457C6AC1BA5AAE /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F74C8C1FCEBD361908B1935 /* AppState.swift */; };
@@ -21,6 +20,7 @@
 		5A4A5121BFCF8D803956A78E /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92068AE2AC3CF43472FD2719 /* MenuBarView.swift */; };
 		6C28CEC8AE32102FA34F3DE0 /* GeneralTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70702DA21BB966F6734603A7 /* GeneralTab.swift */; };
 		7A88DB90FDF8F8BB0FDA8BAE /* UpdaterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56862DE9E2BFB3086920F77A /* UpdaterService.swift */; };
+		82056A4A1484FCFC8F79E52D /* FPAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6A705710CD5005939F3450 /* FPAPIClient.swift */; };
 		A06DCBF7268A22A0D451BF7A /* FileProviderItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA193C4380A489B50BA1C54F /* FileProviderItem.swift */; };
 		A1C4F794722DF301398831AE /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5AE6189024BEC7F01E6741A /* AppConfig.swift */; };
 		C818F7D6B61788DA20662A3A /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 2FB44D1DFA69201212841F41 /* SQLite */; };
@@ -59,9 +59,9 @@
 
 /* Begin PBXFileReference section */
 		0B5DF716BCC97ACDFA90DFF5 /* FileProviderEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderEnumerator.swift; sourceTree = "<group>"; };
-		3A1F2B8C4E5D6789ABCDEF02 /* FPAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FPAPIClient.swift; sourceTree = "<group>"; };
 		1101721817B68D9FDCC83C38 /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
 		1584B409E0C60E69FD3EE564 /* SyncDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncDatabase.swift; sourceTree = "<group>"; };
+		1D6A705710CD5005939F3450 /* FPAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FPAPIClient.swift; sourceTree = "<group>"; };
 		34330AC2DE1AF95341AE2396 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		56862DE9E2BFB3086920F77A /* UpdaterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterService.swift; sourceTree = "<group>"; };
 		5F74C8C1FCEBD361908B1935 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
@@ -123,7 +123,7 @@
 				0B5DF716BCC97ACDFA90DFF5 /* FileProviderEnumerator.swift */,
 				D1B23A6820747CFA8BEA1964 /* FileProviderExtension.swift */,
 				AA193C4380A489B50BA1C54F /* FileProviderItem.swift */,
-				3A1F2B8C4E5D6789ABCDEF02 /* FPAPIClient.swift */,
+				1D6A705710CD5005939F3450 /* FPAPIClient.swift */,
 				B56E34977DB1CFE5D9017DCA /* Info.plist */,
 				6F34AFDFCBC9BAA2A547677A /* SharedConfig.swift */,
 			);
@@ -256,10 +256,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				82056A4A1484FCFC8F79E52D /* FPAPIClient.swift in Sources */,
 				DB327A44A1E0805BFC01C72E /* FileProviderEnumerator.swift in Sources */,
 				2ED9B6B148FE6750B1DBF826 /* FileProviderExtension.swift in Sources */,
 				A06DCBF7268A22A0D451BF7A /* FileProviderItem.swift in Sources */,
-				3A1F2B8C4E5D6789ABCDEF01 /* FPAPIClient.swift in Sources */,
 				C9DF29C4D68988A60C5E49B9 /* SharedConfig.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -351,7 +351,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -411,7 +411,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
