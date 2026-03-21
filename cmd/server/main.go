@@ -15,6 +15,7 @@ import (
 	"github.com/NielHeesakkers/SyncVault/internal/api/rest"
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
 	"github.com/NielHeesakkers/SyncVault/internal/config"
+	"github.com/NielHeesakkers/SyncVault/internal/email"
 	"github.com/NielHeesakkers/SyncVault/internal/metadata"
 	"github.com/NielHeesakkers/SyncVault/internal/storage"
 )
@@ -77,8 +78,23 @@ func main() {
 		log.Println("WARNING: Created default admin user (username: admin, password: admin) — change this immediately")
 	}
 
-	// 7. Create REST server.
-	srv := rest.NewServer(db, store, jwtManager)
+	// 7. Create email service.
+	emailSvc := email.NewService(
+		cfg.SMTPHost,
+		cfg.SMTPPort,
+		cfg.SMTPUser,
+		cfg.SMTPPassword,
+		cfg.SMTPFrom,
+		cfg.SMTPEnabled,
+	)
+	if cfg.SMTPEnabled {
+		log.Printf("  SMTP enabled:   %s:%d (from: %s)", cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom)
+	} else {
+		log.Printf("  SMTP enabled:   false (email notifications disabled)")
+	}
+
+	// 8. Create REST server.
+	srv := rest.NewServer(db, store, jwtManager, emailSvc)
 
 	addr := fmt.Sprintf(":%d", cfg.HTTPPort)
 	httpServer := &http.Server{

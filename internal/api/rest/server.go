@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
+	"github.com/NielHeesakkers/SyncVault/internal/email"
 	"github.com/NielHeesakkers/SyncVault/internal/metadata"
 	"github.com/NielHeesakkers/SyncVault/internal/storage"
 	"github.com/go-chi/chi/v5"
@@ -16,15 +17,17 @@ type Server struct {
 	db     *metadata.DB
 	store  *storage.Store
 	jwt    *auth.JWT
+	email  *email.Service
 	router chi.Router
 }
 
 // NewServer creates a new Server and registers all routes.
-func NewServer(db *metadata.DB, store *storage.Store, jwt *auth.JWT) *Server {
+func NewServer(db *metadata.DB, store *storage.Store, jwt *auth.JWT, emailSvc *email.Service) *Server {
 	s := &Server{
 		db:     db,
 		store:  store,
 		jwt:    jwt,
+		email:  emailSvc,
 		router: chi.NewRouter(),
 	}
 	s.setupRoutes()
@@ -60,6 +63,7 @@ func (s *Server) setupRoutes() {
 		r.Use(auth.RequireAuth(s.jwt))
 
 		r.Get("/api/me", s.handleMe)
+		r.Put("/api/me/password", s.handleChangeMyPassword)
 
 		// Admin-only user creation.
 		r.With(auth.RequireAdmin).Post("/api/users", s.handleCreateUser)
@@ -102,6 +106,8 @@ func (s *Server) setupRoutes() {
 			r.Delete("/api/admin/users/{id}", s.handleAdminDeleteUser)
 			r.Post("/api/admin/users/{id}/reset-password", s.handleAdminResetPassword)
 			r.Get("/api/admin/storage", s.handleAdminStorage)
+			r.Get("/api/admin/storage/users", s.handleAdminStorageUsers)
+			r.Get("/api/admin/storage/folders", s.handleAdminStorageFolders)
 			r.Get("/api/admin/activity", s.handleAdminActivity)
 		})
 	})

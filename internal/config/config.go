@@ -21,6 +21,14 @@ type Config struct {
 	TLSCertFile  string
 	TLSKeyFile   string
 	MaxChunkSize int
+
+	// SMTP settings for email notifications.
+	SMTPHost     string `json:"smtp_host"`
+	SMTPPort     int    `json:"smtp_port"`
+	SMTPUser     string `json:"smtp_user"`
+	SMTPPassword string `json:"smtp_password"`
+	SMTPFrom     string `json:"smtp_from"`
+	SMTPEnabled  bool   `json:"smtp_enabled"`
 }
 
 // Load reads configuration from environment variables, falling back to defaults.
@@ -34,6 +42,13 @@ func Load() *Config {
 		TLSCertFile:  getEnvMulti("SYNCVAULT_TLS_CERT_FILE", "TLS_CERT_FILE", ""),
 		TLSKeyFile:   getEnvMulti("SYNCVAULT_TLS_KEY_FILE", "TLS_KEY_FILE", ""),
 		MaxChunkSize: getEnvIntMulti("SYNCVAULT_MAX_CHUNK_SIZE", "MAX_CHUNK_SIZE", DefaultMaxChunkSize),
+
+		SMTPHost:     getEnvMulti("SYNCVAULT_SMTP_HOST", "SMTP_HOST", ""),
+		SMTPPort:     getEnvIntMulti("SYNCVAULT_SMTP_PORT", "SMTP_PORT", 587),
+		SMTPUser:     getEnvMulti("SYNCVAULT_SMTP_USER", "SMTP_USER", ""),
+		SMTPPassword: getEnvMulti("SYNCVAULT_SMTP_PASSWORD", "SMTP_PASSWORD", ""),
+		SMTPFrom:     getEnvMulti("SYNCVAULT_SMTP_FROM", "SMTP_FROM", "SyncVault <noreply@example.com>"),
+		SMTPEnabled:  getEnvBoolMulti("SYNCVAULT_SMTP_ENABLED", "SMTP_ENABLED", false),
 	}
 	return cfg
 }
@@ -70,4 +85,29 @@ func getEnvIntMulti(primary, fallback string, defaultVal int) int {
 		}
 	}
 	return getEnvInt(fallback, defaultVal)
+}
+
+func getEnvBool(key string, defaultVal bool) bool {
+	if val, ok := os.LookupEnv(key); ok {
+		switch val {
+		case "true", "1", "yes":
+			return true
+		case "false", "0", "no":
+			return false
+		}
+	}
+	return defaultVal
+}
+
+// getEnvBoolMulti checks primary then fallback key, returning defaultVal if neither is set.
+func getEnvBoolMulti(primary, fallback string, defaultVal bool) bool {
+	if val, ok := os.LookupEnv(primary); ok {
+		switch val {
+		case "true", "1", "yes":
+			return true
+		case "false", "0", "no":
+			return false
+		}
+	}
+	return getEnvBool(fallback, defaultVal)
 }

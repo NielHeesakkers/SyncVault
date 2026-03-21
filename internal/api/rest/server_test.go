@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
+	"github.com/NielHeesakkers/SyncVault/internal/email"
 	"github.com/NielHeesakkers/SyncVault/internal/metadata"
 	"github.com/NielHeesakkers/SyncVault/internal/storage"
 )
@@ -36,7 +37,8 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 
 	jwtManager := auth.NewJWT("test-secret-for-testing")
-	srv := NewServer(db, store, jwtManager)
+	emailSvc := email.NewService("", 587, "", "", "", false)
+	srv := NewServer(db, store, jwtManager, emailSvc)
 
 	return &testEnv{
 		db:     db,

@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -167,14 +168,22 @@ func (s *Server) handleAdminResetPassword(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Send password reset email; log but do not fail on error.
+	if s.email != nil && s.email.Enabled() {
+		if err := s.email.SendPasswordReset(user.Email, user.Username, req.Password); err != nil {
+			log.Printf("email: failed to send password reset email to %s: %v", user.Email, err)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "password updated"})
 }
 
 // storageOverviewResponse is the JSON response for GET /api/admin/storage.
 type storageOverviewResponse struct {
-	TotalUsers   int   `json:"total_users"`
-	TotalUsed    int64 `json:"total_used_bytes"`
-	TotalQuota   int64 `json:"total_quota_bytes"`
+	TotalUsers int   `json:"total_users"`
+	Used       int64 `json:"used"`
+	Total      int64 `json:"total"`
+	Available  int64 `json:"available"`
 }
 
 // handleAdminStorage handles GET /api/admin/storage.
@@ -198,9 +207,71 @@ func (s *Server) handleAdminStorage(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, storageOverviewResponse{
 		TotalUsers: len(users),
-		TotalUsed:  totalUsed,
-		TotalQuota: totalQuota,
+		Used:       totalUsed,
+		Total:      totalQuota,
+		Available:  totalQuota - totalUsed,
 	})
+}
+
+// storageUserEntry is a per-user storage entry for GET /api/admin/storage/users.
+type storageUserEntry struct {
+	ID           string `json:"id"`
+	Username     string `json:"username"`
+	StorageUsed  int64  `json:"storage_used"`
+	StorageQuota int64  `json:"storage_quota,omitempty"`
+}
+
+// handleAdminStorageUsers handles GET /api/admin/storage/users.
+func (s *Server) handleAdminStorageUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := s.db.ListUsers()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list users"})
+		return
+	}
+
+	result := make([]storageUserEntry, 0, len(users))
+	for _, u := range users {
+		used, err := s.db.StorageUsedByUser(u.ID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not compute storage usage"})
+			return
+		}
+		result = append(result, storageUserEntry{
+			ID:           u.ID,
+			Username:     u.Username,
+			StorageUsed:  used,
+			StorageQuota: u.QuotaBytes,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"users": result})
+}
+
+// storageFolderEntry is a per-folder storage entry for GET /api/admin/storage/folders.
+type storageFolderEntry struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
+// handleAdminStorageFolders handles GET /api/admin/storage/folders.
+func (s *Server) handleAdminStorageFolders(w http.ResponseWriter, r *http.Request) {
+	folders, err := s.db.ListTopFoldersBySize()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list folder sizes"})
+		return
+	}
+
+	result := make([]storageFolderEntry, 0, len(folders))
+	for _, f := range folders {
+		result = append(result, storageFolderEntry{
+			ID:   f.ID,
+			Name: f.Name,
+			Size: f.Size,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"folders": result})
 }
 
 // handleAdminActivity handles GET /api/admin/activity.
