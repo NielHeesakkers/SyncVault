@@ -49,6 +49,7 @@ func (s *Server) setupRoutes() {
 
 	// Public routes.
 	r.Get("/api/health", s.handleHealth)
+	r.Get("/api/version", s.handleVersion)
 
 	// Auth routes (public).
 	r.Post("/api/auth/login", s.handleLogin)
@@ -90,6 +91,11 @@ func (s *Server) setupRoutes() {
 		r.Delete("/api/shares/{id}", s.handleDeleteShare)
 		r.Get("/api/shares/mine", s.handleListMyShares)
 
+		// Sync task management.
+		r.Get("/api/tasks", s.handleListTasks)
+		r.Post("/api/tasks", s.handleCreateTask)
+		r.Delete("/api/tasks/{id}", s.handleDeleteTask)
+
 		// Team management.
 		r.Get("/api/teams", s.handleListTeams)
 		r.With(auth.RequireAdmin).Post("/api/teams", s.handleCreateTeam)
@@ -119,9 +125,11 @@ func (s *Server) setupRoutes() {
 	r.NotFound(ServeSPA().ServeHTTP)
 }
 
+const AppVersion = "1.0"
+
 // handleHealth returns a simple health check response.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": AppVersion})
 }
 
 // handleMe returns the current authenticated user's claims.

@@ -15,7 +15,8 @@
 		LogOut,
 		Settings,
 		Shield,
-		KeyRound
+		KeyRound,
+		BookOpen
 	} from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { currentUser, showToast } from '$lib/stores';
@@ -83,7 +84,8 @@
 	const navItems = [
 		{ href: '/files', label: 'Files', icon: FolderOpen },
 		{ href: '/shared', label: 'Shared', icon: Link },
-		{ href: '/trash', label: 'Trash', icon: Trash2 }
+		{ href: '/trash', label: 'Trash', icon: Trash2 },
+		{ href: '/changelog', label: 'Changelog', icon: BookOpen }
 	];
 
 	const adminItems = [
@@ -162,6 +164,9 @@
 			<div class="px-3 py-3 border-t border-white/10">
 				<div class="px-3 py-2 text-xs text-white/40 truncate">
 					{user?.username || ''}
+				</div>
+				<div class="px-3 py-1 text-xs text-white/20">
+					v1.0
 				</div>
 			</div>
 		</aside>

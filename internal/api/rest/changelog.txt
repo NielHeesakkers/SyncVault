@@ -1,0 +1,15 @@
+## [1.0] — 2026-03-21
+- Initial release
+- File sync and backup platform
+- Content-addressable storage with deduplication
+- File versioning with delta patches (up to 32 versions)
+- JWT authentication with role-based access control
+- Web interface: file browser, version history, sharing, admin panel
+- macOS menu bar sync client
+- SMTP email notifications
+- Docker single-container deployment
+- Team folders with per-user permissions
+- Share links with password, expiration, download limits
+- Activity log and storage insights
+- Retention policies (daily/weekly/monthly/yearly)
+- Sparkle auto-update for macOS app
