@@ -5,13 +5,21 @@
         <description>SyncVault macOS app updates</description>
         <language>en</language>
         <item>
-            <title>Version 1.0.0</title>
-            <sparkle:version>1.0.0</sparkle:version>
-            <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
-            <pubDate>Fri, 21 Mar 2026 12:00:00 +0000</pubDate>
+            <title>Version 1.2</title>
+            <sparkle:version>1.2</sparkle:version>
+            <sparkle:shortVersionString>1.2</sparkle:shortVersionString>
+            <pubDate>Fri, 21 Mar 2026 18:00:00 +0000</pubDate>
+            <description>
+- Fix menu bar icon and Settings
+- Auto user folder creation
+- Sync task management
+- File Provider Extension for on-demand sync
+- SMTP settings in admin panel
+- Changelog in web UI
+            </description>
             <enclosure
-                url="https://github.com/NielHeesakkers/SyncVault/releases/download/v1.0.0/SyncVault.dmg"
-                sparkle:version="1.0.0"
+                url="https://github.com/NielHeesakkers/SyncVault/releases/download/v1.2/SyncVault.dmg"
+                sparkle:version="1.2"
                 type="application/octet-stream"
             />
         </item>
