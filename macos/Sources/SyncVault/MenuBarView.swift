@@ -67,11 +67,18 @@ struct MenuBarView: View {
 
             Divider()
 
+            // Version
+            Text("SyncVault v\(appVersion)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+
+            Divider()
+
             // Actions
             Button("Sync Now") {
-                // Trigger manual sync
+                Task { await appState.runSync() }
             }
-            .disabled(!appState.isConnected)
+            .disabled(!appState.isConnected || appState.isSyncing)
 
             SettingsLink {
                 Text("Settings...")

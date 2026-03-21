@@ -2,6 +2,8 @@ import SwiftUI
 import Combine
 import FileProvider
 
+let appVersion = "1.3"
+
 @MainActor
 class AppState: ObservableObject {
     @Published var isConnected = false
@@ -22,12 +24,17 @@ class AppState: ObservableObject {
         return "checkmark.icloud"
     }
 
-    private var apiClient: APIClient?
+    private(set) var apiClient: APIClient?
     private var syncEngine: SyncEngine?
+    private var syncTimer: Timer?
 
     init() {
         loadConfig()
+        // Try to auto-reconnect with saved credentials
+        Task { await tryAutoConnect() }
     }
+
+    // MARK: - Connection
 
     func connect(url: String, username: String, password: String) async throws {
         let client = APIClient(baseURL: url)
@@ -36,14 +43,35 @@ class AppState: ObservableObject {
         self.serverURL = url
         self.username = username
         self.isConnected = true
+
+        // Save password in Keychain for auto-reconnect
+        KeychainHelper.save(key: "server_password", value: password)
         saveConfig()
+
+        // Start sync loop
+        startSyncLoop()
     }
 
     func disconnect() {
+        stopSyncLoop()
         apiClient = nil
         isConnected = false
         isSyncing = false
+        KeychainHelper.delete(key: "server_password")
     }
+
+    private func tryAutoConnect() async {
+        guard !serverURL.isEmpty, !username.isEmpty else { return }
+        guard let password = KeychainHelper.load(key: "server_password") else { return }
+
+        do {
+            try await connect(url: serverURL, username: username, password: password)
+        } catch {
+            lastError = "Auto-connect failed: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Config Persistence
 
     func loadConfig() {
         let configURL = Self.configDirectory.appendingPathComponent("config.json")
@@ -66,28 +94,110 @@ class AppState: ObservableObject {
             .appendingPathComponent("SyncVault")
     }
 
+    // MARK: - Sync Task Management
+
+    func addSyncTask(localPath: String, mode: SyncTask.SyncMode) async throws {
+        guard let client = apiClient else { throw APIError.unauthorized }
+
+        // Use local folder name as remote folder name
+        let folderName = URL(fileURLWithPath: localPath).lastPathComponent
+        let taskType = mode == .twoWay ? "sync" : "backup"
+
+        // Create task on server (this creates the remote folder automatically)
+        let body: [String: Any] = [
+            "name": folderName,
+            "type": taskType,
+            "local_path": localPath
+        ]
+        let response: TaskResponse = try await client.createTask(body: body)
+
+        // Save locally
+        let task = SyncTask(
+            localPath: localPath,
+            remoteFolderID: response.folderID,
+            remoteFolderName: folderName,
+            mode: mode
+        )
+        syncTasks.append(task)
+        saveConfig()
+    }
+
+    // MARK: - Sync Loop
+
+    func startSyncLoop() {
+        stopSyncLoop()
+        // Run sync every 30 seconds
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.runSync()
+            }
+        }
+        // Also run immediately
+        Task { await runSync() }
+    }
+
+    func stopSyncLoop() {
+        syncTimer?.invalidate()
+        syncTimer = nil
+    }
+
+    func runSync() async {
+        guard let client = apiClient, isConnected else { return }
+        guard !isSyncing else { return }
+
+        isSyncing = true
+        defer { isSyncing = false }
+
+        for task in syncTasks where task.isEnabled {
+            do {
+                let dbPath = Self.configDirectory.appendingPathComponent("sync.db")
+                let engine = try SyncEngine(apiClient: client, dbPath: dbPath)
+                let result = try await engine.syncTask(task)
+
+                // Add to recent activity
+                if result.uploaded > 0 {
+                    recentActivity.insert(ActivityItem(
+                        filename: "\(result.uploaded) file(s)",
+                        action: "uploaded",
+                        timestamp: Date()
+                    ), at: 0)
+                }
+                if result.downloaded > 0 {
+                    recentActivity.insert(ActivityItem(
+                        filename: "\(result.downloaded) file(s)",
+                        action: "downloaded",
+                        timestamp: Date()
+                    ), at: 0)
+                }
+
+                // Keep only last 20 activity items
+                if recentActivity.count > 20 {
+                    recentActivity = Array(recentActivity.prefix(20))
+                }
+            } catch {
+                lastError = "Sync error: \(error.localizedDescription)"
+            }
+        }
+    }
+
     // MARK: - On-Demand Sync (File Provider)
 
     func setupOnDemandSync(folderID: String) async throws {
         guard isConnected else { throw APIError.unauthorized }
 
-        // Store folder ID and server URL in shared app group defaults
         let sharedDefaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")!
         sharedDefaults.set(folderID, forKey: "onDemandFolderID")
         sharedDefaults.set(serverURL, forKey: "serverURL")
 
-        // Store auth token in shared keychain for the extension to access
         if let token = KeychainHelper.load(key: "access_token") {
             KeychainHelper.saveShared(key: "access_token", value: token)
         }
 
-        // Register the File Provider domain
         let domainIdentifier = NSFileProviderDomainIdentifier("com.syncvault.\(username)")
         let domain = NSFileProviderDomain(
             identifier: domainIdentifier,
             displayName: "SyncVault - \(username)"
         )
-
         try await NSFileProviderManager.add(domain)
     }
 
@@ -104,6 +214,20 @@ class AppState: ObservableObject {
 struct ActivityItem: Identifiable {
     let id = UUID()
     let filename: String
-    let action: String // "uploaded", "downloaded", "deleted"
+    let action: String
     let timestamp: Date
+}
+
+struct TaskResponse: Codable {
+    let id: String
+    let name: String
+    let type: String
+    let folderID: String
+    let folderName: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, type
+        case folderID = "folder_id"
+        case folderName = "folder_name"
+    }
 }

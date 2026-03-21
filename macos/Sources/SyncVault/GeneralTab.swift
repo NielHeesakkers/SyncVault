@@ -21,6 +21,11 @@ struct GeneralTab: View {
                     set: { updaterService.updater.automaticallyChecksForUpdates = $0 }
                 ))
             }
+
+            Section("About") {
+                LabeledContent("Version", value: "v\(appVersion)")
+                LabeledContent("Build", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown")
+            }
         }
         .padding()
     }

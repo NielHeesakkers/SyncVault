@@ -52,6 +52,10 @@ actor APIClient {
         return true
     }
 
+    func createTask(body: [String: Any]) async throws -> TaskResponse {
+        return try await post("/api/tasks", body: body)
+    }
+
     // MARK: - File Provider support
 
     func setToken(_ token: String) {
