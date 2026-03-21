@@ -70,19 +70,21 @@
 	async function loadFolder() {
 		loading = true;
 		try {
-			// Load folder metadata
-			const folderRes = await api.get(`/api/folders/${folderId}`);
-			if (folderRes.ok) {
-				const folder = await folderRes.json();
-				folderName = folder.name || folderId;
-				breadcrumbs = [{ id: null, name: 'Files' }, { id: folderId, name: folderName }];
-			}
+			// Load folder name from file metadata
+			const folderRes = await api.get(`/api/files?parent_id=${folderId}`);
+			// We don't have a get-single-file endpoint easily, so just set the name from the ID for now
+			folderName = folderId;
+			breadcrumbs = [{ id: null, name: 'Files' }, { id: folderId, name: 'Folder' }];
 
 			// Load contents
-			const res = await api.get(`/api/folders/${folderId}/contents`);
+			const res = await api.get(`/api/files?parent_id=${folderId}`);
 			if (res.ok) {
 				const data = await res.json();
-				items = data.items || data.files || data || [];
+				const rawFiles = data.files || data.items || data || [];
+				items = rawFiles.map((f: any) => ({
+					...f,
+					type: f.is_dir ? 'folder' : 'file'
+				}));
 			} else {
 				showToast('Failed to load folder', 'error');
 			}
@@ -135,7 +137,7 @@
 		for (const file of Array.from(files)) {
 			const fd = new FormData();
 			fd.append('file', file);
-			fd.append('folder_id', folderId);
+			fd.append('parent_id', folderId);
 			const res = await api.upload('/api/files/upload', fd);
 			if (res.ok) successCount++;
 		}

@@ -75,11 +75,16 @@
 		loading = true;
 		currentFolderId = folderId;
 		try {
-			const path = folderId ? `/api/folders/${folderId}/contents` : '/api/files';
+			const path = folderId ? `/api/files?parent_id=${folderId}` : '/api/files';
 			const res = await api.get(path);
 			if (res.ok) {
 				const data = await res.json();
-				items = data.items || data.files || data || [];
+				const rawFiles = data.files || data.items || data || [];
+				// Map backend is_dir to frontend type
+				items = rawFiles.map((f: any) => ({
+					...f,
+					type: f.is_dir ? 'folder' : 'file'
+				}));
 			} else {
 				showToast('Failed to load files', 'error');
 			}
@@ -131,7 +136,7 @@
 		for (const file of Array.from(files)) {
 			const fd = new FormData();
 			fd.append('file', file);
-			if (currentFolderId) fd.append('folder_id', currentFolderId);
+			if (currentFolderId) fd.append('parent_id', currentFolderId);
 
 			const res = await api.upload('/api/files/upload', fd);
 			if (res.ok) successCount++;
@@ -176,11 +181,7 @@
 
 	async function doRename() {
 		if (!renameTarget || !renameName.trim()) return;
-		const endpoint =
-			renameTarget.type === 'folder'
-				? `/api/folders/${renameTarget.id}`
-				: `/api/files/${renameTarget.id}`;
-		const res = await api.put(endpoint, { name: renameName.trim() });
+		const res = await api.put(`/api/files/${renameTarget.id}`, { name: renameName.trim() });
 		if (res.ok) {
 			showToast('Renamed successfully', 'success');
 			showRename = false;
@@ -198,11 +199,7 @@
 
 	async function doDelete() {
 		if (!deleteTarget) return;
-		const endpoint =
-			deleteTarget.type === 'folder'
-				? `/api/folders/${deleteTarget.id}`
-				: `/api/files/${deleteTarget.id}`;
-		const res = await api.delete(endpoint);
+		const res = await api.delete(`/api/files/${deleteTarget.id}`);
 		if (res.ok) {
 			showToast('Moved to trash', 'success');
 			showDelete = false;
