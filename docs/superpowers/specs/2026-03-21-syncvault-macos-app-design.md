@@ -91,15 +91,28 @@ Uses the existing REST API (not gRPC for now — simpler to implement, sufficien
 - Same scan + compare, but only uploads (never downloads or deletes remotely)
 - Server acts as append-only backup destination
 
+**Initial sync (first run of a new task):**
+- If local folder is empty → download all remote files
+- If remote folder is empty → upload all local files
+- If both have files → treat all files as "new" on both sides; upload local-only files, download remote-only files, for files existing in both locations keep the newer version (by modification time) and save the other as a conflict copy
+
 **File change detection:**
 - FSEvents API for real-time local change monitoring
-- Polling remote changes via `GET /api/files` (every 30 seconds by default)
+- Polling remote changes via `GET /api/changes?since=<timestamp>` (new endpoint needed on server, returns files changed since timestamp — every 30 seconds by default)
+- Fallback: poll `GET /api/files` recursively if change endpoint unavailable
 - Content hashing (SHA-256) to detect actual changes vs. just timestamp changes
+- Exponential backoff on network failures (1s, 2s, 4s, 8s... max 5 minutes), queued changes retried on reconnect
 
 **Conflict handling:**
-- Server version wins (consistent with spec)
-- Local conflicting file saved as `filename_machinename_timestamp.ext`
-- User notified via notification center
+- When the same file is modified both locally and remotely before sync completes, the **server's version wins** (server receive timestamp is the authority, per parent spec)
+- Local conflicting version saved as `filename_machinename_timestamp.ext`
+- Delete-vs-edit conflict: if a file is deleted locally while modified remotely, the remote version is re-downloaded (deletion does not win over edits). If deleted remotely while modified locally, the local version is uploaded as new.
+- User notified via macOS Notification Center for conflicts
+
+**Offline behavior:**
+- Changes are queued locally while server is unreachable
+- On reconnect, queued changes are synced in order
+- Notification shown after 5 minutes of unreachable server, then hourly
 
 ### 4. File Browser (Optional Window)
 
@@ -180,10 +193,29 @@ xcrun notarytool submit SyncVault.dmg \
 - **KeychainAccess** — secure credential storage
 - No gRPC dependency (uses REST API via URLSession)
 
+## Requirements
+
+- **Minimum macOS version:** macOS 13 Ventura
+- **Credentials:** server URL and sync tasks stored in `~/Library/Application Support/SyncVault/config.json`. Passwords and tokens stored exclusively in macOS Keychain (never in config files).
+- **Notarization:** credentials via environment variables, never hardcoded in scripts
+
+## New Server Endpoint Needed
+
+The server needs a change feed endpoint for efficient polling:
+
+`GET /api/changes?since=<ISO-timestamp>&folder_id=<optional>`
+
+Returns list of files changed (created, modified, deleted) since the given timestamp. This avoids polling the entire file tree every 30 seconds.
+
+This endpoint must be added to the Go backend before the macOS client can sync efficiently.
+
 ## Out of Scope (Phase 3)
 
 - File Provider Extension (on-demand sync) — separate phase
 - gRPC streaming (uses REST polling for now)
+- Delta sync (entire files transferred, not blocks) — significant bandwidth limitation, planned for later
+- Team folder discovery and sync (user must manually configure remote folder paths)
+- Share link management from macOS app (use web UI)
 - Auto-update mechanism
 - Multiple server connections
 - Bandwidth throttling
