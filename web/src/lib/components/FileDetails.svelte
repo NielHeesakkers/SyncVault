@@ -21,6 +21,7 @@
 		version: number;
 		size: number;
 		created_at: string;
+		created_by?: string;
 	}
 
 	interface ShareLink {
@@ -95,9 +96,9 @@
 		}
 	}
 
-	async function downloadVersion(versionId: string) {
+	async function downloadVersion(versionNum: number) {
 		if (!file) return;
-		const res = await api.get(`/api/files/${file.id}/versions/${versionId}/download`);
+		const res = await api.get(`/api/files/${file.id}/versions/${versionNum}/download`);
 		if (res.ok) {
 			const blob = await res.blob();
 			const url = URL.createObjectURL(blob);
@@ -111,9 +112,9 @@
 		}
 	}
 
-	async function restoreVersion(versionId: string) {
+	async function restoreVersion(versionNum: number) {
 		if (!file) return;
-		const res = await api.post(`/api/files/${file.id}/versions/${versionId}/restore`, {});
+		const res = await api.post(`/api/files/${file.id}/versions/${versionNum}/restore`, {});
 		if (res.ok) {
 			showToast('Version restored successfully', 'success');
 			loadVersions();
@@ -250,27 +251,34 @@
 						<p class="text-sm">No version history available</p>
 					</div>
 				{:else}
+					{@const latestVersion = Math.max(...versions.map((v) => v.version))}
 					<ul class="space-y-3">
-						{#each versions as v, i}
-							<li class="bg-gray-50 rounded-lg p-3">
+						{#each versions as v}
+							{@const isCurrent = v.version === latestVersion}
+							<li class="rounded-lg p-3 {isCurrent ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}">
 								<div class="flex items-center justify-between mb-1">
 									<span class="text-sm font-medium text-gray-900">
 										Version {v.version}
-										{#if i === 0}<span class="ml-2 text-xs bg-blue-100 text-blue-700 rounded px-1.5 py-0.5">Current</span>{/if}
+										{#if isCurrent}<span class="ml-2 text-xs bg-blue-100 text-blue-700 rounded px-1.5 py-0.5">Current</span>{/if}
 									</span>
 									<span class="text-xs text-gray-500">{formatBytes(v.size)}</span>
 								</div>
-								<p class="text-xs text-gray-500 mb-3">{formatDate(v.created_at)}</p>
+								<p class="text-xs text-gray-500">{formatDate(v.created_at)}</p>
+								{#if v.created_by}
+									<p class="text-xs text-gray-400 mb-2">by {v.created_by}</p>
+								{:else}
+									<div class="mb-2"></div>
+								{/if}
 								<div class="flex gap-2">
 									<button
-										onclick={() => downloadVersion(v.id)}
+										onclick={() => downloadVersion(v.version)}
 										class="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
 									>
 										<Download size={12} /> Download
 									</button>
-									{#if i > 0}
+									{#if !isCurrent}
 										<button
-											onclick={() => restoreVersion(v.id)}
+											onclick={() => restoreVersion(v.version)}
 											class="flex items-center gap-1 text-xs text-green-600 hover:text-green-800"
 										>
 											Restore

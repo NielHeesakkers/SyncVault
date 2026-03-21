@@ -209,7 +209,9 @@
 			</div>
 
 			<!-- Actions -->
-			<div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+			<div class="px-6 py-4 border-t border-gray-100 bg-gray-50">
+				<p class="text-xs text-gray-500 mb-3">Save settings before sending a test email.</p>
+				<div class="flex items-center justify-between">
 				<button
 					onclick={sendTestEmail}
 					disabled={testing || !form['smtp.enabled']}
@@ -227,6 +229,7 @@
 					<Save size={15} />
 					{saving ? 'Saving…' : 'Save'}
 				</button>
+				</div>
 			</div>
 		</div>
 	{/if}

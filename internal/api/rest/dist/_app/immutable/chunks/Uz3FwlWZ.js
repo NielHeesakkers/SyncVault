@@ -1,0 +1,1 @@
+import{I as e}from"./CrM9hieT.js";const d=e(null),o=e([]);let c=0;function l(a,i="info",n=4e3){const s=++c;o.update(t=>[...t,{id:s,type:i,message:a}]),setTimeout(()=>{o.update(t=>t.filter(r=>r.id!==s))},n)}export{d as c,l as s,o as t};
