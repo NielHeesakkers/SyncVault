@@ -88,11 +88,13 @@ func main() {
 		log.Fatalf("Failed to list users: %v", err)
 	}
 	if len(users) == 0 {
-		hashed, err := auth.HashPassword("admin")
+		adminUsername := envOr("SYNCVAULT_ADMIN_USER", "admin")
+		adminPassword := envOr("SYNCVAULT_ADMIN_PASS", "admin")
+		hashed, err := auth.HashPassword(adminPassword)
 		if err != nil {
 			log.Fatalf("Failed to hash admin password: %v", err)
 		}
-		adminUser, err := db.CreateUser("admin", "admin@localhost", hashed, "admin")
+		adminUser, err := db.CreateUser(adminUsername, "admin@localhost", hashed, "admin")
 		if err != nil {
 			log.Fatalf("Failed to create default admin user: %v", err)
 		}
@@ -100,7 +102,19 @@ func main() {
 		if _, err := db.CreateFile("", adminUser.ID, adminUser.Username, true, 0, "", ""); err != nil {
 			log.Printf("WARNING: could not create admin root folder: %v", err)
 		}
-		log.Println("WARNING: Created default admin user (username: admin, password: admin) — change this immediately")
+		log.Printf("Created default admin user (username: %s) — change the password", adminUsername)
+	}
+
+	// Also reset admin password if env var is set and admin already exists
+	if pw := os.Getenv("SYNCVAULT_ADMIN_PASS"); pw != "" && len(users) > 0 {
+		for _, u := range users {
+			if u.Role == "admin" {
+				hashed, _ := auth.HashPassword(pw)
+				db.ResetAdminPassword(hashed)
+				log.Println("Admin password reset from SYNCVAULT_ADMIN_PASS env var")
+				break
+			}
+		}
 	}
 
 	// 7. Create email service from env-var config, then apply any DB overrides.
@@ -168,4 +182,11 @@ func main() {
 	}
 
 	log.Println("SyncVault stopped.")
+}
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

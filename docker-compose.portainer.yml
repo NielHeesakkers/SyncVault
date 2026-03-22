@@ -13,3 +13,5 @@ services:
       - /path/to/syncvault-backups:/data/backups
     environment:
       - SYNCVAULT_JWT_SECRET=verander-dit-naar-een-lang-willekeurig-wachtwoord
+      - SYNCVAULT_ADMIN_USER=admin
+      - SYNCVAULT_ADMIN_PASS=admin
