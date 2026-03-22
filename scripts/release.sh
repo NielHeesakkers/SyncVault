@@ -31,17 +31,20 @@ DATE=$(date +%Y-%m-%d)
 echo "=== Releasing v$VERSION ==="
 
 # 1. Update Go backend version
-echo "[1/7] Updating backend version..."
+echo "[1/8] Updating backend version..."
 sed -i '' "s/AppVersion = \".*\"/AppVersion = \"$VERSION\"/" internal/api/rest/server.go
 
-# 2. Update macOS app Info.plist
-echo "[2/7] Updating macOS app version..."
-sed -i '' "s/<string>[0-9]*\.[0-9]*<\/string><!--APP_VERSION-->/<string>$VERSION<\/string><!--APP_VERSION-->/" macos/Sources/SyncVault/Info.plist 2>/dev/null || \
+# 2. Update macOS app version in AppState.swift
+echo "[2/8] Updating app version constant..."
+sed -i '' "s/let appVersion = \".*\"/let appVersion = \"$VERSION\"/" macos/Sources/SyncVault/AppState.swift
+
+# 3. Update macOS app Info.plist
+echo "[3/8] Updating macOS app Info.plist..."
 plutil -replace CFBundleShortVersionString -string "$VERSION" macos/Sources/SyncVault/Info.plist
 plutil -replace CFBundleVersion -string "$VERSION" macos/Sources/SyncVault/Info.plist
 
-# 3. Update FileProvider Info.plist
-echo "[3/7] Updating FileProvider version..."
+# 4. Update FileProvider Info.plist
+echo "[4/8] Updating FileProvider Info.plist..."
 plutil -replace CFBundleShortVersionString -string "$VERSION" macos/FileProvider/Info.plist
 plutil -replace CFBundleVersion -string "$VERSION" macos/FileProvider/Info.plist
 

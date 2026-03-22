@@ -2,7 +2,7 @@ import SwiftUI
 import Combine
 import FileProvider
 
-let appVersion = "1.5"
+let appVersion = "1.6"
 
 @MainActor
 class AppState: ObservableObject {
