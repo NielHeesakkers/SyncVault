@@ -1,0 +1,14 @@
+Target dependency graph (6 targets)
+Target 'SyncVault' in project 'SyncVault'
+➜ Explicit dependency on target 'SyncVaultFileProvider' in project 'SyncVault'
+➜ Explicit dependency on target 'SQLite' in project 'SQLite.swift'
+➜ Explicit dependency on target 'Sparkle' in project 'Sparkle'
+Target 'Sparkle' in project 'Sparkle' (no dependencies)
+Target 'SyncVaultFileProvider' in project 'SyncVault'
+➜ Explicit dependency on target 'SQLite' in project 'SQLite.swift'
+Target 'SQLite' in project 'SQLite.swift'
+➜ Explicit dependency on target 'SQLite' in project 'SQLite.swift'
+➜ Explicit dependency on target 'SQLite.swift_SQLite' in project 'SQLite.swift'
+Target 'SQLite' in project 'SQLite.swift'
+➜ Explicit dependency on target 'SQLite.swift_SQLite' in project 'SQLite.swift'
+Target 'SQLite.swift_SQLite' in project 'SQLite.swift' (no dependencies)

@@ -1,10 +1,12 @@
 package rest
 
 import (
+	"archive/zip"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"time"
 
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
@@ -397,7 +399,13 @@ func (s *Server) handleFilesAtTime(w http.ResponseWriter, r *http.Request) {
 
 	parentID := r.URL.Query().Get("parent_id")
 
-	files, err := s.db.ListFilesAtTime(parentID, claims.UserID, at)
+	// Admins see all files, regular users only their own
+	ownerFilter := claims.UserID
+	if claims.Role == "admin" {
+		ownerFilter = ""
+	}
+
+	files, err := s.db.ListFilesAtTime(parentID, ownerFilter, at)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list files at time"})
 		return
@@ -405,11 +413,17 @@ func (s *Server) handleFilesAtTime(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]fileAtTimeResponse, 0, len(files))
 	for _, f := range files {
+		size := f.Size
+		if f.IsDir {
+			if folderSize, err := s.db.GetFolderSize(f.ID); err == nil {
+				size = folderSize
+			}
+		}
 		result = append(result, fileAtTimeResponse{
 			ID:          f.ID,
 			Name:        f.Name,
 			IsDir:       f.IsDir,
-			Size:        f.Size,
+			Size:        size,
 			VersionNum:  f.VersionNum,
 			VersionID:   f.VersionID,
 			ContentHash: f.ContentHash,
@@ -429,7 +443,11 @@ func (s *Server) handleChangeDates(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
 	parentID := r.URL.Query().Get("parent_id")
 
-	dates, err := s.db.ListChangeDates(parentID, claims.UserID)
+	ownerFilter := claims.UserID
+	if claims.Role == "admin" {
+		ownerFilter = ""
+	}
+	dates, err := s.db.ListChangeDates(parentID, ownerFilter)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list change dates"})
 		return
@@ -441,6 +459,154 @@ func (s *Server) handleChangeDates(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"dates": dateStrs})
+}
+
+// handleDownloadFolderAtTime handles GET /api/files/history/download?parent_id=X&at=<ISO8601>.
+// Downloads all files in a folder as a ZIP archive, using the versions that existed at the given time.
+func (s *Server) handleDownloadFolderAtTime(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+
+	atStr := r.URL.Query().Get("at")
+	if atStr == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required query param: at"})
+		return
+	}
+	at, err := time.Parse(time.RFC3339, atStr)
+	if err != nil {
+		at, err = time.Parse(time.RFC3339Nano, atStr)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid at timestamp"})
+			return
+		}
+	}
+
+	parentID := r.URL.Query().Get("parent_id")
+	if parentID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "parent_id is required"})
+		return
+	}
+
+	// Get the folder name for the ZIP filename
+	folder, err := s.db.GetFileByID(parentID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "folder not found"})
+		return
+	}
+
+	// Recursively collect all files in this folder at the given time
+	type fileEntry struct {
+		relativePath string
+		contentHash  string
+	}
+	var entries []fileEntry
+
+	var collectFiles func(folderID, prefix string) error
+	collectFiles = func(folderID, prefix string) error {
+		files, err := s.db.ListFilesAtTime(folderID, claims.UserID, at)
+		if err != nil {
+			return err
+		}
+		for _, f := range files {
+			if f.IsDir {
+				if err := collectFiles(f.ID, path.Join(prefix, f.Name)); err != nil {
+					return err
+				}
+			} else if f.ContentHash != "" {
+				entries = append(entries, fileEntry{
+					relativePath: path.Join(prefix, f.Name),
+					contentHash:  f.ContentHash,
+				})
+			}
+		}
+		return nil
+	}
+
+	if err := collectFiles(parentID, ""); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not collect files"})
+		return
+	}
+
+	if len(entries) == 0 {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no files found at this time"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-%s.zip"`, folder.Name, at.Format("2006-01-02")))
+
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+
+	for _, entry := range entries {
+		fw, err := zw.Create(entry.relativePath)
+		if err != nil {
+			return
+		}
+		if err := s.store.Get(entry.contentHash, fw); err != nil {
+			return
+		}
+	}
+}
+
+// handleRestoreFolderAtTime handles POST /api/files/history/restore.
+// Restores all files in a folder to their versions at the given time.
+func (s *Server) handleRestoreFolderAtTime(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+
+	var req struct {
+		ParentID string `json:"parent_id"`
+		At       string `json:"at"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if req.ParentID == "" || req.At == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "parent_id and at are required"})
+		return
+	}
+
+	at, err := time.Parse(time.RFC3339, req.At)
+	if err != nil {
+		at, err = time.Parse(time.RFC3339Nano, req.At)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid at timestamp"})
+			return
+		}
+	}
+
+	// Recursively restore all files
+	restored := 0
+	var restoreFiles func(folderID string) error
+	restoreFiles = func(folderID string) error {
+		files, err := s.db.ListFilesAtTime(folderID, claims.UserID, at)
+		if err != nil {
+			return err
+		}
+		for _, f := range files {
+			if f.IsDir {
+				if err := restoreFiles(f.ID); err != nil {
+					return err
+				}
+			} else if f.VersionNum > 0 && f.ContentHash != "" {
+				if err := s.db.UpdateFileContent(f.ID, f.ContentHash, f.Size); err != nil {
+					return err
+				}
+				restored++
+			}
+		}
+		return nil
+	}
+
+	if err := restoreFiles(req.ParentID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not restore files"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":   "restored",
+		"restored": restored,
+	})
 }
 
 // handleDownloadFile streams a file's content from storage.

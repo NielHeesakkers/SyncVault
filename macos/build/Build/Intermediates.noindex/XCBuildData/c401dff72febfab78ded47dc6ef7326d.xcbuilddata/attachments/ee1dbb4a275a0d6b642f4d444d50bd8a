@@ -1,0 +1,15 @@
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/APIClient.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/AppConfig.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/AppState.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/ConnectionTab.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/GeneralTab.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/KeychainHelper.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/MenuBarView.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/ServerFile.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/SettingsView.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/SyncDatabase.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/SyncEngine.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/SyncTask.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/SyncTasksTab.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/SyncVaultApp.swift
+/Users/niel/Development/SyncVault/macos/Sources/SyncVault/UpdaterService.swift

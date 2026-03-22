@@ -10,17 +10,62 @@
 		id: string;
 		name: string;
 		size: number;
-		type: 'file' | 'folder';
+		is_dir?: boolean;
+		type?: 'file' | 'folder';
 		deleted_at?: string;
 		original_path?: string;
 	}
 
+	function isDir(item: TrashedItem): boolean {
+		return item.is_dir === true || item.type === 'folder';
+	}
+
 	let items = $state<TrashedItem[]>([]);
 	let loading = $state(true);
+	let selected = $state<Set<string>>(new Set());
+	let lastClickedIndex = $state<number>(-1);
 
 	let deleteTarget = $state<TrashedItem | null>(null);
 	let showPermanentDelete = $state(false);
 	let showEmptyTrash = $state(false);
+	let showRemoveSelected = $state(false);
+
+	function toggleSelect(item: TrashedItem, index: number, event: MouseEvent) {
+		const newSet = new Set(selected);
+		if (event.shiftKey && lastClickedIndex >= 0) {
+			const start = Math.min(lastClickedIndex, index);
+			const end = Math.max(lastClickedIndex, index);
+			for (let i = start; i <= end; i++) {
+				newSet.add(items[i].id);
+			}
+		} else {
+			if (newSet.has(item.id)) {
+				newSet.delete(item.id);
+			} else {
+				newSet.add(item.id);
+			}
+		}
+		selected = newSet;
+		lastClickedIndex = index;
+	}
+
+	function selectAll() {
+		if (selected.size === items.length) {
+			selected = new Set();
+		} else {
+			selected = new Set(items.map(i => i.id));
+		}
+	}
+
+	async function removeSelected() {
+		for (const id of selected) {
+			await api.delete(`/api/files/${id}/permanent`);
+		}
+		items = items.filter(i => !selected.has(i.id));
+		showToast(`${selected.size} items permanently deleted`, 'success');
+		selected = new Set();
+		showRemoveSelected = false;
+	}
 
 	onMount(loadTrash);
 
@@ -30,7 +75,7 @@
 			const res = await api.get('/api/trash');
 			if (res.ok) {
 				const data = await res.json();
-				items = data.items || data || [];
+				items = data.files || data.items || data || [];
 			} else {
 				showToast('Failed to load trash', 'error');
 			}
@@ -40,11 +85,7 @@
 	}
 
 	async function restoreItem(item: TrashedItem) {
-		const endpoint =
-			item.type === 'folder'
-				? `/api/trash/folders/${item.id}/restore`
-				: `/api/trash/files/${item.id}/restore`;
-		const res = await api.post(endpoint, {});
+		const res = await api.post(`/api/files/${item.id}/restore`, {});
 		if (res.ok) {
 			showToast(`'${item.name}' restored`, 'success');
 			items = items.filter((i) => i.id !== item.id);
@@ -60,11 +101,7 @@
 
 	async function doPermanentDelete() {
 		if (!deleteTarget) return;
-		const endpoint =
-			deleteTarget.type === 'folder'
-				? `/api/trash/folders/${deleteTarget.id}`
-				: `/api/trash/files/${deleteTarget.id}`;
-		const res = await api.delete(endpoint);
+		const res = await api.delete(`/api/files/${deleteTarget.id}/permanent`);
 		if (res.ok) {
 			showToast('Permanently deleted', 'success');
 			items = items.filter((i) => i.id !== deleteTarget!.id);
@@ -98,12 +135,21 @@
 			<p class="text-sm text-gray-500 mt-1">Files here will be permanently deleted after 30 days.</p>
 		</div>
 		{#if items.length > 0}
-			<button
-				onclick={() => (showEmptyTrash = true)}
-				class="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-md px-4 py-2 transition-colors"
-			>
-				<Trash2 size={16} /> Empty Trash
-			</button>
+			{#if selected.size > 0}
+				<button
+					onclick={() => (showRemoveSelected = true)}
+					class="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-md px-4 py-2 transition-colors"
+				>
+					<Trash2 size={16} /> Remove ({selected.size})
+				</button>
+			{:else}
+				<button
+					onclick={() => (showEmptyTrash = true)}
+					class="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-md px-4 py-2 transition-colors"
+				>
+					<Trash2 size={16} /> Empty Trash
+				</button>
+			{/if}
 		{/if}
 	</div>
 
@@ -122,6 +168,10 @@
 			<table class="min-w-full divide-y divide-gray-200">
 				<thead class="bg-gray-50">
 					<tr>
+						<th class="px-4 py-3 w-8">
+							<input type="checkbox" checked={selected.size === items.length && items.length > 0} onchange={selectAll}
+								class="rounded border-gray-300 text-blue-500 focus:ring-blue-500" />
+						</th>
 						<th class="px-4 py-3 w-8"></th>
 						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
 						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Size</th>
@@ -130,10 +180,16 @@
 					</tr>
 				</thead>
 				<tbody class="bg-white divide-y divide-gray-200">
-					{#each items as item}
-						<tr class="hover:bg-gray-50">
+					{#each items as item, i}
+						<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
+						<tr class="hover:bg-gray-50 cursor-pointer {selected.has(item.id) ? 'bg-blue-50' : ''}"
+							onclick={(e) => toggleSelect(item, i, e)}>
 							<td class="px-4 py-3">
-								{#if item.type === 'folder'}
+								<input type="checkbox" checked={selected.has(item.id)} onclick={(e) => e.stopPropagation()} onchange={(e) => toggleSelect(item, i, e)}
+									class="rounded border-gray-300 text-blue-500 focus:ring-blue-500" />
+							</td>
+							<td class="px-4 py-3">
+								{#if isDir(item)}
 									<FolderOpen size={20} class="text-yellow-400 opacity-60" />
 								{:else}
 									<FileText size={20} class="text-gray-300" />
@@ -149,7 +205,7 @@
 							</td>
 							<td class="px-4 py-3 hidden sm:table-cell">
 								<span class="text-sm text-gray-500">
-									{item.type === 'folder' ? '—' : formatBytes(item.size)}
+									{isDir(item) ? '—' : formatBytes(item.size)}
 								</span>
 							</td>
 							<td class="px-4 py-3 hidden md:table-cell">
@@ -186,6 +242,16 @@
 		confirmLabel="Delete Forever"
 		onconfirm={doPermanentDelete}
 		oncancel={() => { showPermanentDelete = false; deleteTarget = null; }}
+	/>
+{/if}
+
+{#if showRemoveSelected}
+	<ConfirmDialog
+		title="Remove Selected"
+		message="Permanently delete {selected.size} selected item(s)? This cannot be undone."
+		confirmLabel="Remove"
+		onconfirm={removeSelected}
+		oncancel={() => (showRemoveSelected = false)}
 	/>
 {/if}
 

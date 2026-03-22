@@ -170,6 +170,41 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleAdminTransferUser handles POST /api/admin/users/{id}/transfer.
+// Transfers a user's root folder to another user's home folder.
+func (s *Server) handleAdminTransferUser(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var req struct {
+		UserID string `json:"user_id"`
+	}
+	if err := readJSON(r, &req); err != nil || req.UserID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "user_id is required"})
+		return
+	}
+
+	// Find source user's root folder
+	srcRoot, err := s.db.GetUserRootFolder(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "source user has no files"})
+		return
+	}
+
+	// Find target user's root folder
+	dstRoot, err := s.db.GetUserRootFolder(req.UserID)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "target user has no home folder"})
+		return
+	}
+
+	// Move source root folder into target's home (becomes a subfolder)
+	// and transfer ownership of ALL files recursively
+	_ = s.db.MoveFile(srcRoot.ID, dstRoot.ID, srcRoot.Name)
+	_ = s.db.TransferAllFiles(id, req.UserID)
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "transferred"})
+}
+
 // handleAdminDeleteUser handles DELETE /api/admin/users/{id}.
 func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")

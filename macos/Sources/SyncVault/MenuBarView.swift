@@ -1,8 +1,14 @@
 import SwiftUI
+import AppKit
 
 struct MenuBarView: View {
     @ObservedObject var appState: AppState
     @ObservedObject var updaterService: UpdaterService
+
+    // Pending team invite notifications (type == "team_invite" and not yet acted on)
+    var pendingInvites: [AppNotification] {
+        appState.notifications.filter { $0.type == "team_invite" && !$0.acted }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -14,6 +20,16 @@ struct MenuBarView: View {
                 Text(appState.isConnected ? "Connected" : "Disconnected")
                     .font(.headline)
                 Spacer()
+                if appState.unreadCount > 0 {
+                    ZStack {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 18, height: 18)
+                        Text("\(min(appState.unreadCount, 99))")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
             }
 
             if appState.isConnected {
@@ -22,6 +38,19 @@ struct MenuBarView: View {
                     Image(systemName: appState.menuBarIcon)
                     Text(appState.isSyncing ? "Syncing..." : "Up to date")
                         .foregroundColor(.secondary)
+                }
+
+                // Team folder invites
+                if !pendingInvites.isEmpty {
+                    Divider()
+
+                    Text("Team Folder Invites")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    ForEach(pendingInvites) { invite in
+                        TeamInviteRow(invite: invite, appState: appState)
+                    }
                 }
 
                 Divider()
@@ -113,5 +142,90 @@ struct MenuBarView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
+    }
+}
+
+// MARK: - Team Invite Row
+
+struct TeamInviteRow: View {
+    let invite: AppNotification
+    @ObservedObject var appState: AppState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: "person.3")
+                    .foregroundColor(.blue)
+                Text(invite.title)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+            }
+            Text(invite.message)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .lineLimit(2)
+
+            HStack(spacing: 8) {
+                Button("Accept") {
+                    handleAccept()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.mini)
+
+                Button("Decline") {
+                    Task { await appState.declineTeamInvite(notificationId: invite.id) }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+            }
+        }
+        .padding(8)
+        .background(Color.blue.opacity(0.05))
+        .cornerRadius(6)
+    }
+
+    private func handleAccept() {
+        // Parse the team id from the notification data field ("team_id:<id>|team_name:<name>")
+        // data format is expected as "team_id:<id>" or JSON — we use a simple convention
+        let (teamId, teamName) = parseInviteData(invite.data)
+
+        let panel = NSOpenPanel()
+        panel.title = "Choose local folder for \"\(teamName)\""
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Choose"
+
+        guard panel.runModal() == .OK, let localFolder = panel.url else { return }
+
+        Task {
+            await appState.acceptTeamInvite(
+                notificationId: invite.id,
+                teamId: teamId,
+                teamName: teamName,
+                localFolder: localFolder
+            )
+        }
+    }
+
+    private func parseInviteData(_ data: String?) -> (id: String, name: String) {
+        // Expected data format: "team_id:<id>,team_name:<name>"
+        // Falls back to the notification title if parsing fails.
+        guard let data = data else { return (id: invite.id, name: invite.title) }
+
+        var teamId = invite.id
+        var teamName = invite.title
+
+        for part in data.split(separator: ",") {
+            let kv = part.split(separator: ":", maxSplits: 1)
+            guard kv.count == 2 else { continue }
+            let key = String(kv[0]).trimmingCharacters(in: .whitespaces)
+            let value = String(kv[1]).trimmingCharacters(in: .whitespaces)
+            if key == "team_id" { teamId = value }
+            if key == "team_name" { teamName = value }
+        }
+
+        return (id: teamId, name: teamName)
     }
 }

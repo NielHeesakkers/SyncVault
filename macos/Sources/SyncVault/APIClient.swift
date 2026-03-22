@@ -56,6 +56,102 @@ actor APIClient {
         return try await post("/api/tasks", body: body)
     }
 
+    // MARK: - Task Retention Policy
+
+    func getTaskRetention(taskID: String) async throws -> RetentionPolicy {
+        return try await get("/api/tasks/\(taskID)/retention")
+    }
+
+    func setTaskRetention(taskID: String, policy: RetentionPolicy) async throws {
+        let body: [String: Any] = [
+            "hourly": policy.hourly,
+            "daily": policy.daily,
+            "weekly": policy.weekly,
+            "monthly": policy.monthly,
+            "yearly": policy.yearly
+        ]
+        let _: RetentionPolicy = try await put("/api/tasks/\(taskID)/retention", body: body)
+    }
+
+    // MARK: - Notifications
+
+    func getNotifications() async throws -> NotificationsResponse {
+        return try await get("/api/notifications")
+    }
+
+    func acceptNotification(id: String) async throws {
+        let _: EmptyResponse = try await post("/api/notifications/\(id)/accept", body: [:])
+    }
+
+    func declineNotification(id: String) async throws {
+        let _: EmptyResponse = try await post("/api/notifications/\(id)/decline", body: [:])
+    }
+
+    // MARK: - Teams
+
+    func getMyTeams() async throws -> MyTeamsResponse {
+        return try await get("/api/teams/mine")
+    }
+
+    func updateTeam(id: String, name: String?, quotaBytes: Int64?) async throws {
+        var body: [String: Any] = [:]
+        if let name = name { body["name"] = name }
+        if let quota = quotaBytes { body["quota_bytes"] = quota }
+        let _: TeamInfo = try await put("/api/teams/\(id)", body: body)
+    }
+
+    // MARK: - Admin: User Transfer
+
+    func transferUser(fromUserID: String, toUserID: String) async throws {
+        let body: [String: Any] = ["to_user_id": toUserID]
+        let _: EmptyResponse = try await post("/api/admin/users/\(fromUserID)/transfer", body: body)
+    }
+
+    // MARK: - Admin: Backups
+
+    func listBackups() async throws -> BackupsResponse {
+        return try await get("/api/admin/backups")
+    }
+
+    func createBackup() async throws -> BackupEntry {
+        return try await post("/api/admin/backups", body: [:])
+    }
+
+    func downloadBackup(id: String) async throws -> Data {
+        return try await getData("/api/admin/backups/\(id)/download")
+    }
+
+    func uploadBackup(data: Data, filename: String) async throws -> BackupEntry {
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/admin/backups/upload")!)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        addAuth(&request)
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response)
+        return try JSONDecoder().decode(BackupEntry.self, from: responseData)
+    }
+
+    func restoreBackup(id: String) async throws {
+        let _: EmptyResponse = try await post("/api/admin/backups/\(id)/restore", body: [:])
+    }
+
+    // MARK: - Authenticated Backup Download URL
+
+    /// Returns the raw data for a backup download with auth header applied (no window.open needed).
+    func downloadFileAuthenticated(id: String) async throws -> Data {
+        return try await getData("/api/files/\(id)/download")
+    }
+
     // MARK: - File Provider support
 
     func setToken(_ token: String) {
@@ -174,6 +270,69 @@ actor APIClient {
         }
     }
 }
+
+// MARK: - Notification & Team response types
+
+struct NotificationsResponse: Codable {
+    let notifications: [AppNotification]
+    let unread_count: Int
+}
+
+struct AppNotification: Codable, Identifiable {
+    let id: String
+    let type: String
+    let title: String
+    let message: String
+    let data: String?
+    let read: Bool
+    let acted: Bool
+    let created_at: String
+}
+
+struct MyTeamsResponse: Codable {
+    let teams: [TeamInfo]
+}
+
+struct TeamInfo: Codable, Identifiable {
+    let id: String
+    let name: String
+    let permission: String
+    let quota_bytes: Int64?
+}
+
+struct RetentionPolicy: Codable {
+    var hourly: Int
+    var daily: Int
+    var weekly: Int
+    var monthly: Int
+    var yearly: Int
+
+    static var `default`: RetentionPolicy {
+        RetentionPolicy(hourly: 24, daily: 7, weekly: 4, monthly: 12, yearly: 3)
+    }
+}
+
+struct BackupsResponse: Codable {
+    let backups: [BackupEntry]
+}
+
+struct BackupEntry: Codable, Identifiable {
+    let id: String
+    let filename: String
+    let size_bytes: Int64
+    let created_at: String
+}
+
+struct ShareLink: Codable, Identifiable {
+    let id: String
+    let url: String
+    let name: String?
+    let notify_on_download: Bool
+    let created_at: String
+}
+
+// Used for POST endpoints that return an empty or minimal body
+private struct EmptyResponse: Codable {}
 
 enum APIError: Error, LocalizedError {
     case unauthorized

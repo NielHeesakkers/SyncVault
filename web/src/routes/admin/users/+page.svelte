@@ -29,7 +29,7 @@
 	// Edit user modal
 	let showEdit = $state(false);
 	let editTarget = $state<UserRecord | null>(null);
-	let editForm = $state({ email: '', role: 'user', storage_quota: '' });
+	let editForm = $state({ email: '', role: 'user', storage_quota: '', storage_quota_unit: 'GB' });
 	let editing = $state(false);
 
 	// Reset password modal
@@ -43,7 +43,63 @@
 	let showDelete = $state(false);
 	let deleteTarget = $state<UserRecord | null>(null);
 
-	onMount(loadUsers);
+	// Teams
+	interface Team {
+		id: string;
+		name: string;
+	}
+	interface TeamMember {
+		user_id: string;
+		permission: string;
+	}
+	let teams = $state<Team[]>([]);
+	let createTeamSelections = $state<Record<string, string>>({});
+	let editTeamSelections = $state<Record<string, string>>({});
+
+	onMount(() => {
+		loadUsers();
+		loadTeams();
+	});
+
+	async function loadTeams() {
+		try {
+			const res = await api.get('/api/teams');
+			if (res.ok) {
+				const data = await res.json();
+				teams = data.teams || data || [];
+			}
+		} catch { /* non-fatal */ }
+	}
+
+	async function loadUserTeams(userId: string): Promise<Record<string, string>> {
+		const selections: Record<string, string> = {};
+		for (const team of teams) {
+			try {
+				const res = await api.get(`/api/teams/${team.id}/members`);
+				if (res.ok) {
+					const data = await res.json();
+					const members: TeamMember[] = data.members || data || [];
+					const member = members.find((m: TeamMember) => m.user_id === userId);
+					if (member) {
+						selections[team.id] = member.permission;
+					}
+				}
+			} catch { /* skip */ }
+		}
+		return selections;
+	}
+
+	async function saveTeamMemberships(userId: string, selections: Record<string, string>) {
+		for (const team of teams) {
+			const permission = selections[team.id];
+			if (permission) {
+				await api.put(`/api/teams/${team.id}/members/${userId}`, { permission });
+			} else {
+				// Remove from team
+				await api.delete(`/api/teams/${team.id}/members/${userId}`);
+			}
+		}
+	}
 
 	async function loadUsers() {
 		loading = true;
@@ -60,31 +116,49 @@
 		}
 	}
 
+	function openCreate() {
+		createForm = { username: '', email: '', password: '', role: 'user' };
+		createTeamSelections = {};
+		showCreate = true;
+	}
+
 	async function createUser() {
 		creating = true;
 		try {
 			const res = await api.post('/api/users', createForm);
 			if (res.ok) {
+				const data = await res.json();
+				try {
+					if (data.id) await saveTeamMemberships(data.id, createTeamSelections);
+				} catch { /* team assignment is non-fatal */ }
 				showToast('User created', 'success');
 				showCreate = false;
-				createForm = { username: '', email: '', password: '', role: 'user' };
 				loadUsers();
 			} else {
 				const data = await res.json().catch(() => ({}));
-				showToast(data.message || 'Failed to create user', 'error');
+				showToast(data.error || data.message || 'Failed to create user', 'error');
 			}
 		} finally {
 			creating = false;
 		}
 	}
 
-	function startEdit(user: UserRecord) {
+	async function startEdit(user: UserRecord) {
 		editTarget = user;
+		const qb = user.storage_quota || 0;
+		let quotaVal = '';
+		let quotaUnit = 'GB';
+		if (qb >= 1099511627776) { quotaVal = String(Math.round(qb / 1099511627776)); quotaUnit = 'TB'; }
+		else if (qb >= 1073741824) { quotaVal = String(Math.round(qb / 1073741824)); quotaUnit = 'GB'; }
+		else if (qb >= 1048576) { quotaVal = String(Math.round(qb / 1048576)); quotaUnit = 'MB'; }
+		else if (qb > 0) { quotaVal = String(qb); quotaUnit = 'MB'; }
 		editForm = {
 			email: user.email,
 			role: user.role,
-			storage_quota: user.storage_quota ? String(user.storage_quota) : ''
+			storage_quota: quotaVal,
+			storage_quota_unit: quotaUnit
 		};
+		editTeamSelections = await loadUserTeams(user.id);
 		showEdit = true;
 	}
 
@@ -96,9 +170,16 @@
 				email: editForm.email,
 				role: editForm.role
 			};
-			if (editForm.storage_quota) body.storage_quota = parseInt(editForm.storage_quota);
+			if (editForm.storage_quota) {
+				let qb = parseFloat(editForm.storage_quota);
+				if (editForm.storage_quota_unit === 'TB') qb *= 1099511627776;
+				else if (editForm.storage_quota_unit === 'GB') qb *= 1073741824;
+				else qb *= 1048576;
+				body.storage_quota = Math.round(qb);
+			}
 			const res = await api.put(`/api/admin/users/${editTarget.id}`, body);
 			if (res.ok) {
+				await saveTeamMemberships(editTarget.id, editTeamSelections);
 				showToast('User updated', 'success');
 				showEdit = false;
 				editTarget = null;
@@ -143,16 +224,30 @@
 		}
 	}
 
+	let deleteAction = $state<'delete' | 'transfer'>('delete');
+	let transferToUserId = $state('');
+
 	function confirmDelete(user: UserRecord) {
 		deleteTarget = user;
+		deleteAction = 'delete';
+		transferToUserId = '';
 		showDelete = true;
 	}
 
 	async function doDelete() {
 		if (!deleteTarget) return;
+
+		if (deleteAction === 'transfer' && transferToUserId) {
+			const res = await api.post(`/api/admin/users/${deleteTarget.id}/transfer`, { user_id: transferToUserId });
+			if (!res.ok) {
+				showToast('Failed to transfer files', 'error');
+				return;
+			}
+		}
+
 		const res = await api.delete(`/api/admin/users/${deleteTarget.id}`);
 		if (res.ok) {
-			showToast('User deleted', 'success');
+			showToast(deleteAction === 'transfer' ? 'User deleted, files transferred' : 'User and files deleted', 'success');
 			users = users.filter((u) => u.id !== deleteTarget!.id);
 			showDelete = false;
 			deleteTarget = null;
@@ -173,7 +268,7 @@
 			<p class="text-sm text-gray-500 mt-1">{users.length} user{users.length !== 1 ? 's' : ''} total</p>
 		</div>
 		<button
-			onclick={() => (showCreate = true)}
+			onclick={openCreate}
 			class="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-md px-4 py-2 transition-colors"
 		>
 			<UserPlus size={16} /> Create User
@@ -287,6 +382,33 @@
 						<option value="admin">Admin</option>
 					</select>
 				</div>
+				{#if teams.length > 0}
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-1">Team Folders</label>
+						<div class="space-y-2 border border-gray-200 rounded-md p-3">
+							{#each teams as team}
+								<div class="flex items-center justify-between">
+									<span class="text-sm text-gray-700">{team.name}</span>
+									<select
+										value={createTeamSelections[team.id] || ''}
+										onchange={(e) => {
+											const v = (e.target as HTMLSelectElement).value;
+											if (v) createTeamSelections[team.id] = v;
+											else delete createTeamSelections[team.id];
+											createTeamSelections = { ...createTeamSelections };
+										}}
+										class="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+									>
+										<option value="">No access</option>
+										<option value="read">Read</option>
+										<option value="write">Write</option>
+										<option value="readwrite">Read & Write</option>
+									</select>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
 			</div>
 		{/snippet}
 		{#snippet footer()}
@@ -315,9 +437,45 @@
 					</select>
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Storage quota (bytes, empty = unlimited)</label>
-					<input type="number" bind:value={editForm.storage_quota} placeholder="e.g. 10737418240 for 10 GB" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+					<label class="block text-sm font-medium text-gray-700 mb-1">Storage quota (0 = unlimited)</label>
+					<div class="flex items-center gap-2">
+						<input type="number" min="0" bind:value={editForm.storage_quota} placeholder="0"
+							class="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+						<select bind:value={editForm.storage_quota_unit}
+							class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+							<option value="MB">MB</option>
+							<option value="GB">GB</option>
+							<option value="TB">TB</option>
+						</select>
+					</div>
 				</div>
+				{#if teams.length > 0}
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-1">Team Folders</label>
+						<div class="space-y-2 border border-gray-200 rounded-md p-3">
+							{#each teams as team}
+								<div class="flex items-center justify-between">
+									<span class="text-sm text-gray-700">{team.name}</span>
+									<select
+										value={editTeamSelections[team.id] || ''}
+										onchange={(e) => {
+											const v = (e.target as HTMLSelectElement).value;
+											if (v) editTeamSelections[team.id] = v;
+											else delete editTeamSelections[team.id];
+											editTeamSelections = { ...editTeamSelections };
+										}}
+										class="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+									>
+										<option value="">No access</option>
+										<option value="read">Read</option>
+										<option value="write">Write</option>
+										<option value="readwrite">Read & Write</option>
+									</select>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
 			</div>
 		{/snippet}
 		{#snippet footer()}
@@ -359,11 +517,57 @@
 
 <!-- Delete confirm -->
 {#if showDelete && deleteTarget}
-	<ConfirmDialog
-		title="Delete User"
-		message="Delete '{deleteTarget.username}'? All their files will also be deleted. This cannot be undone."
-		confirmLabel="Delete User"
-		onconfirm={doDelete}
-		oncancel={() => { showDelete = false; deleteTarget = null; }}
-	/>
+	<Modal title="Delete User: {deleteTarget.username}" onclose={() => { showDelete = false; deleteTarget = null; }}>
+		{#snippet children()}
+			<div class="space-y-4">
+				<div class="flex items-start gap-3 p-3 bg-red-50 rounded-lg border border-red-100">
+					<Trash2 size={20} class="text-red-500 flex-shrink-0 mt-0.5" />
+					<div>
+						<p class="text-sm font-medium text-red-800">This will permanently delete the user account</p>
+						<p class="text-xs text-red-600 mt-1">The user "{deleteTarget.username}" will be removed. Choose what to do with their files.</p>
+					</div>
+				</div>
+
+				<div class="space-y-2">
+					<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors {deleteAction === 'delete' ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}">
+						<input type="radio" bind:group={deleteAction} value="delete" class="text-red-500 focus:ring-red-500" />
+						<div>
+							<span class="text-sm font-medium text-gray-900">Delete all files</span>
+							<p class="text-xs text-gray-500">All files, versions, and shared links will be permanently deleted</p>
+						</div>
+					</label>
+
+					<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors {deleteAction === 'transfer' ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}">
+						<input type="radio" bind:group={deleteAction} value="transfer" class="text-blue-500 focus:ring-blue-500" />
+						<div>
+							<span class="text-sm font-medium text-gray-900">Transfer files to another user</span>
+							<p class="text-xs text-gray-500">The user's folder will be moved to another user's home folder</p>
+						</div>
+					</label>
+				</div>
+
+				{#if deleteAction === 'transfer'}
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-1">Transfer to</label>
+						<select bind:value={transferToUserId} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+							<option value="">Select a user…</option>
+							{#each users.filter(u => u.id !== deleteTarget?.id) as u}
+								<option value={u.id}>{u.username}</option>
+							{/each}
+						</select>
+					</div>
+				{/if}
+			</div>
+		{/snippet}
+		{#snippet footer()}
+			<button onclick={() => { showDelete = false; deleteTarget = null; }}
+				class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
+			<button onclick={doDelete}
+				disabled={deleteAction === 'transfer' && !transferToUserId}
+				class="rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50
+				{deleteAction === 'delete' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'}">
+				{deleteAction === 'delete' ? 'Delete User & Files' : 'Transfer & Delete User'}
+			</button>
+		{/snippet}
+	</Modal>
 {/if}

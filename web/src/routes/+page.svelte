@@ -5,9 +5,9 @@
 
 	onMount(() => {
 		if (api.isLoggedIn()) {
-			goto('/files');
+			goto('/files', { replaceState: true });
 		} else {
-			goto('/login');
+			goto('/login', { replaceState: true });
 		}
 	});
 </script>

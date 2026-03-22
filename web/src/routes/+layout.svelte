@@ -17,7 +17,8 @@
 		Shield,
 		KeyRound,
 		BookOpen,
-		Clock
+		Clock,
+		Bell
 	} from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { currentUser, showToast } from '$lib/stores';
@@ -30,6 +31,42 @@
 	let isPublic = $derived(publicRoutes.some((r) => $page.url.pathname.startsWith(r)));
 	let userMenuOpen = $state(false);
 	let user = $derived($currentUser);
+
+	// Notifications
+	let unreadCount = $state(0);
+	let notifications = $state<any[]>([]);
+	let showNotifications = $state(false);
+
+	async function loadNotifications() {
+		try {
+			const res = await api.get('/api/notifications');
+			if (res.ok) {
+				const data = await res.json();
+				notifications = data.notifications || [];
+				unreadCount = data.unread_count || 0;
+			}
+		} catch { /* non-fatal */ }
+	}
+
+	async function acceptNotification(id: string) {
+		const res = await api.post(`/api/notifications/${id}/accept`, {});
+		if (res.ok) {
+			showToast('Team invite accepted', 'success');
+			loadNotifications();
+		}
+	}
+
+	async function declineNotification(id: string) {
+		const res = await api.post(`/api/notifications/${id}/decline`, {});
+		if (res.ok) {
+			loadNotifications();
+		}
+	}
+
+	async function markAllRead() {
+		await api.post('/api/notifications/read', {});
+		unreadCount = 0;
+	}
 
 	// Change password modal
 	let showChangePwd = $state(false);
@@ -44,6 +81,10 @@
 			}
 			const storedUser = api.getUser();
 			if (storedUser) currentUser.set(storedUser);
+			loadNotifications();
+			// Poll every 30s
+			const interval = setInterval(loadNotifications, 30000);
+			return () => clearInterval(interval);
 		}
 	});
 
@@ -84,10 +125,8 @@
 
 	const navItems = [
 		{ href: '/files', label: 'Files', icon: FolderOpen },
-		{ href: '/files/history', label: 'History', icon: Clock },
 		{ href: '/shared', label: 'Shared', icon: Link },
-		{ href: '/trash', label: 'Trash', icon: Trash2 },
-		{ href: '/changelog', label: 'Changelog', icon: BookOpen }
+		{ href: '/trash', label: 'Trash', icon: Trash2 }
 	];
 
 	const adminItems = [
@@ -162,13 +201,23 @@
 				{/if}
 			</nav>
 
-			<!-- User section at bottom -->
+			<!-- Changelog + User section at bottom -->
 			<div class="px-3 py-3 border-t border-white/10">
+				<a
+					href="/changelog"
+					class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors
+					{isActive('/changelog')
+						? 'bg-white/15 text-white'
+						: 'text-white/70 hover:bg-white/10 hover:text-white'}"
+				>
+					<BookOpen size={18} />
+					Changelog
+				</a>
 				<div class="px-3 py-2 text-xs text-white/40 truncate">
 					{user?.username || ''}
 				</div>
 				<div class="px-3 py-1 text-xs text-white/20">
-					v1.1
+					v1.5
 				</div>
 			</div>
 		</aside>
@@ -179,6 +228,50 @@
 			<header class="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 flex-shrink-0">
 				<div class="flex-1">
 					<!-- breadcrumb slot filled by child pages via store -->
+				</div>
+
+				<!-- Notifications bell -->
+				<div class="relative">
+					<button
+						onclick={(e) => { e.stopPropagation(); showNotifications = !showNotifications; if (showNotifications) { markAllRead(); } }}
+						class="relative p-2 text-gray-500 hover:text-gray-700 rounded-md hover:bg-gray-100 transition-colors"
+					>
+						<Bell size={18} />
+						{#if unreadCount > 0}
+							<span class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{unreadCount}</span>
+						{/if}
+					</button>
+
+					{#if showNotifications}
+						<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+						<div class="absolute right-0 top-full mt-1 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-96 overflow-y-auto"
+							onclick={(e) => e.stopPropagation()}>
+							<div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+								<span class="text-sm font-semibold text-gray-900">Notifications</span>
+								<button onclick={() => (showNotifications = false)} class="text-xs text-gray-400 hover:text-gray-600">Close</button>
+							</div>
+							{#if notifications.length === 0}
+								<div class="px-4 py-6 text-center text-sm text-gray-400">No notifications</div>
+							{:else}
+								{#each notifications as notif}
+									<div class="px-4 py-3 border-b border-gray-50 {notif.read ? '' : 'bg-blue-50'}">
+										<p class="text-sm font-medium text-gray-900">{notif.title}</p>
+										<p class="text-xs text-gray-500 mt-0.5">{notif.message}</p>
+										{#if notif.type === 'team_invite' && !notif.acted}
+											<div class="flex gap-2 mt-2">
+												<button onclick={() => acceptNotification(notif.id)}
+													class="px-3 py-1 text-xs font-medium text-white bg-blue-500 rounded hover:bg-blue-600">Accept</button>
+												<button onclick={() => declineNotification(notif.id)}
+													class="px-3 py-1 text-xs font-medium text-gray-600 border border-gray-300 rounded hover:bg-gray-50">Decline</button>
+											</div>
+										{:else if notif.acted}
+											<span class="text-xs text-green-600 mt-1 inline-block">Accepted</span>
+										{/if}
+									</div>
+								{/each}
+							{/if}
+						</div>
+					{/if}
 				</div>
 
 				<!-- User menu -->

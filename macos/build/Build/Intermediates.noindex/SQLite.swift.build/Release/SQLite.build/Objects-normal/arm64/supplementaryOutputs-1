@@ -1,0 +1,12 @@
+{
+  "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SQLite.swift.build/Release/SQLite.build/DerivedSources/resource_bundle_accessor.swift" : {
+    "abi-baseline-json" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SQLite.swift.build/Release/SQLite.build/Objects-normal/arm64/SQLite.abi.json",
+    "const-values" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SQLite.swift.build/Release/SQLite.build/Objects-normal/arm64/SQLite-primary.swiftconstvalues",
+    "dependencies" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SQLite.swift.build/Release/SQLite.build/Objects-normal/arm64/SQLite-primary.d",
+    "diagnostics" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SQLite.swift.build/Release/SQLite.build/Objects-normal/arm64/SQLite-primary.dia",
+    "objc-header" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SQLite.swift.build/Release/SQLite.build/Objects-normal/arm64/SQLite-Swift.h",
+    "swiftdoc" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SQLite.swift.build/Release/SQLite.build/Objects-normal/arm64/SQLite.swiftdoc",
+    "swiftmodule" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SQLite.swift.build/Release/SQLite.build/Objects-normal/arm64/SQLite.swiftmodule",
+    "swiftsourceinfo" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SQLite.swift.build/Release/SQLite.build/Objects-normal/arm64/SQLite.swiftsourceinfo"
+  }
+}

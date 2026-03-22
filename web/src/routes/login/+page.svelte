@@ -19,7 +19,7 @@
 		if (result.ok) {
 			const user = api.getUser();
 			if (user) currentUser.set(user);
-			goto('/files');
+			goto('/files', { replaceState: true });
 		} else {
 			error = result.error || 'Login failed';
 		}

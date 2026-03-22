@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { FolderTree, Plus, Trash2, ChevronDown, ChevronRight, UserPlus, X } from 'lucide-svelte';
+	import { FolderTree, Plus, Trash2, ChevronDown, ChevronRight, UserPlus, X, AlertTriangle, Edit2 } from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores';
 	import Modal from '$lib/components/Modal.svelte';
@@ -40,15 +40,60 @@
 	let addMemberPermission = $state('read');
 	let addingMember = $state(false);
 
+	// Edit team
+	let showEditTeam = $state(false);
+	let editTeamTarget = $state<Team | null>(null);
+	let editTeamName = $state('');
+	let editTeamQuota = $state('');
+	let editTeamQuotaUnit = $state('GB');
+	let editingTeam = $state(false);
+
+	function openEditTeam(team: Team) {
+		editTeamTarget = team;
+		editTeamName = team.name;
+		const qb = (team as any).quota_bytes || 0;
+		if (qb >= 1099511627776) { editTeamQuota = String(Math.round(qb / 1099511627776)); editTeamQuotaUnit = 'TB'; }
+		else if (qb >= 1073741824) { editTeamQuota = String(Math.round(qb / 1073741824)); editTeamQuotaUnit = 'GB'; }
+		else if (qb >= 1048576) { editTeamQuota = String(Math.round(qb / 1048576)); editTeamQuotaUnit = 'MB'; }
+		else { editTeamQuota = qb > 0 ? String(qb) : ''; editTeamQuotaUnit = 'GB'; }
+		showEditTeam = true;
+	}
+
+	async function saveEditTeam() {
+		if (!editTeamTarget) return;
+		editingTeam = true;
+		try {
+			let quotaBytes = 0;
+			if (editTeamQuota) {
+				const val = parseFloat(editTeamQuota);
+				if (editTeamQuotaUnit === 'TB') quotaBytes = val * 1099511627776;
+				else if (editTeamQuotaUnit === 'GB') quotaBytes = val * 1073741824;
+				else quotaBytes = val * 1048576;
+			}
+			const res = await api.put(`/api/teams/${editTeamTarget.id}`, { name: editTeamName, quota_bytes: Math.round(quotaBytes) });
+			if (res.ok) {
+				showToast('Team updated', 'success');
+				showEditTeam = false;
+				loadTeams();
+			} else {
+				showToast('Failed to update team', 'error');
+			}
+		} finally {
+			editingTeam = false;
+		}
+	}
+
 	let showDeleteTeam = $state(false);
 	let deleteTeamTarget = $state<Team | null>(null);
+	let deleteAction = $state<'delete' | 'transfer'>('delete');
+	let transferUserId = $state('');
 
 	onMount(loadTeams);
 
 	async function loadTeams() {
 		loading = true;
 		try {
-			const res = await api.get('/api/admin/teams');
+			const res = await api.get('/api/teams');
 			if (res.ok) {
 				const data = await res.json();
 				teams = data.teams || data || [];
@@ -63,7 +108,7 @@
 	async function loadMembers(teamId: string) {
 		loadingMembers = { ...loadingMembers, [teamId]: true };
 		try {
-			const res = await api.get(`/api/admin/teams/${teamId}/members`);
+			const res = await api.get(`/api/teams/${teamId}/members`);
 			if (res.ok) {
 				const data = await res.json();
 				teamMembers = { ...teamMembers, [teamId]: data.members || data || [] };
@@ -86,7 +131,7 @@
 		if (!newTeamName.trim()) return;
 		creating = true;
 		try {
-			const res = await api.post('/api/admin/teams', { name: newTeamName.trim() });
+			const res = await api.post('/api/teams', { name: newTeamName.trim() });
 			if (res.ok) {
 				showToast('Team created', 'success');
 				showCreate = false;
@@ -118,16 +163,16 @@
 
 	async function addMember() {
 		if (!showAddMember || !addMemberUserId) return;
+		const teamId = showAddMember;
 		addingMember = true;
 		try {
-			const res = await api.post(`/api/admin/teams/${showAddMember}/members`, {
-				user_id: addMemberUserId,
+			const res = await api.put(`/api/teams/${teamId}/members/${addMemberUserId}`, {
 				permission: addMemberPermission
 			});
 			if (res.ok) {
 				showToast('Member added', 'success');
 				showAddMember = null;
-				loadMembers(showAddMember ?? expandedTeam ?? '');
+				loadMembers(teamId);
 			} else {
 				showToast('Failed to add member', 'error');
 			}
@@ -137,7 +182,7 @@
 	}
 
 	async function updatePermission(teamId: string, userId: string, permission: string) {
-		const res = await api.put(`/api/admin/teams/${teamId}/members/${userId}`, { permission });
+		const res = await api.put(`/api/teams/${teamId}/members/${userId}`, { permission });
 		if (res.ok) {
 			showToast('Permission updated', 'success');
 			loadMembers(teamId);
@@ -147,7 +192,7 @@
 	}
 
 	async function removeMember(teamId: string, userId: string) {
-		const res = await api.delete(`/api/admin/teams/${teamId}/members/${userId}`);
+		const res = await api.delete(`/api/teams/${teamId}/members/${userId}`);
 		if (res.ok) {
 			showToast('Member removed', 'success');
 			teamMembers = {
@@ -159,11 +204,40 @@
 		}
 	}
 
+	function openDeleteTeam(team: Team) {
+		deleteTeamTarget = team;
+		deleteAction = 'delete';
+		transferUserId = '';
+		showDeleteTeam = true;
+		// Load users for transfer option
+		if (allUsers.length === 0) {
+			api.get('/api/admin/users').then(async (res) => {
+				if (res.ok) {
+					const data = await res.json();
+					allUsers = (data.users || data || []).map((u: { id: string; username: string }) => ({
+						id: u.id,
+						username: u.username
+					}));
+				}
+			});
+		}
+	}
+
 	async function deleteTeam() {
 		if (!deleteTeamTarget) return;
-		const res = await api.delete(`/api/admin/teams/${deleteTeamTarget.id}`);
+
+		// If transferring, move the team folder to the selected user first
+		if (deleteAction === 'transfer' && transferUserId) {
+			const res = await api.post(`/api/teams/${deleteTeamTarget.id}/transfer`, { user_id: transferUserId });
+			if (!res.ok) {
+				showToast('Failed to transfer folder', 'error');
+				return;
+			}
+		}
+
+		const res = await api.delete(`/api/teams/${deleteTeamTarget.id}`);
 		if (res.ok) {
-			showToast('Team deleted', 'success');
+			showToast(deleteAction === 'transfer' ? 'Team deleted, folder transferred' : 'Team and folder deleted', 'success');
 			teams = teams.filter((t) => t.id !== deleteTeamTarget!.id);
 			showDeleteTeam = false;
 			deleteTeamTarget = null;
@@ -225,6 +299,13 @@
 							</button>
 							<div class="flex items-center gap-1">
 								<button
+									onclick={() => openEditTeam(team)}
+									title="Edit team"
+									class="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-gray-100 transition-colors"
+								>
+									<Edit2 size={15} />
+								</button>
+								<button
 									onclick={() => openAddMember(team.id)}
 									title="Add member"
 									class="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-gray-100 transition-colors"
@@ -232,7 +313,7 @@
 									<UserPlus size={15} />
 								</button>
 								<button
-									onclick={() => { deleteTeamTarget = team; showDeleteTeam = true; }}
+									onclick={() => openDeleteTeam(team)}
 									title="Delete team"
 									class="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-gray-100 transition-colors"
 								>
@@ -273,7 +354,7 @@
 														>
 															<option value="read">Read</option>
 															<option value="write">Write</option>
-															<option value="admin">Admin</option>
+															<option value="readwrite">Read & Write</option>
 														</select>
 													</td>
 													<td class="px-4 py-2">
@@ -335,7 +416,7 @@
 					<select bind:value={addMemberPermission} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
 						<option value="read">Read</option>
 						<option value="write">Write</option>
-						<option value="admin">Admin</option>
+						<option value="readwrite">Read & Write</option>
 					</select>
 				</div>
 			</div>
@@ -349,13 +430,92 @@
 	</Modal>
 {/if}
 
+<!-- Edit team modal -->
+{#if showEditTeam && editTeamTarget}
+	<Modal title="Edit Team: {editTeamTarget.name}" onclose={() => (showEditTeam = false)}>
+		{#snippet children()}
+			<div class="space-y-3">
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-1">Team name</label>
+					<input type="text" bind:value={editTeamName} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+				</div>
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-1">Storage quota (0 = unlimited)</label>
+					<div class="flex items-center gap-2">
+						<input type="number" min="0" bind:value={editTeamQuota} placeholder="0"
+							class="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+						<select bind:value={editTeamQuotaUnit}
+							class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+							<option value="MB">MB</option>
+							<option value="GB">GB</option>
+							<option value="TB">TB</option>
+						</select>
+					</div>
+				</div>
+			</div>
+		{/snippet}
+		{#snippet footer()}
+			<button onclick={() => (showEditTeam = false)} class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
+			<button onclick={saveEditTeam} disabled={editingTeam || !editTeamName.trim()} class="rounded-md px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white transition-colors">
+				{editingTeam ? 'Saving…' : 'Save'}
+			</button>
+		{/snippet}
+	</Modal>
+{/if}
+
 <!-- Delete team confirm -->
 {#if showDeleteTeam && deleteTeamTarget}
-	<ConfirmDialog
-		title="Delete Team"
-		message="Delete team '{deleteTeamTarget.name}'? Members will lose team-based access."
-		confirmLabel="Delete Team"
-		onconfirm={deleteTeam}
-		oncancel={() => { showDeleteTeam = false; deleteTeamTarget = null; }}
-	/>
+	<Modal title="Delete Team: {deleteTeamTarget.name}" onclose={() => { showDeleteTeam = false; deleteTeamTarget = null; }}>
+		{#snippet children()}
+			<div class="space-y-4">
+				<div class="flex items-start gap-3 p-3 bg-red-50 rounded-lg border border-red-100">
+					<AlertTriangle size={20} class="text-red-500 flex-shrink-0 mt-0.5" />
+					<div>
+						<p class="text-sm font-medium text-red-800">This will permanently delete the team</p>
+						<p class="text-xs text-red-600 mt-1">All members will lose access. The team folder "Team-{deleteTeamTarget.name}" and its contents will also be affected.</p>
+					</div>
+				</div>
+
+				<div class="space-y-2">
+					<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors {deleteAction === 'delete' ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}">
+						<input type="radio" bind:group={deleteAction} value="delete" class="text-red-500 focus:ring-red-500" />
+						<div>
+							<span class="text-sm font-medium text-gray-900">Delete folder and all files</span>
+							<p class="text-xs text-gray-500">Everything in Team-{deleteTeamTarget.name} will be permanently deleted</p>
+						</div>
+					</label>
+
+					<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors {deleteAction === 'transfer' ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}">
+						<input type="radio" bind:group={deleteAction} value="transfer" class="text-blue-500 focus:ring-blue-500" />
+						<div>
+							<span class="text-sm font-medium text-gray-900">Transfer folder to a user</span>
+							<p class="text-xs text-gray-500">The folder becomes a personal folder of the selected user</p>
+						</div>
+					</label>
+				</div>
+
+				{#if deleteAction === 'transfer'}
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-1">Transfer to</label>
+						<select bind:value={transferUserId} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+							<option value="">Select a user…</option>
+							{#each allUsers as u}
+								<option value={u.id}>{u.username}</option>
+							{/each}
+						</select>
+					</div>
+				{/if}
+			</div>
+		{/snippet}
+		{#snippet footer()}
+			<button onclick={() => { showDeleteTeam = false; deleteTeamTarget = null; }}
+				class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
+			<button onclick={deleteTeam}
+				disabled={deleteAction === 'transfer' && !transferUserId}
+				class="rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50
+				{deleteAction === 'delete' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'}">
+				{deleteAction === 'delete' ? 'Delete Team & Files' : 'Transfer & Delete Team'}
+			</button>
+		{/snippet}
+	</Modal>
 {/if}

@@ -28,8 +28,20 @@ struct SyncTasksTab: View {
                     ForEach(appState.syncTasks) { task in
                         HStack {
                             VStack(alignment: .leading) {
-                                Text(URL(fileURLWithPath: task.localPath).lastPathComponent)
-                                    .font(.headline)
+                                HStack(spacing: 6) {
+                                    Text(URL(fileURLWithPath: task.localPath).lastPathComponent)
+                                        .font(.headline)
+                                    if task.isTeamFolder {
+                                        Text("Team")
+                                            .font(.caption2)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.purple)
+                                            .cornerRadius(4)
+                                    }
+                                }
                                 Text(task.localPath)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
@@ -127,6 +139,12 @@ struct EditSyncTaskView: View {
     @State private var mode: SyncTask.SyncMode
     @State private var isEnabled: Bool
 
+    // Retention policy
+    @State private var retention: RetentionPolicy = .default
+    @State private var isLoadingRetention = false
+    @State private var isSavingRetention = false
+    @State private var retentionError: String?
+
     init(appState: AppState, task: SyncTask, isPresented: Binding<SyncTask?>) {
         self.appState = appState
         self.task = task
@@ -171,6 +189,30 @@ struct EditSyncTaskView: View {
                 }
 
                 Toggle("Enabled", isOn: $isEnabled)
+
+                Section("Retention Policy") {
+                    if isLoadingRetention {
+                        HStack {
+                            ProgressView().scaleEffect(0.7)
+                            Text("Loading retention settings...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        RetentionPolicyEditor(retention: $retention)
+
+                        if let err = retentionError {
+                            Text(err)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+
+                        Button(isSavingRetention ? "Saving..." : "Save Retention") {
+                            Task { await saveRetention() }
+                        }
+                        .disabled(isSavingRetention || !appState.isConnected)
+                    }
+                }
             }
 
             HStack {
@@ -189,9 +231,66 @@ struct EditSyncTaskView: View {
             }
         }
         .padding()
-        .frame(width: 450)
+        .frame(width: 480)
+        .task {
+            await loadRetention()
+        }
+    }
+
+    private func loadRetention() async {
+        guard let client = appState.apiClient, appState.isConnected else { return }
+        isLoadingRetention = true
+        defer { isLoadingRetention = false }
+        do {
+            retention = try await client.getTaskRetention(taskID: task.remoteFolderID)
+        } catch {
+            // Use defaults silently — server may not have retention configured yet
+        }
+    }
+
+    private func saveRetention() async {
+        guard let client = appState.apiClient else { return }
+        isSavingRetention = true
+        retentionError = nil
+        defer { isSavingRetention = false }
+        do {
+            try await client.setTaskRetention(taskID: task.remoteFolderID, policy: retention)
+        } catch {
+            retentionError = "Failed to save: \(error.localizedDescription)"
+        }
     }
 }
+
+// MARK: - Retention Policy Editor
+
+struct RetentionPolicyEditor: View {
+    @Binding var retention: RetentionPolicy
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            retentionRow(label: "Keep hourly snapshots", value: $retention.hourly, suffix: "hours")
+            retentionRow(label: "Keep daily snapshots", value: $retention.daily, suffix: "days")
+            retentionRow(label: "Keep weekly snapshots", value: $retention.weekly, suffix: "weeks")
+            retentionRow(label: "Keep monthly snapshots", value: $retention.monthly, suffix: "months")
+            retentionRow(label: "Keep yearly snapshots", value: $retention.yearly, suffix: "years")
+        }
+    }
+
+    private func retentionRow(label: String, value: Binding<Int>, suffix: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.caption)
+                .frame(width: 200, alignment: .leading)
+            Stepper(value: value, in: 0...365) {
+                Text("\(value.wrappedValue) \(suffix)")
+                    .font(.caption)
+                    .frame(width: 80, alignment: .trailing)
+            }
+        }
+    }
+}
+
+// MARK: - Add Sync Task
 
 struct AddSyncTaskView: View {
     @ObservedObject var appState: AppState

@@ -9,13 +9,14 @@ struct SyncTask: Codable, Identifiable {
     var excludePatterns: [String]
     var intervalSeconds: Int  // 0 = continuous, -1 = manual
     var isEnabled: Bool
+    var isTeamFolder: Bool
 
     enum SyncMode: String, Codable, CaseIterable {
         case twoWay = "two_way"
         case uploadOnly = "upload_only"
     }
 
-    init(localPath: String, remoteFolderID: String, remoteFolderName: String, mode: SyncMode = .twoWay) {
+    init(localPath: String, remoteFolderID: String, remoteFolderName: String, mode: SyncMode = .twoWay, isTeamFolder: Bool = false) {
         self.id = UUID()
         self.localPath = localPath
         self.remoteFolderID = remoteFolderID
@@ -24,5 +25,6 @@ struct SyncTask: Codable, Identifiable {
         self.excludePatterns = [".DS_Store", "*.tmp", "Thumbs.db"]
         self.intervalSeconds = 30
         self.isEnabled = true
+        self.isTeamFolder = isTeamFolder
     }
 }

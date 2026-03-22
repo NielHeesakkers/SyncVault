@@ -12,29 +12,37 @@ import (
 
 // shareLinkResponse is the JSON representation of a share link.
 type shareLinkResponse struct {
-	ID            string     `json:"id"`
-	FileID        string     `json:"file_id"`
-	Token         string     `json:"token"`
-	HasPassword   bool       `json:"has_password"`
-	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
-	MaxDownloads  int        `json:"max_downloads"`
-	DownloadCount int        `json:"download_count"`
-	CreatedBy     string     `json:"created_by"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID                string     `json:"id"`
+	FileID            string     `json:"file_id"`
+	FileName          string     `json:"file_name,omitempty"`
+	Token             string     `json:"token"`
+	HasPassword       bool       `json:"has_password"`
+	PasswordProtected bool       `json:"password_protected"`
+	ExpiresAt         *time.Time `json:"expires_at,omitempty"`
+	MaxDownloads      int        `json:"max_downloads"`
+	DownloadCount     int        `json:"download_count"`
+	CreatedBy         string     `json:"created_by"`
+	CreatedAt         time.Time  `json:"created_at"`
 }
 
-func toShareLinkResponse(sl metadata.ShareLink) shareLinkResponse {
-	return shareLinkResponse{
-		ID:            sl.ID,
-		FileID:        sl.FileID,
-		Token:         sl.Token,
-		HasPassword:   sl.PasswordHash != "",
-		ExpiresAt:     sl.ExpiresAt,
-		MaxDownloads:  sl.MaxDownloads,
-		DownloadCount: sl.DownloadCount,
-		CreatedBy:     sl.CreatedBy,
-		CreatedAt:     sl.CreatedAt,
+func (s *Server) toShareLinkResponseWithName(sl metadata.ShareLink) shareLinkResponse {
+	hasPwd := sl.PasswordHash != ""
+	r := shareLinkResponse{
+		ID:                sl.ID,
+		FileID:            sl.FileID,
+		Token:             sl.Token,
+		HasPassword:       hasPwd,
+		PasswordProtected: hasPwd,
+		ExpiresAt:         sl.ExpiresAt,
+		MaxDownloads:      sl.MaxDownloads,
+		DownloadCount:     sl.DownloadCount,
+		CreatedBy:         sl.CreatedBy,
+		CreatedAt:         sl.CreatedAt,
 	}
+	if f, err := s.db.GetFileByID(sl.FileID); err == nil {
+		r.FileName = f.Name
+	}
+	return r
 }
 
 // createShareRequest is the body for POST /api/files/{id}/shares.
@@ -81,7 +89,7 @@ func (s *Server) handleCreateShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, toShareLinkResponse(*sl))
+	writeJSON(w, http.StatusCreated, s.toShareLinkResponseWithName(*sl))
 }
 
 // handleListShares handles GET /api/files/{id}/shares.
@@ -106,7 +114,7 @@ func (s *Server) handleListShares(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]shareLinkResponse, 0, len(links))
 	for _, sl := range links {
-		result = append(result, toShareLinkResponse(sl))
+		result = append(result, s.toShareLinkResponseWithName(sl))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"shares": result})
@@ -140,7 +148,7 @@ func (s *Server) handleListMyShares(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]shareLinkResponse, 0, len(links))
 	for _, sl := range links {
-		result = append(result, toShareLinkResponse(sl))
+		result = append(result, s.toShareLinkResponseWithName(sl))
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"shares": result})

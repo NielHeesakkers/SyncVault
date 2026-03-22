@@ -2,7 +2,7 @@ import SwiftUI
 import Combine
 import FileProvider
 
-let appVersion = "1.3"
+let appVersion = "1.5"
 
 @MainActor
 class AppState: ObservableObject {
@@ -13,6 +13,8 @@ class AppState: ObservableObject {
     @Published var syncTasks: [SyncTask] = []
     @Published var storageUsed: Int64 = 0
     @Published var storageTotal: Int64 = 0
+    @Published var notifications: [AppNotification] = []
+    @Published var unreadCount: Int = 0
 
     // Server config (persisted)
     @Published var serverURL: String = ""
@@ -27,6 +29,7 @@ class AppState: ObservableObject {
     private(set) var apiClient: APIClient?
     private var syncEngine: SyncEngine?
     private var syncTimer: Timer?
+    private var notificationTimer: Timer?
 
     init() {
         loadConfig()
@@ -59,13 +62,19 @@ class AppState: ObservableObject {
 
         // Start sync loop
         startSyncLoop()
+
+        // Start notification polling
+        startNotificationPolling()
     }
 
     func disconnect() {
         stopSyncLoop()
+        stopNotificationPolling()
         apiClient = nil
         isConnected = false
         isSyncing = false
+        notifications = []
+        unreadCount = 0
         KeychainHelper.delete(key: "server_password")
     }
 
@@ -160,6 +169,70 @@ class AppState: ObservableObject {
     func stopSyncLoop() {
         syncTimer?.invalidate()
         syncTimer = nil
+    }
+
+    // MARK: - Notification Polling
+
+    func startNotificationPolling() {
+        stopNotificationPolling()
+        notificationTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.checkNotifications()
+            }
+        }
+        // Also fetch immediately
+        Task { await checkNotifications() }
+    }
+
+    func stopNotificationPolling() {
+        notificationTimer?.invalidate()
+        notificationTimer = nil
+    }
+
+    func checkNotifications() async {
+        guard let client = apiClient, isConnected else { return }
+        do {
+            let response = try await client.getNotifications()
+            notifications = response.notifications
+            unreadCount = response.unread_count
+        } catch {
+            // Silently ignore notification fetch errors to avoid spamming the user
+        }
+    }
+
+    // MARK: - Team Invite Actions
+
+    func acceptTeamInvite(notificationId: String, teamId: String, teamName: String, localFolder: URL) async {
+        guard let client = apiClient else { return }
+        do {
+            try await client.acceptNotification(id: notificationId)
+
+            // Create a sync task pointing at the team folder on the server
+            let task = SyncTask(
+                localPath: localFolder.path,
+                remoteFolderID: teamId,
+                remoteFolderName: teamName,
+                mode: .twoWay,
+                isTeamFolder: true
+            )
+            syncTasks.append(task)
+            saveConfig()
+
+            // Refresh notifications
+            await checkNotifications()
+        } catch {
+            lastError = "Failed to accept team invite: \(error.localizedDescription)"
+        }
+    }
+
+    func declineTeamInvite(notificationId: String) async {
+        guard let client = apiClient else { return }
+        do {
+            try await client.declineNotification(id: notificationId)
+            await checkNotifications()
+        } catch {
+            lastError = "Failed to decline team invite: \(error.localizedDescription)"
+        }
     }
 
     func runSync() async {

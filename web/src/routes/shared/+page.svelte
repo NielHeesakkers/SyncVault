@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Copy, Trash2, Link, ExternalLink } from 'lucide-svelte';
+	import { Copy, Trash2, Link } from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores';
 	import { formatDate, formatDateAbsolute } from '$lib/utils';
@@ -30,7 +30,7 @@
 	async function loadLinks() {
 		loading = true;
 		try {
-			const res = await api.get('/api/shares');
+			const res = await api.get('/api/shares/mine');
 			if (res.ok) {
 				const data = await res.json();
 				links = data.shares || data || [];
@@ -140,16 +140,7 @@
 									>
 										<Copy size={15} />
 									</button>
-									<a
-										href="/s/{link.token}"
-										target="_blank"
-										rel="noopener"
-										title="Open link"
-										class="p-1.5 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100 transition-colors"
-									>
-										<ExternalLink size={15} />
-									</a>
-									<button
+	<button
 										onclick={() => confirmDelete(link)}
 										title="Delete link"
 										class="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-gray-100 transition-colors"

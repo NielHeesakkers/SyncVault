@@ -16,7 +16,7 @@ async function request(path: string, options: RequestInit & { headers?: Record<s
 		localStorage.removeItem('access_token');
 		localStorage.removeItem('refresh_token');
 		localStorage.removeItem('user');
-		goto('/login');
+		goto('/login', { replaceState: true });
 	}
 
 	return res;
@@ -70,7 +70,7 @@ export const api = {
 
 	logout: () => {
 		localStorage.clear();
-		goto('/login');
+		goto('/login', { replaceState: true });
 	},
 
 	isLoggedIn: () => !!localStorage.getItem('access_token'),

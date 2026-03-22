@@ -1,0 +1,12 @@
+{
+  "/Users/niel/Development/SyncVault/macos/FileProvider/FPAPIClient.swift" : {
+    "abi-baseline-json" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVaultFileProvider.build/Objects-normal/arm64/SyncVaultFileProvider.abi.json",
+    "const-values" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVaultFileProvider.build/Objects-normal/arm64/SyncVaultFileProvider-primary.swiftconstvalues",
+    "dependencies" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVaultFileProvider.build/Objects-normal/arm64/SyncVaultFileProvider-primary.d",
+    "diagnostics" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVaultFileProvider.build/Objects-normal/arm64/SyncVaultFileProvider-primary.dia",
+    "objc-header" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVaultFileProvider.build/Objects-normal/arm64/SyncVaultFileProvider-Swift.h",
+    "swiftdoc" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVaultFileProvider.build/Objects-normal/arm64/SyncVaultFileProvider.swiftdoc",
+    "swiftmodule" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVaultFileProvider.build/Objects-normal/arm64/SyncVaultFileProvider.swiftmodule",
+    "swiftsourceinfo" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVaultFileProvider.build/Objects-normal/arm64/SyncVaultFileProvider.swiftsourceinfo"
+  }
+}

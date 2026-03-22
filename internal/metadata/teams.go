@@ -11,9 +11,10 @@ import (
 
 // TeamFolder represents a shared team folder.
 type TeamFolder struct {
-	ID        string
-	Name      string
-	CreatedAt time.Time
+	ID         string
+	Name       string
+	QuotaBytes int64
+	CreatedAt  time.Time
 }
 
 // TeamPermission represents a user's permission on a team folder.
@@ -54,10 +55,25 @@ func (d *DB) CreateTeamFolder(name string) (*TeamFolder, error) {
 	return tf, nil
 }
 
+// GetTeamFolder returns a team folder by ID.
+func (d *DB) GetTeamFolder(id string) (*TeamFolder, error) {
+	var tf TeamFolder
+	var createdAt string
+	err := d.db.QueryRow(`SELECT id, name, COALESCE(quota_bytes,0), created_at FROM team_folders WHERE id = ?`, id).Scan(&tf.ID, &tf.Name, &tf.QuotaBytes, &createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrTeamFolderNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("metadata: get team folder: %w", err)
+	}
+	tf.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
+	return &tf, nil
+}
+
 // ListTeamFolders returns all team folders ordered by name.
 func (d *DB) ListTeamFolders() ([]TeamFolder, error) {
 	rows, err := d.db.Query(
-		`SELECT id, name, created_at FROM team_folders ORDER BY name`,
+		`SELECT id, name, COALESCE(quota_bytes,0), created_at FROM team_folders ORDER BY name`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("metadata: list team folders: %w", err)
@@ -68,7 +84,7 @@ func (d *DB) ListTeamFolders() ([]TeamFolder, error) {
 	for rows.Next() {
 		var tf TeamFolder
 		var createdAt string
-		if err := rows.Scan(&tf.ID, &tf.Name, &createdAt); err != nil {
+		if err := rows.Scan(&tf.ID, &tf.Name, &tf.QuotaBytes, &createdAt); err != nil {
 			return nil, fmt.Errorf("metadata: scan team folder: %w", err)
 		}
 		tf.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
@@ -77,8 +93,23 @@ func (d *DB) ListTeamFolders() ([]TeamFolder, error) {
 	return folders, rows.Err()
 }
 
-// DeleteTeamFolder removes a team folder by ID.
+// UpdateTeamFolder updates a team folder's name and quota.
+func (d *DB) UpdateTeamFolder(id, name string, quotaBytes int64) error {
+	res, err := d.db.Exec(`UPDATE team_folders SET name=?, quota_bytes=? WHERE id=?`, name, quotaBytes, id)
+	if err != nil {
+		return fmt.Errorf("metadata: update team folder: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrTeamFolderNotFound
+	}
+	return nil
+}
+
+// DeleteTeamFolder removes a team folder and its permissions by ID.
 func (d *DB) DeleteTeamFolder(id string) error {
+	// Remove permissions first
+	_, _ = d.db.Exec(`DELETE FROM team_permissions WHERE team_folder_id=?`, id)
 	res, err := d.db.Exec(`DELETE FROM team_folders WHERE id=?`, id)
 	if err != nil {
 		return fmt.Errorf("metadata: delete team folder: %w", err)
@@ -147,7 +178,7 @@ func (d *DB) ListTeamPermissions(teamFolderID string) ([]TeamPermission, error) 
 // ListUserTeamFolders returns all team folders that a user has any permission on.
 func (d *DB) ListUserTeamFolders(userID string) ([]TeamFolder, error) {
 	rows, err := d.db.Query(
-		`SELECT tf.id, tf.name, tf.created_at
+		`SELECT tf.id, tf.name, COALESCE(tf.quota_bytes,0), tf.created_at
 		 FROM team_folders tf
 		 JOIN team_permissions tp ON tp.team_folder_id = tf.id
 		 WHERE tp.user_id = ?
@@ -163,7 +194,7 @@ func (d *DB) ListUserTeamFolders(userID string) ([]TeamFolder, error) {
 	for rows.Next() {
 		var tf TeamFolder
 		var createdAt string
-		if err := rows.Scan(&tf.ID, &tf.Name, &createdAt); err != nil {
+		if err := rows.Scan(&tf.ID, &tf.Name, &tf.QuotaBytes, &createdAt); err != nil {
 			return nil, fmt.Errorf("metadata: scan team folder for user: %w", err)
 		}
 		tf.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)

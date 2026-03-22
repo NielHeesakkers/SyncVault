@@ -117,8 +117,18 @@ func (d *DB) UpdateUser(user *User) error {
 	return nil
 }
 
-// DeleteUser removes the user with the given ID.
+// DeleteUser removes the user and all related data.
 func (d *DB) DeleteUser(id string) error {
+	// Remove all related data first
+	d.db.Exec(`DELETE FROM notifications WHERE user_id=?`, id)
+	d.db.Exec(`DELETE FROM team_permissions WHERE user_id=?`, id)
+	d.db.Exec(`DELETE FROM share_links WHERE created_by=?`, id)
+	d.db.Exec(`DELETE FROM activity_log WHERE user_id=?`, id)
+	d.db.Exec(`DELETE FROM devices WHERE user_id=?`, id)
+	d.db.Exec(`DELETE FROM sync_tasks WHERE user_id=?`, id)
+	d.db.Exec(`DELETE FROM versions WHERE created_by=?`, id)
+	d.db.Exec(`DELETE FROM files WHERE owner_id=?`, id)
+
 	res, err := d.db.Exec(`DELETE FROM users WHERE id=?`, id)
 	if err != nil {
 		return fmt.Errorf("metadata: delete user: %w", err)

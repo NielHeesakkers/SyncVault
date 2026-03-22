@@ -1,3 +1,33 @@
+## [1.5] — 2026-03-22
+- Version Explorer with interactive SVG timeline
+- Browse files at any point in time, click dots to navigate history
+- Hover effect on timeline dots
+- Select files/folders to highlight their versions on the timeline (orange)
+- Download folders as ZIP at any point in time
+- Restore entire folders to a previous state
+- Retention policy per sync task (hourly, daily, weekly, monthly, yearly)
+- Share files and folders with password, expiry, download limit, email notification
+- Team folders visible in Files with blue folder icons
+- Admin sees all user folders and team folders at root level
+- Folder sizes calculated recursively and shown in file browser
+- Multi-select with shift-click in Trash
+- Empty Trash button changes to Remove (N) when items are selected
+- User delete with transfer option: move files to another user
+- Team delete with transfer option: move folder to a user
+- Team edit: rename and set storage quota (MB/GB/TB)
+- Storage quota input with MB/GB/TB unit selector for users and teams
+- Storage page: separate User and Team sections
+- Settings redesigned with tabs: General, Notifications, Backup, Changelog, Info
+- Settings backup: create, download, restore, upload, auto-daily toggle
+- Notifications system with bell icon and unread badge
+- Team invite notifications with Accept/Decline
+- Browser back/forward navigation works within file browser
+- Base URL setting for share links
+- Trash retention days setting
+- Send test email with editable recipient
+- Open Source info page with credits
+- Changelog moved to Settings tab
+
 ## [1.1] — 2026-03-21
 - Auto-create user root folder on user creation
 - Sync task management: create, list, delete tasks via /api/tasks

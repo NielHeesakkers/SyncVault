@@ -76,6 +76,8 @@ func (s *Server) setupRoutes() {
 		// History routes must be registered before {id} routes so they are not caught as an id param.
 		r.Get("/api/files/history", s.handleFilesAtTime)
 		r.Get("/api/files/history/dates", s.handleChangeDates)
+		r.Get("/api/files/history/download", s.handleDownloadFolderAtTime)
+		r.Post("/api/files/history/restore", s.handleRestoreFolderAtTime)
 		r.Put("/api/files/{id}", s.handleUpdateFile)
 		r.Delete("/api/files/{id}", s.handleDeleteFile)
 		r.Post("/api/files/{id}/restore", s.handleRestoreFile)
@@ -98,10 +100,22 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/tasks", s.handleListTasks)
 		r.Post("/api/tasks", s.handleCreateTask)
 		r.Delete("/api/tasks/{id}", s.handleDeleteTask)
+		r.Get("/api/tasks/{id}/retention", s.handleGetRetention)
+		r.Put("/api/tasks/{id}/retention", s.handleSetRetention)
+
+		// Notifications.
+		r.Get("/api/notifications", s.handleListNotifications)
+		r.Post("/api/notifications/{id}/accept", s.handleAcceptNotification)
+		r.Post("/api/notifications/{id}/decline", s.handleDeclineNotification)
+		r.Post("/api/notifications/read", s.handleMarkAllRead)
 
 		// Team management.
+		r.Get("/api/teams/mine", s.handleListMyTeams)
+		r.Get("/api/teams/{id}/files", s.handleListTeamFiles)
 		r.Get("/api/teams", s.handleListTeams)
 		r.With(auth.RequireAdmin).Post("/api/teams", s.handleCreateTeam)
+		r.With(auth.RequireAdmin).Put("/api/teams/{id}", s.handleUpdateTeam)
+		r.With(auth.RequireAdmin).Post("/api/teams/{id}/transfer", s.handleTransferTeamFolder)
 		r.With(auth.RequireAdmin).Delete("/api/teams/{id}", s.handleDeleteTeam)
 		r.Get("/api/teams/{id}/members", s.handleListTeamMembers)
 		r.Put("/api/teams/{id}/members/{userId}", s.handleSetTeamMember)
@@ -112,6 +126,7 @@ func (s *Server) setupRoutes() {
 			r.Use(auth.RequireAdmin)
 			r.Get("/api/admin/users", s.handleAdminListUsers)
 			r.Put("/api/admin/users/{id}", s.handleAdminUpdateUser)
+			r.Post("/api/admin/users/{id}/transfer", s.handleAdminTransferUser)
 			r.Delete("/api/admin/users/{id}", s.handleAdminDeleteUser)
 			r.Post("/api/admin/users/{id}/reset-password", s.handleAdminResetPassword)
 			r.Get("/api/admin/storage", s.handleAdminStorage)
@@ -121,6 +136,12 @@ func (s *Server) setupRoutes() {
 			r.Get("/api/admin/settings", s.handleAdminGetSettings)
 			r.Put("/api/admin/settings", s.handleAdminPutSettings)
 			r.Post("/api/admin/settings/test-email", s.handleAdminTestEmail)
+			r.Post("/api/admin/backups/upload", s.handleUploadRestore)
+			r.Get("/api/admin/backups", s.handleListBackups)
+			r.Post("/api/admin/backups", s.handleCreateBackup)
+			r.Get("/api/admin/backups/{name}/download", s.handleDownloadBackup)
+			r.Delete("/api/admin/backups/{name}", s.handleDeleteBackup)
+			r.Post("/api/admin/backups/{name}/restore", s.handleRestoreBackup)
 		})
 	})
 
@@ -128,7 +149,7 @@ func (s *Server) setupRoutes() {
 	r.NotFound(ServeSPA().ServeHTTP)
 }
 
-const AppVersion = "1.1"
+const AppVersion = "1.5"
 
 // handleHealth returns a simple health check response.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

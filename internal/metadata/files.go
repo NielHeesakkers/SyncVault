@@ -149,6 +149,35 @@ func (d *DB) MoveFile(id, newParentID, newName string) error {
 	return nil
 }
 
+// GetFolderSize returns the total size of all non-deleted files recursively under a folder.
+func (d *DB) GetFolderSize(folderID string) (int64, error) {
+	var size int64
+	err := d.db.QueryRow(
+		`WITH RECURSIVE descendants(id) AS (
+		   SELECT id FROM files WHERE parent_id = ? AND deleted_at IS NULL
+		   UNION ALL
+		   SELECT f.id FROM files f JOIN descendants d ON f.parent_id = d.id WHERE f.deleted_at IS NULL
+		 )
+		 SELECT COALESCE(SUM(f.size), 0)
+		 FROM files f
+		 WHERE f.id IN (SELECT id FROM descendants) AND f.is_dir = 0`,
+		folderID,
+	).Scan(&size)
+	return size, err
+}
+
+// TransferAllFiles changes the owner of ALL files from one user to another.
+func (d *DB) TransferAllFiles(fromUserID, toUserID string) error {
+	_, err := d.db.Exec(`UPDATE files SET owner_id = ? WHERE owner_id = ?`, toUserID, fromUserID)
+	return err
+}
+
+// UpdateFileOwner changes the owner of a file.
+func (d *DB) UpdateFileOwner(id, newOwnerID string) error {
+	_, err := d.db.Exec(`UPDATE files SET owner_id=? WHERE id=?`, newOwnerID, id)
+	return err
+}
+
 // SoftDeleteFile marks the file as deleted by setting deleted_at to now.
 func (d *DB) SoftDeleteFile(id string) error {
 	now := time.Now().UTC()
@@ -366,7 +395,28 @@ func (d *DB) ListFilesAtTime(parentID string, ownerID string, at time.Time) ([]F
 
 	var rows *sql.Rows
 	var err error
-	if parentID == "" {
+	if parentID == "" && ownerID == "" {
+		// Admin: all root files
+		rows, err = d.db.Query(
+			`SELECT f.id, f.name, f.is_dir, f.parent_id, f.owner_id,
+			        COALESCE(v.version_num, 0) as version_num,
+			        COALESCE(v.id, '') as version_id,
+			        COALESCE(v.content_hash, f.content_hash, '') as content_hash,
+			        COALESCE(v.size, f.size) as size,
+			        f.created_at, f.updated_at
+			 FROM files f
+			 LEFT JOIN versions v ON v.file_id = f.id AND v.created_at <= ?
+			   AND v.version_num = (
+			     SELECT MAX(v2.version_num) FROM versions v2
+			     WHERE v2.file_id = f.id AND v2.created_at <= ?
+			   )
+			 WHERE f.parent_id IS NULL
+			   AND f.created_at <= ?
+			   AND (f.deleted_at IS NULL OR f.deleted_at > ?)
+			 ORDER BY f.is_dir DESC, f.name`,
+			atStr, atStr, atStr, atStr,
+		)
+	} else if parentID == "" {
 		rows, err = d.db.Query(
 			`SELECT f.id, f.name, f.is_dir, f.parent_id, f.owner_id,
 			        COALESCE(v.version_num, 0) as version_num,
@@ -386,6 +436,27 @@ func (d *DB) ListFilesAtTime(parentID string, ownerID string, at time.Time) ([]F
 			   AND (f.deleted_at IS NULL OR f.deleted_at > ?)
 			 ORDER BY f.is_dir DESC, f.name`,
 			atStr, atStr, ownerID, atStr, atStr,
+		)
+	} else if ownerID == "" {
+		// Admin: all files in folder regardless of owner
+		rows, err = d.db.Query(
+			`SELECT f.id, f.name, f.is_dir, f.parent_id, f.owner_id,
+			        COALESCE(v.version_num, 0) as version_num,
+			        COALESCE(v.id, '') as version_id,
+			        COALESCE(v.content_hash, f.content_hash, '') as content_hash,
+			        COALESCE(v.size, f.size) as size,
+			        f.created_at, f.updated_at
+			 FROM files f
+			 LEFT JOIN versions v ON v.file_id = f.id AND v.created_at <= ?
+			   AND v.version_num = (
+			     SELECT MAX(v2.version_num) FROM versions v2
+			     WHERE v2.file_id = f.id AND v2.created_at <= ?
+			   )
+			 WHERE f.parent_id = ?
+			   AND f.created_at <= ?
+			   AND (f.deleted_at IS NULL OR f.deleted_at > ?)
+			 ORDER BY f.is_dir DESC, f.name`,
+			atStr, atStr, parentID, atStr, atStr,
 		)
 	} else {
 		rows, err = d.db.Query(
@@ -439,27 +510,54 @@ func (d *DB) ListFilesAtTime(parentID string, ownerID string, at time.Time) ([]F
 func (d *DB) ListChangeDates(parentID, ownerID string) ([]time.Time, error) {
 	var rows *sql.Rows
 	var err error
-	if parentID == "" {
+	if parentID == "" && ownerID == "" {
+		// Admin: all change dates
+		rows, err = d.db.Query(
+			`SELECT DISTINCT date(v.created_at) as change_date
+			 FROM versions v
+			 ORDER BY change_date DESC
+			 LIMIT 100`,
+		)
+	} else if parentID == "" {
 		rows, err = d.db.Query(
 			`SELECT DISTINCT date(v.created_at) as change_date
 			 FROM versions v
 			 JOIN files f ON f.id = v.file_id
 			 WHERE f.owner_id = ?
-			   AND f.parent_id IS NULL
 			 ORDER BY change_date DESC
 			 LIMIT 100`,
 			ownerID,
 		)
-	} else {
+	} else if ownerID == "" {
+		// Admin: all change dates in folder
 		rows, err = d.db.Query(
-			`SELECT DISTINCT date(v.created_at) as change_date
+			`WITH RECURSIVE descendants(id) AS (
+			   SELECT id FROM files WHERE parent_id = ?
+			   UNION ALL
+			   SELECT f.id FROM files f JOIN descendants d ON f.parent_id = d.id
+			 )
+			 SELECT DISTINCT date(v.created_at) as change_date
 			 FROM versions v
 			 JOIN files f ON f.id = v.file_id
-			 WHERE f.owner_id = ?
-			   AND f.parent_id = ?
+			 WHERE f.id IN (SELECT id FROM descendants)
 			 ORDER BY change_date DESC
 			 LIMIT 100`,
-			ownerID, parentID,
+			parentID,
+		)
+	} else {
+		rows, err = d.db.Query(
+			`WITH RECURSIVE descendants(id) AS (
+			   SELECT id FROM files WHERE parent_id = ? AND owner_id = ?
+			   UNION ALL
+			   SELECT f.id FROM files f JOIN descendants d ON f.parent_id = d.id
+			 )
+			 SELECT DISTINCT date(v.created_at) as change_date
+			 FROM versions v
+			 JOIN files f ON f.id = v.file_id
+			 WHERE f.id IN (SELECT id FROM descendants)
+			 ORDER BY change_date DESC
+			 LIMIT 100`,
+			parentID, ownerID,
 		)
 	}
 	if err != nil {

@@ -187,3 +187,95 @@ func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
+
+// handleGetRetention handles GET /api/tasks/{id}/retention.
+func (s *Server) handleGetRetention(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	id := chi.URLParam(r, "id")
+
+	task, err := s.db.GetSyncTask(id)
+	if err != nil {
+		if errors.Is(err, metadata.ErrTaskNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get task"})
+		return
+	}
+	if task.UserID != claims.UserID && claims.Role != "admin" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	policy, err := s.db.GetRetentionPolicy(id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get retention policy"})
+		return
+	}
+
+	if policy == nil {
+		// Return defaults: keep everything
+		writeJSON(w, http.StatusOK, metadata.RetentionPolicy{
+			SyncTaskID:    id,
+			HourlyHours:   0,
+			DailyDays:     0,
+			WeeklyWeeks:   0,
+			MonthlyMonths: 0,
+			YearlyYears:   0,
+			MaxVersions:   0,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, policy)
+}
+
+// handleSetRetention handles PUT /api/tasks/{id}/retention.
+func (s *Server) handleSetRetention(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	id := chi.URLParam(r, "id")
+
+	task, err := s.db.GetSyncTask(id)
+	if err != nil {
+		if errors.Is(err, metadata.ErrTaskNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get task"})
+		return
+	}
+	if task.UserID != claims.UserID && claims.Role != "admin" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+		return
+	}
+
+	var req struct {
+		HourlyHours   int `json:"hourly_hours"`
+		DailyDays     int `json:"daily_days"`
+		WeeklyWeeks   int `json:"weekly_weeks"`
+		MonthlyMonths int `json:"monthly_months"`
+		YearlyYears   int `json:"yearly_years"`
+		MaxVersions   int `json:"max_versions"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	policy := metadata.RetentionPolicy{
+		SyncTaskID:    id,
+		HourlyHours:   req.HourlyHours,
+		DailyDays:     req.DailyDays,
+		WeeklyWeeks:   req.WeeklyWeeks,
+		MonthlyMonths: req.MonthlyMonths,
+		YearlyYears:   req.YearlyYears,
+		MaxVersions:   req.MaxVersions,
+	}
+
+	if err := s.db.SetRetentionPolicy(policy); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save retention policy"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, policy)
+}

@@ -1,0 +1,12 @@
+{
+  "/Users/niel/Development/SyncVault/macos/Sources/SyncVault/APIClient.swift" : {
+    "abi-baseline-json" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVault.build/Objects-normal/arm64/SyncVault.abi.json",
+    "const-values" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVault.build/Objects-normal/arm64/SyncVault-primary.swiftconstvalues",
+    "dependencies" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVault.build/Objects-normal/arm64/SyncVault-primary.d",
+    "diagnostics" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVault.build/Objects-normal/arm64/SyncVault-primary.dia",
+    "objc-header" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVault.build/Objects-normal/arm64/SyncVault-Swift.h",
+    "swiftdoc" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVault.build/Objects-normal/arm64/SyncVault.swiftdoc",
+    "swiftmodule" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVault.build/Objects-normal/arm64/SyncVault.swiftmodule",
+    "swiftsourceinfo" : "/Users/niel/Development/SyncVault/macos/build/Build/Intermediates.noindex/SyncVault.build/Release/SyncVault.build/Objects-normal/arm64/SyncVault.swiftsourceinfo"
+  }
+}

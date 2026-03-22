@@ -37,16 +37,17 @@ CREATE TABLE IF NOT EXISTS versions (
 );
 
 CREATE TABLE IF NOT EXISTS team_folders (
-    id         TEXT PRIMARY KEY,
-    name       TEXT NOT NULL UNIQUE,
-    created_at TEXT NOT NULL
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    quota_bytes INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS team_permissions (
     id             TEXT PRIMARY KEY,
     team_folder_id TEXT NOT NULL REFERENCES team_folders(id),
     user_id        TEXT NOT NULL REFERENCES users(id),
-    permission     TEXT NOT NULL CHECK(permission IN ('read', 'write')),
+    permission     TEXT NOT NULL CHECK(permission IN ('read', 'write', 'readwrite')),
     UNIQUE(team_folder_id, user_id)
 );
 
@@ -84,13 +85,15 @@ CREATE TABLE IF NOT EXISTS share_links (
 
 CREATE TABLE IF NOT EXISTS retention_policies (
     id             TEXT PRIMARY KEY,
-    team_folder_id TEXT NOT NULL REFERENCES team_folders(id),
-    daily_days     INTEGER,
-    weekly_weeks   INTEGER,
-    monthly_months INTEGER,
-    yearly_keep    INTEGER,
-    max_versions   INTEGER,
-    rotation_algo  TEXT CHECK(rotation_algo IN ('fifo', 'intelliversioning'))
+    team_folder_id TEXT REFERENCES team_folders(id),
+    sync_task_id   TEXT REFERENCES sync_tasks(id) ON DELETE CASCADE,
+    hourly_hours   INTEGER DEFAULT 0,
+    daily_days     INTEGER DEFAULT 0,
+    weekly_weeks   INTEGER DEFAULT 0,
+    monthly_months INTEGER DEFAULT 0,
+    yearly_years   INTEGER DEFAULT 0,
+    max_versions   INTEGER DEFAULT 0,
+    UNIQUE(sync_task_id)
 );
 
 CREATE TABLE IF NOT EXISTS sync_state (
@@ -118,6 +121,19 @@ CREATE TABLE IF NOT EXISTS sync_tasks (
     UNIQUE(user_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_sync_tasks_user ON sync_tasks(user_id);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type        TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    message     TEXT,
+    data        TEXT,
+    read        INTEGER NOT NULL DEFAULT 0,
+    acted       INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_files_parent_id   ON files(parent_id);
