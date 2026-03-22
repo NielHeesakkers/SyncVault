@@ -273,11 +273,21 @@
 		}
 	}
 
-	function downloadVersion(file: HistoryFile) {
-		if (file.version_num > 0) {
-			window.open(`/api/files/${file.id}/versions/${file.version_num}/download`, '_blank');
+	async function downloadVersion(file: HistoryFile) {
+		const url = file.version_num > 0
+			? `/api/files/${file.id}/versions/${file.version_num}/download`
+			: `/api/files/${file.id}/download`;
+		const res = await api.get(url);
+		if (res.ok) {
+			const blob = await res.blob();
+			const objectUrl = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = objectUrl;
+			a.download = file.name;
+			a.click();
+			URL.revokeObjectURL(objectUrl);
 		} else {
-			window.open(`/api/files/${file.id}/download`, '_blank');
+			showToast('Failed to download file', 'error');
 		}
 	}
 
@@ -294,10 +304,21 @@
 		}
 	}
 
-	function downloadFolder(file: HistoryFile) {
+	async function downloadFolder(file: HistoryFile) {
 		if (!selectedDate) return;
 		const atISO = new Date(selectedDate + 'T23:59:59').toISOString();
-		window.open(`/api/files/history/download?parent_id=${file.id}&at=${atISO}`, '_blank');
+		const res = await api.get(`/api/files/history/download?parent_id=${file.id}&at=${atISO}`);
+		if (res.ok) {
+			const blob = await res.blob();
+			const objectUrl = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = objectUrl;
+			a.download = `${file.name}.zip`;
+			a.click();
+			URL.revokeObjectURL(objectUrl);
+		} else {
+			showToast('Failed to download folder', 'error');
+		}
 	}
 
 	async function restoreFolder(file: HistoryFile) {

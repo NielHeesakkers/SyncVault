@@ -19,16 +19,16 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.5</string>
 	<key>CFBundleVersion</key>
-	<string>1.5</string>
+	<string>1.6</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSHighResolutionCapable</key>
-	<true/>
 	<key>NSFileProviderDocumentGroup</key>
 	<string>DE59N86W33.com.syncvault.shared</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
 </dict>
 </plist>

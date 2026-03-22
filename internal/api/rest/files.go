@@ -57,10 +57,12 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Non-admins only see their own files.
+	// Non-admins only see their own files at root level.
+	// When navigating inside a specific folder (parentID set), show all children
+	// regardless of owner so team folder contents are visible.
 	var result []fileResponse
 	for _, f := range files {
-		if claims.Role != "admin" && f.OwnerID != claims.UserID {
+		if claims.Role != "admin" && parentID == "" && f.OwnerID != claims.UserID {
 			continue
 		}
 		result = append(result, toFileResponse(f))
@@ -399,10 +401,12 @@ func (s *Server) handleFilesAtTime(w http.ResponseWriter, r *http.Request) {
 
 	parentID := r.URL.Query().Get("parent_id")
 
-	// Admins see all files, regular users only their own
-	ownerFilter := claims.UserID
-	if claims.Role == "admin" {
-		ownerFilter = ""
+	// When navigating inside a specific folder (parentID set), do not filter by owner:
+	// files inside team folders or other users' shared folders belong to different owners.
+	// At root level (parentID empty), restrict regular users to their own root folder.
+	var ownerFilter string
+	if parentID == "" && claims.Role != "admin" {
+		ownerFilter = claims.UserID
 	}
 
 	files, err := s.db.ListFilesAtTime(parentID, ownerFilter, at)
@@ -443,9 +447,11 @@ func (s *Server) handleChangeDates(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
 	parentID := r.URL.Query().Get("parent_id")
 
-	ownerFilter := claims.UserID
-	if claims.Role == "admin" {
-		ownerFilter = ""
+	// When inside a specific folder, show all change dates regardless of owner
+	// (covers team folders where files belong to other users).
+	var ownerFilter string
+	if parentID == "" && claims.Role != "admin" {
+		ownerFilter = claims.UserID
 	}
 	dates, err := s.db.ListChangeDates(parentID, ownerFilter)
 	if err != nil {
