@@ -115,9 +115,11 @@ xcrun notarytool submit "build/SyncVault-$VERSION.zip" \
 
 cd ..
 
-# 8. Update appcast.xml for Sparkle auto-update
-echo "[8/8] Updating appcast.xml..."
-ZIP_SIZE=$(stat -f%z "macos/build/SyncVault-$VERSION.zip")
+# 8. Sign ZIP with EdDSA and update appcast.xml
+echo "[8/8] Signing ZIP and updating appcast.xml..."
+SIGN_OUTPUT=$(macos/build/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update "macos/build/SyncVault-$VERSION.zip" 2>&1)
+ED_SIG=$(echo "$SIGN_OUTPUT" | grep -oP 'sparkle:edSignature="\K[^"]+')
+ZIP_LENGTH=$(echo "$SIGN_OUTPUT" | grep -oP 'length="\K[^"]+')
 cat > docs/appcast.xml << APPCAST
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
@@ -130,9 +132,9 @@ cat > docs/appcast.xml << APPCAST
       <pubDate>$(date -R)</pubDate>
       <enclosure
         url="https://github.com/NielHeesakkers/SyncVault/releases/download/v$VERSION/SyncVault-$VERSION.zip"
-        length="$ZIP_SIZE"
+        length="$ZIP_LENGTH"
         type="application/octet-stream"
-        sparkle:edSignature="" />
+        sparkle:edSignature="$ED_SIG" />
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
     </item>
   </channel>

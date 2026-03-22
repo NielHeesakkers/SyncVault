@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSFileProviderDocumentGroup</key>
 	<string>DE59N86W33.com.syncvault.shared</string>
+	<key>SUPublicEDKey</key>
+	<string>HVt084GOEpb8C2V06ZNj6UVtSO+7xOBEJFV58ummuGM=</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 </dict>
