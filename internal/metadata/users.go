@@ -196,6 +196,6 @@ func containsStr(s, sub string) bool {
 }
 
 func (db *DB) ResetAdminPassword(hash string) error {
-	_, err := db.db.Exec("UPDATE users SET password_hash = ? WHERE role = 'admin'", hash)
+	_, err := db.db.Exec("UPDATE users SET password = ? WHERE role = 'admin'", hash)
 	return err
 }
