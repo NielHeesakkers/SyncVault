@@ -75,9 +75,9 @@ ln -sf /Applications build/dmg-staging/Applications
 hdiutil create -volname "SyncVault" -srcfolder build/dmg-staging -ov -format UDZO "build/SyncVault-$VERSION.dmg" 2>&1
 rm -rf build/dmg-staging
 
-# Create ZIP for Sparkle
+# Create ZIP for Sparkle (plain zip, no __MACOSX)
 rm -f "build/SyncVault-$VERSION.zip"
-ditto -c -k --sequesterRsrc --keepParent build/Build/Products/Release/SyncVault.app "build/SyncVault-$VERSION.zip"
+cd build/Build/Products/Release && zip -r -y "../../../SyncVault-$VERSION.zip" SyncVault.app && cd ../../../..
 cd ..
 
 # 7. Update appcast.xml for Sparkle auto-update
