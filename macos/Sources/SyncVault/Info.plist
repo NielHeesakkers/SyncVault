@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.6</string>
+	<string>1.7</string>
 	<key>CFBundleVersion</key>
-	<string>1.6</string>
+	<string>1.7</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>
@@ -28,9 +28,9 @@
 	<true/>
 	<key>NSFileProviderDocumentGroup</key>
 	<string>DE59N86W33.com.syncvault.shared</string>
-	<key>SUPublicEDKey</key>
-	<string>HVt084GOEpb8C2V06ZNj6UVtSO+7xOBEJFV58ummuGM=</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>SUPublicEDKey</key>
+	<string>HVt084GOEpb8C2V06ZNj6UVtSO+7xOBEJFV58ummuGM=</string>
 </dict>
 </plist>

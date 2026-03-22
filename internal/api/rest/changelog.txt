@@ -1,3 +1,6 @@
+## [1.7] — 2026-03-22
+- Fix Keychain persistence across updates, add EdDSA signing for Sparkle
+
 ## [1.6] — 2026-03-22
 - Fix sync engine, team folder navigation, admin file visibility
 

@@ -2,12 +2,16 @@ import Foundation
 import Security
 
 enum KeychainHelper {
+    private static let accessGroup = "DE59N86W33.com.syncvault.shared"
+    private static let service = "com.syncvault.app"
+
     static func save(key: String, value: String) {
         let data = value.data(using: .utf8)!
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
-            kSecAttrService as String: "com.syncvault.app",
+            kSecAttrService as String: service,
+            kSecAttrAccessGroup as String: accessGroup,
             kSecValueData as String: data
         ]
         SecItemDelete(query as CFDictionary)
@@ -18,7 +22,8 @@ enum KeychainHelper {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
-            kSecAttrService as String: "com.syncvault.app",
+            kSecAttrService as String: service,
+            kSecAttrAccessGroup as String: accessGroup,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -32,7 +37,8 @@ enum KeychainHelper {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
-            kSecAttrService as String: "com.syncvault.app"
+            kSecAttrService as String: service,
+            kSecAttrAccessGroup as String: accessGroup
         ]
         SecItemDelete(query as CFDictionary)
     }

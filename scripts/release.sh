@@ -118,8 +118,8 @@ cd ..
 # 8. Sign ZIP with EdDSA and update appcast.xml
 echo "[8/8] Signing ZIP and updating appcast.xml..."
 SIGN_OUTPUT=$(macos/build/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update "macos/build/SyncVault-$VERSION.zip" 2>&1)
-ED_SIG=$(echo "$SIGN_OUTPUT" | grep -oP 'sparkle:edSignature="\K[^"]+')
-ZIP_LENGTH=$(echo "$SIGN_OUTPUT" | grep -oP 'length="\K[^"]+')
+ED_SIG=$(echo "$SIGN_OUTPUT" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
+ZIP_LENGTH=$(echo "$SIGN_OUTPUT" | sed -n 's/.*length="\([^"]*\)".*/\1/p')
 cat > docs/appcast.xml << APPCAST
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
