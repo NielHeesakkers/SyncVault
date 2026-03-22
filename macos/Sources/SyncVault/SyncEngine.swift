@@ -1,5 +1,8 @@
 import Foundation
 import CryptoKit
+import os
+
+private let logger = Logger(subsystem: "com.syncvault.app", category: "SyncEngine")
 
 actor SyncEngine {
     private let apiClient: APIClient
@@ -11,23 +14,29 @@ actor SyncEngine {
         self.db = try SyncDatabase(path: dbPath.path)
     }
 
-    func syncTask(_ task: SyncTask) async throws -> SyncResult {
-        guard !isRunning else { return SyncResult(uploaded: 0, downloaded: 0, deleted: 0, conflicts: 0) }
+    func syncTask(_ task: SyncTask, onProgress: @Sendable @escaping (SyncProgress) -> Void = { _ in }) async throws -> SyncResult {
+        guard !isRunning else { return SyncResult(uploaded: 0, downloaded: 0, deleted: 0, conflicts: 0, errors: 0, fileActivity: []) }
         isRunning = true
         defer { isRunning = false }
 
-        var result = SyncResult(uploaded: 0, downloaded: 0, deleted: 0, conflicts: 0)
+        var result = SyncResult(uploaded: 0, downloaded: 0, deleted: 0, conflicts: 0, errors: 0, fileActivity: [])
         let taskID = task.id.uuidString
         let basePath = task.localPath
 
         // 1. Scan local files
         let localFiles = scanLocalFiles(at: basePath, excludePatterns: task.excludePatterns)
+        logger.info("Local files: \(localFiles.count) (path: \(basePath))")
 
         // 2. Get remote files
         let remoteFiles = try await apiClient.listFiles(parentID: task.remoteFolderID)
+        logger.info(" Remote files: \(remoteFiles.count) (folderID: \(task.remoteFolderID))")
+        for f in remoteFiles.prefix(10) {
+            logger.info("   remote: \(f.name) (dir=\(f.isDir), hash=\(f.contentHash ?? "nil"))")
+        }
 
         // 3. Get known state from sync database
         let knownState = try db.getStates(taskID: taskID)
+        logger.info(" Known state: \(knownState.count) entries")
 
         // 4. Determine actions
         let actions = determineActions(
@@ -37,39 +46,72 @@ actor SyncEngine {
             mode: task.mode,
             basePath: basePath
         )
+        logger.info(" Actions: \(actions.count)")
+        for a in actions.prefix(10) {
+            logger.info("   action: \(a)")
+        }
 
-        // 5. Execute actions
+        // 5. Execute actions with progress
+        let totalActions = actions.count
+        var completed = 0
+        var totalBytesTransferred: Int64 = 0
+        let syncStart = Date()
+
         for action in actions {
             do {
+                let startTime = Date()
+
                 switch action {
                 case .upload(let path, let remoteName):
                     let data = try Data(contentsOf: URL(fileURLWithPath: path))
-                    let uploaded = try await apiClient.uploadFile(data: data, filename: remoteName, parentID: task.remoteFolderID)
-                    // Save state so we know this file is synced
+                    let size = Int64(data.count)
+
+                    onProgress(SyncProgress(
+                        currentFile: remoteName, action: "Uploading",
+                        bytesTransferred: totalBytesTransferred, totalBytes: size,
+                        filesCompleted: completed, filesTotal: totalActions,
+                        bytesPerSecond: Self.speed(bytes: totalBytesTransferred, since: syncStart)
+                    ))
+
+                    let _ = try await apiClient.uploadFile(data: data, filename: remoteName, parentID: task.remoteFolderID)
                     let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
                     try db.updateState(taskID: taskID, fileName: remoteName, contentHash: hash)
+                    totalBytesTransferred += size
                     result.uploaded += 1
+                    result.fileActivity.append(ActivityItem(filename: remoteName, action: "uploaded", timestamp: Date()))
+                    logger.info(" Uploaded: \(remoteName) (\(size) bytes)")
 
                 case .download(let fileID, let localPath, let remoteName):
+                    onProgress(SyncProgress(
+                        currentFile: remoteName, action: "Downloading",
+                        bytesTransferred: totalBytesTransferred, totalBytes: 0,
+                        filesCompleted: completed, filesTotal: totalActions,
+                        bytesPerSecond: Self.speed(bytes: totalBytesTransferred, since: syncStart)
+                    ))
+
                     let data = try await apiClient.downloadFile(id: fileID)
-                    // Create parent directories if needed
                     let url = URL(fileURLWithPath: localPath)
                     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try data.write(to: url)
-                    // Save state
                     let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
                     try db.updateState(taskID: taskID, fileName: remoteName, contentHash: hash)
+                    let size = Int64(data.count)
+                    totalBytesTransferred += size
                     result.downloaded += 1
+                    result.fileActivity.append(ActivityItem(filename: remoteName, action: "downloaded", timestamp: Date()))
+                    logger.info(" Downloaded: \(remoteName) (\(size) bytes)")
 
                 case .deleteRemote(let fileID, let remoteName):
                     try await apiClient.deleteFile(id: fileID)
                     try db.removeState(taskID: taskID, fileName: remoteName)
                     result.deleted += 1
+                    result.fileActivity.append(ActivityItem(filename: remoteName, action: "deleted", timestamp: Date()))
 
                 case .deleteLocal(let path, let remoteName):
                     try FileManager.default.removeItem(atPath: path)
                     try db.removeState(taskID: taskID, fileName: remoteName)
                     result.deleted += 1
+                    result.fileActivity.append(ActivityItem(filename: remoteName, action: "deleted", timestamp: Date()))
 
                 case .conflict(let localPath, let remoteID, let remoteName):
                     let data = try await apiClient.downloadFile(id: remoteID)
@@ -81,13 +123,23 @@ actor SyncEngine {
                     let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
                     try db.updateState(taskID: taskID, fileName: remoteName, contentHash: hash)
                     result.conflicts += 1
+                    result.fileActivity.append(ActivityItem(filename: "\(remoteName) (conflict)", action: "downloaded", timestamp: Date()))
                 }
+
+                completed += 1
             } catch {
-                print("Sync action failed: \(error)")
+                logger.info(" Action failed: \(action) — \(error)")
+                result.errors += 1
             }
         }
 
         return result
+    }
+
+    private static func speed(bytes: Int64, since: Date) -> Double {
+        let elapsed = Date().timeIntervalSince(since)
+        guard elapsed > 0 else { return 0 }
+        return Double(bytes) / elapsed
     }
 
     private func scanLocalFiles(at path: String, excludePatterns: [String]) -> [LocalFileInfo] {
@@ -211,17 +263,39 @@ struct LocalFileInfo {
     let contentHash: String?
 }
 
+struct SyncProgress {
+    var currentFile: String
+    var action: String          // "Uploading", "Downloading"
+    var bytesTransferred: Int64
+    var totalBytes: Int64
+    var filesCompleted: Int
+    var filesTotal: Int
+    var bytesPerSecond: Double
+}
+
 struct SyncResult {
     var uploaded: Int
     var downloaded: Int
     var deleted: Int
     var conflicts: Int
+    var errors: Int
+    var fileActivity: [ActivityItem]
 }
 
-enum SyncAction {
+enum SyncAction: CustomStringConvertible {
     case upload(String, String)              // localPath, remoteName
     case download(String, String, String)    // remoteFileID, localPath, remoteName
     case deleteRemote(String, String)        // remoteFileID, remoteName
     case deleteLocal(String, String)         // localPath, remoteName
     case conflict(String, String, String)    // localPath, remoteFileID, remoteName
+
+    var description: String {
+        switch self {
+        case .upload(_, let name): return "upload(\(name))"
+        case .download(_, _, let name): return "download(\(name))"
+        case .deleteRemote(_, let name): return "deleteRemote(\(name))"
+        case .deleteLocal(_, let name): return "deleteLocal(\(name))"
+        case .conflict(_, _, let name): return "conflict(\(name))"
+        }
+    }
 }

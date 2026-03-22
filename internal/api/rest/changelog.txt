@@ -1,3 +1,6 @@
+## [1.8] — 2026-03-22
+- Admin password reset CLI, security-scoped bookmarks, sync progress UI, os.Logger debugging
+
 ## [1.7] — 2026-03-22
 - Fix Keychain persistence across updates, add EdDSA signing for Sparkle
 

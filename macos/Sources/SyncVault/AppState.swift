@@ -1,13 +1,17 @@
 import SwiftUI
 import Combine
 import FileProvider
+import os
 
-let appVersion = "1.7"
+private let logger = Logger(subsystem: "com.syncvault.app", category: "AppState")
+
+let appVersion = "1.8"
 
 @MainActor
 class AppState: ObservableObject {
     @Published var isConnected = false
     @Published var isSyncing = false
+    @Published var syncProgress: SyncProgress?
     @Published var lastError: String?
     @Published var recentActivity: [ActivityItem] = []
     @Published var syncTasks: [SyncTask] = []
@@ -112,13 +116,56 @@ class AppState: ObservableObject {
             .appendingPathComponent("SyncVault")
     }
 
+    // MARK: - Security-Scoped Bookmarks
+
+    func saveBookmark(for url: URL) {
+        do {
+            let bookmarkData = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+            var bookmarks = loadBookmarks()
+            bookmarks[url.path] = bookmarkData
+            let bookmarkURL = Self.configDirectory.appendingPathComponent("bookmarks.plist")
+            try (bookmarks as NSDictionary).write(to: bookmarkURL)
+            logger.info("Saved bookmark for \(url.path)")
+        } catch {
+            logger.error("Failed to save bookmark: \(error)")
+        }
+    }
+
+    func resolveBookmark(for path: String) -> URL? {
+        let bookmarks = loadBookmarks()
+        guard let data = bookmarks[path] else { return nil }
+        var isStale = false
+        do {
+            let url = try URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale)
+            if url.startAccessingSecurityScopedResource() {
+                if isStale {
+                    saveBookmark(for: url)
+                }
+                return url
+            }
+        } catch {
+            logger.error("Failed to resolve bookmark: \(error)")
+        }
+        return nil
+    }
+
+    private func loadBookmarks() -> [String: Data] {
+        let bookmarkURL = Self.configDirectory.appendingPathComponent("bookmarks.plist")
+        guard let dict = NSDictionary(contentsOf: bookmarkURL) as? [String: Data] else { return [:] }
+        return dict
+    }
+
     // MARK: - Sync Task Management
 
     func addSyncTask(localPath: String, mode: SyncTask.SyncMode) async throws {
         guard let client = apiClient else { throw APIError.unauthorized }
 
+        // Save security-scoped bookmark for persistent access
+        let url = URL(fileURLWithPath: localPath)
+        saveBookmark(for: url)
+
         // Use local folder name as remote folder name
-        let folderName = URL(fileURLWithPath: localPath).lastPathComponent
+        let folderName = url.lastPathComponent
         let taskType = mode == .twoWay ? "sync" : "backup"
 
         // Create task on server (this creates the remote folder automatically)
@@ -236,32 +283,50 @@ class AppState: ObservableObject {
     }
 
     func runSync() async {
-        guard let client = apiClient, isConnected else { return }
-        guard !isSyncing else { return }
+        guard let client = apiClient, isConnected else {
+            logger.info(" Not connected, skipping")
+            return
+        }
+        guard !isSyncing else {
+            logger.info(" Already syncing, skipping")
+            return
+        }
 
         isSyncing = true
-        defer { isSyncing = false }
+        syncProgress = nil
+        defer {
+            isSyncing = false
+            syncProgress = nil
+        }
 
         for task in syncTasks where task.isEnabled {
+            logger.info("Starting task: \(task.remoteFolderName) (remote: \(task.remoteFolderID), local: \(task.localPath), mode: \(task.mode.rawValue))")
+
+            // Resolve security-scoped bookmark for folder access
+            let resolvedURL = resolveBookmark(for: task.localPath)
+            defer { resolvedURL?.stopAccessingSecurityScopedResource() }
+
+            if resolvedURL == nil {
+                logger.warning("No bookmark for \(task.localPath) — cannot access folder")
+                lastError = "Cannot access \(URL(fileURLWithPath: task.localPath).lastPathComponent) — re-select folder in Settings"
+                continue
+            }
+
             do {
                 let dbPath = Self.configDirectory.appendingPathComponent("sync.db")
                 let engine = try SyncEngine(apiClient: client, dbPath: dbPath)
-                let result = try await engine.syncTask(task)
 
-                // Add to recent activity
-                if result.uploaded > 0 {
-                    recentActivity.insert(ActivityItem(
-                        filename: "\(result.uploaded) file(s)",
-                        action: "uploaded",
-                        timestamp: Date()
-                    ), at: 0)
+                let result = try await engine.syncTask(task) { [weak self] progress in
+                    Task { @MainActor [weak self] in
+                        self?.syncProgress = progress
+                    }
                 }
-                if result.downloaded > 0 {
-                    recentActivity.insert(ActivityItem(
-                        filename: "\(result.downloaded) file(s)",
-                        action: "downloaded",
-                        timestamp: Date()
-                    ), at: 0)
+
+                logger.info(" Result: \(result.uploaded) up, \(result.downloaded) down, \(result.deleted) del, \(result.conflicts) conflicts, \(result.errors) errors")
+
+                // Add individual file activity
+                for item in result.fileActivity {
+                    recentActivity.insert(item, at: 0)
                 }
 
                 // Keep only last 20 activity items
@@ -269,6 +334,7 @@ class AppState: ObservableObject {
                     recentActivity = Array(recentActivity.prefix(20))
                 }
             } catch {
+                logger.info(" Error: \(error)")
                 lastError = "Sync error: \(error.localizedDescription)"
             }
         }

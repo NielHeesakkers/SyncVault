@@ -33,11 +33,45 @@ struct MenuBarView: View {
             }
 
             if appState.isConnected {
-                // Sync status
-                HStack {
-                    Image(systemName: appState.menuBarIcon)
-                    Text(appState.isSyncing ? "Syncing..." : "Up to date")
-                        .foregroundColor(.secondary)
+                // Sync status with progress
+                if let progress = appState.syncProgress {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .foregroundColor(.blue)
+                                .rotationEffect(.degrees(appState.isSyncing ? 360 : 0))
+                            Text("\(progress.action) (\(progress.filesCompleted + 1)/\(progress.filesTotal))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Text(progress.currentFile)
+                            .font(.caption2)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        if progress.bytesPerSecond > 0 {
+                            Text(formatSpeed(progress.bytesPerSecond))
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                } else {
+                    HStack {
+                        Image(systemName: appState.isSyncing ? "arrow.triangle.2.circlepath" : "checkmark.circle")
+                            .foregroundColor(appState.isSyncing ? .blue : .green)
+                        Text(appState.isSyncing ? "Syncing..." : "Up to date")
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                if let error = appState.lastError {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundColor(.orange)
+                        Text(error)
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                            .lineLimit(2)
+                    }
                 }
 
                 // Team folder invites
@@ -142,6 +176,12 @@ struct MenuBarView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
+    }
+
+    func formatSpeed(_ bytesPerSecond: Double) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return "\(formatter.string(fromByteCount: Int64(bytesPerSecond)))/s"
     }
 }
 

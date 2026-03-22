@@ -21,6 +21,26 @@ import (
 )
 
 func main() {
+	// Check for admin password reset
+	if len(os.Args) > 1 && os.Args[1] == "reset-admin" {
+		newPass := "admin"
+		if len(os.Args) > 2 {
+			newPass = os.Args[2]
+		}
+		cfg := config.Load()
+		dbPath := filepath.Join(cfg.DataDir, "syncvault.db")
+		db, err := metadata.Open(dbPath)
+		if err != nil {
+			log.Fatalf("Failed to open database: %v", err)
+		}
+		hash, _ := auth.HashPassword(newPass)
+		if err := db.ResetAdminPassword(hash); err != nil {
+			log.Fatalf("Failed to reset password: %v", err)
+		}
+		fmt.Printf("Admin password reset to: %s\n", newPass)
+		return
+	}
+
 	// 1. Load config.
 	cfg := config.Load()
 
