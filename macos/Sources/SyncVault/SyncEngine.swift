@@ -17,22 +17,25 @@ actor SyncEngine {
         defer { isRunning = false }
 
         var result = SyncResult(uploaded: 0, downloaded: 0, deleted: 0, conflicts: 0)
+        let taskID = task.id.uuidString
+        let basePath = task.localPath
 
         // 1. Scan local files
-        let localFiles = scanLocalFiles(at: task.localPath, excludePatterns: task.excludePatterns)
+        let localFiles = scanLocalFiles(at: basePath, excludePatterns: task.excludePatterns)
 
         // 2. Get remote files
         let remoteFiles = try await apiClient.listFiles(parentID: task.remoteFolderID)
 
         // 3. Get known state from sync database
-        let knownState = try db.getStates(taskID: task.id.uuidString)
+        let knownState = try db.getStates(taskID: taskID)
 
         // 4. Determine actions
         let actions = determineActions(
             local: localFiles,
             remote: remoteFiles,
             known: knownState,
-            mode: task.mode
+            mode: task.mode,
+            basePath: basePath
         )
 
         // 5. Execute actions
@@ -41,30 +44,42 @@ actor SyncEngine {
                 switch action {
                 case .upload(let path, let remoteName):
                     let data = try Data(contentsOf: URL(fileURLWithPath: path))
-                    let _ = try await apiClient.uploadFile(data: data, filename: remoteName, parentID: task.remoteFolderID)
+                    let uploaded = try await apiClient.uploadFile(data: data, filename: remoteName, parentID: task.remoteFolderID)
+                    // Save state so we know this file is synced
+                    let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
+                    try db.updateState(taskID: taskID, fileName: remoteName, contentHash: hash)
                     result.uploaded += 1
 
-                case .download(let fileID, let localPath):
+                case .download(let fileID, let localPath, let remoteName):
                     let data = try await apiClient.downloadFile(id: fileID)
-                    try data.write(to: URL(fileURLWithPath: localPath))
+                    // Create parent directories if needed
+                    let url = URL(fileURLWithPath: localPath)
+                    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try data.write(to: url)
+                    // Save state
+                    let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
+                    try db.updateState(taskID: taskID, fileName: remoteName, contentHash: hash)
                     result.downloaded += 1
 
-                case .deleteRemote(let fileID):
+                case .deleteRemote(let fileID, let remoteName):
                     try await apiClient.deleteFile(id: fileID)
+                    try db.removeState(taskID: taskID, fileName: remoteName)
                     result.deleted += 1
 
-                case .deleteLocal(let path):
+                case .deleteLocal(let path, let remoteName):
                     try FileManager.default.removeItem(atPath: path)
+                    try db.removeState(taskID: taskID, fileName: remoteName)
                     result.deleted += 1
 
-                case .conflict(let localPath, let remoteID):
-                    // Download remote version, rename local as conflict copy
+                case .conflict(let localPath, let remoteID, let remoteName):
                     let data = try await apiClient.downloadFile(id: remoteID)
                     let url = URL(fileURLWithPath: localPath)
                     let conflictName = Self.conflictName(for: url.lastPathComponent)
                     let conflictPath = url.deletingLastPathComponent().appendingPathComponent(conflictName)
                     try FileManager.default.moveItem(at: url, to: conflictPath)
                     try data.write(to: url)
+                    let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
+                    try db.updateState(taskID: taskID, fileName: remoteName, contentHash: hash)
                     result.conflicts += 1
                 }
             } catch {
@@ -110,9 +125,9 @@ actor SyncEngine {
         return files
     }
 
-    private func determineActions(local: [LocalFileInfo], remote: [ServerFile], known: [String: SyncFileState], mode: SyncTask.SyncMode) -> [SyncAction] {
+    private func determineActions(local: [LocalFileInfo], remote: [ServerFile], known: [String: SyncFileState], mode: SyncTask.SyncMode, basePath: String) -> [SyncAction] {
         var actions: [SyncAction] = []
-        let remoteByName = Dictionary(uniqueKeysWithValues: remote.map { ($0.name, $0) })
+        let remoteByName = Dictionary(uniqueKeysWithValues: remote.filter { !$0.isDir }.map { ($0.name, $0) })
         let localByName = Dictionary(uniqueKeysWithValues: local.filter { !$0.isDirectory }.map { (URL(fileURLWithPath: $0.relativePath).lastPathComponent, $0) })
 
         // Check local files against remote
@@ -127,12 +142,13 @@ actor SyncEngine {
                     } else if knownHash == localFile.contentHash {
                         // Only remote changed -> download (if two-way)
                         if mode == .twoWay {
-                            actions.append(.download(remoteFile.id, localFile.fullPath))
+                            let localPath = (basePath as NSString).appendingPathComponent(name)
+                            actions.append(.download(remoteFile.id, localPath, name))
                         }
                     } else {
                         // Both changed -> conflict
                         if mode == .twoWay {
-                            actions.append(.conflict(localFile.fullPath, remoteFile.id))
+                            actions.append(.conflict(localFile.fullPath, remoteFile.id, name))
                         } else {
                             actions.append(.upload(localFile.fullPath, name))
                         }
@@ -146,15 +162,15 @@ actor SyncEngine {
 
         // Check remote files not in local (two-way only)
         if mode == .twoWay {
-            for (name, remoteFile) in remoteByName where !remoteFile.isDir {
+            for (name, remoteFile) in remoteByName {
                 if localByName[name] == nil {
                     if known[name] != nil {
                         // Was known but deleted locally -> delete remote
-                        actions.append(.deleteRemote(remoteFile.id))
+                        actions.append(.deleteRemote(remoteFile.id, name))
                     } else {
                         // New remote file -> download
-                        let localPath = "" // Will be set by caller based on task localPath
-                        actions.append(.download(remoteFile.id, localPath))
+                        let localPath = (basePath as NSString).appendingPathComponent(name)
+                        actions.append(.download(remoteFile.id, localPath, name))
                     }
                 }
             }
@@ -203,9 +219,9 @@ struct SyncResult {
 }
 
 enum SyncAction {
-    case upload(String, String)       // localPath, remoteName
-    case download(String, String)     // remoteFileID, localPath
-    case deleteRemote(String)         // remoteFileID
-    case deleteLocal(String)          // localPath
-    case conflict(String, String)     // localPath, remoteFileID
+    case upload(String, String)              // localPath, remoteName
+    case download(String, String, String)    // remoteFileID, localPath, remoteName
+    case deleteRemote(String, String)        // remoteFileID, remoteName
+    case deleteLocal(String, String)         // localPath, remoteName
+    case conflict(String, String, String)    // localPath, remoteFileID, remoteName
 }
