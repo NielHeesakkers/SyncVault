@@ -5,6 +5,26 @@
         <description>SyncVault macOS app updates</description>
         <language>en</language>
         <item>
+            <title>Version 1.5</title>
+            <sparkle:version>1.5</sparkle:version>
+            <sparkle:shortVersionString>1.5</sparkle:shortVersionString>
+            <pubDate>Sat, 22 Mar 2026 18:00:00 +0000</pubDate>
+            <description>
+- Version Explorer with interactive timeline
+- Retention policy editor per sync task
+- Team invite notifications with Accept/Decline
+- Changelog viewer in Settings
+- Share files with password, expiry, download limit
+- Backup system: create, download, restore
+            </description>
+            <enclosure
+                url="https://github.com/NielHeesakkers/SyncVault/releases/download/v1.5/SyncVault-1.5.zip"
+                sparkle:version="1.5"
+                length="2101194"
+                type="application/octet-stream"
+            />
+        </item>
+        <item>
             <title>Version 1.3</title>
             <sparkle:version>1.3</sparkle:version>
             <sparkle:shortVersionString>1.3</sparkle:shortVersionString>
@@ -15,7 +35,6 @@
 - Sync task management
 - File Provider Extension for on-demand sync
 - SMTP settings in admin panel
-- Changelog in web UI
             </description>
             <enclosure
                 url="https://github.com/NielHeesakkers/SyncVault/releases/download/v1.3/SyncVault.zip"
