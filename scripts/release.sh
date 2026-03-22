@@ -99,13 +99,19 @@ rm -rf build/dmg-staging
 rm -f "build/SyncVault-$VERSION.zip"
 cd build/Build/Products/Release && zip -r -y "../../../SyncVault-$VERSION.zip" SyncVault.app && cd ../../../..
 
-# 7. Notarize
-echo "[7/8] Notarizing..."
+# 7. Notarize DMG and ZIP
+echo "[7/8] Notarizing DMG..."
 xcrun notarytool submit "build/SyncVault-$VERSION.dmg" \
     --apple-id "niel@heesakkers.com" \
     --password "oxwv-eesn-uweq-evhk" \
     --team-id "DE59N86W33" --wait 2>&1
 xcrun stapler staple "build/SyncVault-$VERSION.dmg" 2>&1
+
+echo "Notarizing ZIP..."
+xcrun notarytool submit "build/SyncVault-$VERSION.zip" \
+    --apple-id "niel@heesakkers.com" \
+    --password "oxwv-eesn-uweq-evhk" \
+    --team-id "DE59N86W33" --wait 2>&1
 
 cd ..
 
