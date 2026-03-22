@@ -63,17 +63,34 @@ cd web && npm run build 2>&1 | tail -1 && cd ..
 rm -rf internal/api/rest/dist && mkdir -p internal/api/rest/dist
 cp -r web/build/* internal/api/rest/dist/
 
-# 6. Build and create macOS DMG
-echo "[6/7] Building macOS app..."
+# 6. Build, sign, and create macOS DMG
+echo "[6/8] Building macOS app..."
 cd macos
+xcodebuild clean -scheme SyncVault -derivedDataPath build 2>&1 | tail -1
 xcodebuild -scheme SyncVault -configuration Release -derivedDataPath build \
     -arch arm64 ONLY_ACTIVE_ARCH=NO \
     CODE_SIGN_IDENTITY="Developer ID Application" \
-    DEVELOPMENT_TEAM=DE59N86W33 CODE_SIGN_STYLE=Manual 2>&1 | grep -E "(BUILD|error:)" | head -5
+    DEVELOPMENT_TEAM=DE59N86W33 CODE_SIGN_STYLE=Manual \
+    OTHER_CODE_SIGN_FLAGS="--timestamp --options=runtime" \
+    CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO 2>&1 | grep -E "(BUILD|error:)" | head -5
+
+APP="build/Build/Products/Release/SyncVault.app"
+
+# Re-sign Sparkle binaries with Developer ID + timestamp
+echo "Re-signing Sparkle binaries..."
+codesign --force --deep --timestamp --options runtime --sign "Developer ID Application: Niel Heesakkers (DE59N86W33)" "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc" 2>&1
+codesign --force --deep --timestamp --options runtime --sign "Developer ID Application: Niel Heesakkers (DE59N86W33)" "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc" 2>&1
+codesign --force --deep --timestamp --options runtime --sign "Developer ID Application: Niel Heesakkers (DE59N86W33)" "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app" 2>&1
+codesign --force --timestamp --options runtime --sign "Developer ID Application: Niel Heesakkers (DE59N86W33)" "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" 2>&1
+codesign --force --timestamp --options runtime --sign "Developer ID Application: Niel Heesakkers (DE59N86W33)" "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle" 2>&1
+codesign --force --timestamp --options runtime --sign "Developer ID Application: Niel Heesakkers (DE59N86W33)" "$APP/Contents/Frameworks/Sparkle.framework" 2>&1
+codesign --force --timestamp --options runtime --sign "Developer ID Application: Niel Heesakkers (DE59N86W33)" "$APP/Contents/PlugIns/SyncVaultFileProvider.appex" 2>&1
+codesign --force --timestamp --options runtime --sign "Developer ID Application: Niel Heesakkers (DE59N86W33)" "$APP" 2>&1
+codesign --verify --deep --strict "$APP" 2>&1 && echo "Signing OK"
 
 rm -f "build/SyncVault-$VERSION.dmg"
 mkdir -p build/dmg-staging
-cp -R build/Build/Products/Release/SyncVault.app build/dmg-staging/
+cp -R "$APP" build/dmg-staging/
 ln -sf /Applications build/dmg-staging/Applications
 hdiutil create -volname "SyncVault" -srcfolder build/dmg-staging -ov -format UDZO "build/SyncVault-$VERSION.dmg" 2>&1
 rm -rf build/dmg-staging
@@ -81,10 +98,19 @@ rm -rf build/dmg-staging
 # Create ZIP for Sparkle (plain zip, no __MACOSX)
 rm -f "build/SyncVault-$VERSION.zip"
 cd build/Build/Products/Release && zip -r -y "../../../SyncVault-$VERSION.zip" SyncVault.app && cd ../../../..
+
+# 7. Notarize
+echo "[7/8] Notarizing..."
+xcrun notarytool submit "build/SyncVault-$VERSION.dmg" \
+    --apple-id "niel@heesakkers.com" \
+    --password "oxwv-eesn-uweq-evhk" \
+    --team-id "DE59N86W33" --wait 2>&1
+xcrun stapler staple "build/SyncVault-$VERSION.dmg" 2>&1
+
 cd ..
 
-# 7. Update appcast.xml for Sparkle auto-update
-echo "[7/7] Updating appcast.xml..."
+# 8. Update appcast.xml for Sparkle auto-update
+echo "[8/8] Updating appcast.xml..."
 ZIP_SIZE=$(stat -f%z "macos/build/SyncVault-$VERSION.zip")
 cat > docs/appcast.xml << APPCAST
 <?xml version="1.0" encoding="utf-8"?>
