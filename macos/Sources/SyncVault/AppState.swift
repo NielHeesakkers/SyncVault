@@ -51,8 +51,9 @@ class AppState: ObservableObject {
         self.username = username
         self.isConnected = true
 
-        // Save password in Keychain for auto-reconnect
+        // Save credentials in Keychain for auto-reconnect and re-auth
         KeychainHelper.save(key: "server_password", value: password)
+        KeychainHelper.save(key: "saved_username", value: username)
 
         // Also save token to shared keychain for File Provider extension
         if let token = KeychainHelper.load(key: "access_token") {

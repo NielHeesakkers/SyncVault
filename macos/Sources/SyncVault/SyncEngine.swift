@@ -127,6 +127,10 @@ actor SyncEngine {
                 }
 
                 completed += 1
+            } catch let error as APIError where error == .unauthorized {
+                // Re-throw auth errors so AppState can re-authenticate
+                logger.info(" Auth failed on \(action) — re-throwing for re-auth")
+                throw error
             } catch {
                 logger.info(" Action failed: \(action) — \(error)")
                 result.errors += 1

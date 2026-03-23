@@ -272,10 +272,8 @@ actor APIClient {
 
     /// Re-authenticate using saved credentials from Keychain
     func reAuthenticate() async -> Bool {
-        guard let password = KeychainHelper.load(key: "server_password") else { return false }
-        // Get username from current state
-        let usernameKey = "saved_username"
-        guard let username = KeychainHelper.load(key: usernameKey) ?? UserDefaults.standard.string(forKey: "username") else { return false }
+        guard let password = KeychainHelper.load(key: "server_password"),
+              let username = KeychainHelper.load(key: "saved_username") else { return false }
         do {
             try await login(username: username, password: password)
             return true
