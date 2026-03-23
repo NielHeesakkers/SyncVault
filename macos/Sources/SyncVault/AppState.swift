@@ -5,7 +5,7 @@ import os
 
 private let logger = Logger(subsystem: "com.syncvault.app", category: "AppState")
 
-let appVersion = "1.9"
+let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.1"
 
 @MainActor
 class AppState: ObservableObject {

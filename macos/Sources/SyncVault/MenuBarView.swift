@@ -227,6 +227,12 @@ struct MenuBarView: View {
                     }
                 }
 
+                if updaterService.availableVersion == nil {
+                    actionRow(icon: "arrow.clockwise", label: "Check for Updates") {
+                        updaterService.checkForUpdates()
+                    }
+                }
+
                 SettingsLink {
                     HStack(spacing: 8) {
                         Image(systemName: "gear")

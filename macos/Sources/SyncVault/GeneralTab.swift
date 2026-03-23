@@ -9,72 +9,95 @@ struct GeneralTab: View {
     @State private var isLoadingChangelog = false
 
     var body: some View {
-        Form {
-            Section("Startup") {
-                Toggle("Launch at login", isOn: $launchAtLogin)
-            }
+        VStack(alignment: .leading, spacing: 16) {
+            // Startup
+            sectionHeader("Startup")
+            Toggle("Launch at login", isOn: $launchAtLogin)
+                .padding(.leading, 4)
 
-            Section("Notifications") {
-                Toggle("Show sync notifications", isOn: $showNotifications)
-            }
+            // Notifications
+            sectionHeader("Notifications")
+            Toggle("Show sync notifications", isOn: $showNotifications)
+                .padding(.leading, 4)
 
-            Section("Updates") {
-                Toggle("Automatically check for updates", isOn: $updaterService.automaticallyChecksForUpdates)
+            // Updates
+            sectionHeader("Updates")
+            Toggle("Automatically check for updates", isOn: $updaterService.automaticallyChecksForUpdates)
+                .padding(.leading, 4)
 
-                if let version = updaterService.availableVersion {
-                    HStack {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .foregroundColor(.orange)
-                        Text("Update available: v\(version)")
-                            .foregroundColor(.orange)
-                        Spacer()
-                        Button("Download") {
-                            updaterService.downloadAndInstallUpdate(version: version)
-                        }
-                        .disabled(updaterService.isDownloading)
+            if let version = updaterService.availableVersion {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundColor(.orange)
+                    Text("v\(version) available")
+                        .font(.system(size: 12))
+                        .foregroundColor(.orange)
+                    Spacer()
+                    Button("Download") {
+                        updaterService.downloadAndInstallUpdate(version: version)
                     }
+                    .disabled(updaterService.isDownloading)
                 }
-
-                if updaterService.isDownloading {
-                    HStack {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                        Text("Downloading update...")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
+                .padding(.leading, 4)
             }
 
-            Section("About") {
-                LabeledContent("Version", value: "SyncVault v\(appVersion)")
+            if updaterService.isDownloading {
+                HStack(spacing: 6) {
+                    ProgressView().scaleEffect(0.6)
+                    Text("Downloading...")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.leading, 4)
             }
 
-            Section("What's New in v\(appVersion)") {
+            Divider()
+
+            // About
+            sectionHeader("About")
+            Text("SyncVault v\(appVersion)")
+                .font(.system(size: 12))
+                .padding(.leading, 4)
+
+            // Changelog
+            sectionHeader("What's New")
+            Group {
                 if isLoadingChangelog {
-                    HStack {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                        Text("Loading changelog...")
-                            .font(.caption)
+                    HStack(spacing: 6) {
+                        ProgressView().scaleEffect(0.6)
+                        Text("Loading...")
+                            .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
                 } else if let notes = changelog {
-                    Text(notes)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    ScrollView {
+                        Text(notes)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 120)
                 } else {
                     Text("Changelog unavailable.")
-                        .font(.caption)
+                        .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
             }
+            .padding(.leading, 4)
+
+            Spacer()
         }
-        .padding()
+        .padding(20)
         .task {
             await loadChangelog()
         }
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(.secondary)
+            .tracking(0.5)
     }
 
     private func loadChangelog() async {
