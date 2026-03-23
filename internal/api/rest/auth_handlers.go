@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -151,6 +152,116 @@ func (s *Server) handleChangeMyPassword(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "password updated"})
+}
+
+// forgotPasswordRequest is the body for POST /api/auth/forgot-password.
+type forgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+// handleForgotPassword initiates a password reset by sending a reset link to the user's email.
+// It always returns 200 to prevent email enumeration.
+func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req forgotPasswordRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	// Always return 200 regardless of whether the email exists.
+	user, err := s.db.GetUserByEmail(req.Email)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "if an account with this email exists, you will receive a reset link"})
+		return
+	}
+
+	token, err := s.db.CreatePasswordReset(user.ID)
+	if err != nil {
+		log.Printf("password reset: could not create token for user %s: %v", user.ID, err)
+		writeJSON(w, http.StatusOK, map[string]string{"status": "if an account with this email exists, you will receive a reset link"})
+		return
+	}
+
+	if s.email != nil && s.email.Enabled() {
+		baseURL, settingErr := s.db.GetSetting("base_url")
+		if settingErr != nil {
+			baseURL = ""
+		}
+		resetLink := fmt.Sprintf("%s/reset-password?token=%s", baseURL, token)
+		if err := s.email.SendPasswordResetLink(user.Email, resetLink); err != nil {
+			log.Printf("password reset: failed to send email to %s: %v", user.Email, err)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "if an account with this email exists, you will receive a reset link"})
+}
+
+// publicResetPasswordRequest is the body for POST /api/auth/reset-password.
+type publicResetPasswordRequest struct {
+	Token           string `json:"token"`
+	Password        string `json:"password"`
+	ConfirmPassword string `json:"confirm_password"`
+}
+
+// handleResetPassword validates a reset token and sets a new password for the user.
+func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req publicResetPasswordRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	if req.Token == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "token is required"})
+		return
+	}
+	if req.Password == "" || req.ConfirmPassword == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "password and confirm_password are required"})
+		return
+	}
+	if req.Password != req.ConfirmPassword {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "passwords do not match"})
+		return
+	}
+
+	userID, err := s.db.ValidatePasswordReset(req.Token)
+	if err != nil {
+		switch {
+		case errors.Is(err, metadata.ErrPasswordResetNotFound):
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid or expired reset token"})
+		case errors.Is(err, metadata.ErrPasswordResetExpired):
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "reset token has expired"})
+		case errors.Is(err, metadata.ErrPasswordResetUsed):
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "reset token has already been used"})
+		default:
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		}
+		return
+	}
+
+	user, err := s.db.GetUserByID(userID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load user"})
+		return
+	}
+
+	hashed, err := auth.HashPassword(req.Password)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not hash password"})
+		return
+	}
+
+	user.Password = hashed
+	if err := s.db.UpdateUser(user); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update password"})
+		return
+	}
+
+	if err := s.db.MarkPasswordResetUsed(req.Token); err != nil {
+		log.Printf("password reset: could not mark token used: %v", err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "password reset successfully"})
 }
 
 // createUserRequest is the body for POST /api/users.

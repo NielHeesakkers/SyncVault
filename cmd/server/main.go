@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"net"
@@ -105,14 +106,22 @@ func main() {
 		log.Printf("Created default admin user (username: %s) — change the password", adminUsername)
 	}
 
-	// Also reset admin password if env var is set and admin already exists
+	// Smart admin password reset: only reset if SYNCVAULT_ADMIN_PASS changed
 	if pw := os.Getenv("SYNCVAULT_ADMIN_PASS"); pw != "" && len(users) > 0 {
-		for _, u := range users {
-			if u.Role == "admin" {
-				hashed, _ := auth.HashPassword(pw)
-				db.ResetAdminPassword(hashed)
-				log.Println("Admin password reset from SYNCVAULT_ADMIN_PASS env var")
-				break
+		// Hash the env var value to compare with stored hash
+		pwHash := fmt.Sprintf("%x", sha256.Sum256([]byte(pw)))
+		storedHash, _ := db.GetSetting("admin_pass_env_hash")
+
+		if storedHash != pwHash {
+			// Env var changed — reset the admin password
+			for _, u := range users {
+				if u.Role == "admin" {
+					hashed, _ := auth.HashPassword(pw)
+					db.ResetAdminPassword(hashed)
+					db.SetSetting("admin_pass_env_hash", pwHash)
+					log.Println("Admin password reset from SYNCVAULT_ADMIN_PASS (env var changed)")
+					break
+				}
 			}
 		}
 	}

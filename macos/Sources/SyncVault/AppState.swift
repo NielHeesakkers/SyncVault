@@ -5,7 +5,7 @@ import os
 
 private let logger = Logger(subsystem: "com.syncvault.app", category: "AppState")
 
-let appVersion = "1.8"
+let appVersion = "1.9"
 
 @MainActor
 class AppState: ObservableObject {

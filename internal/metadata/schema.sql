@@ -135,6 +135,15 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
 
+CREATE TABLE IF NOT EXISTS password_resets (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    token TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_files_parent_id   ON files(parent_id);
 CREATE INDEX IF NOT EXISTS idx_files_owner_id    ON files(owner_id);

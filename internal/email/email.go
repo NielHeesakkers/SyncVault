@@ -107,6 +107,31 @@ Please change it after logging in.
 This is an automated message — please do not reply.
 `))
 
+var passwordResetLinkTmpl = template.Must(template.New("password_reset_link").Parse(`You requested a password reset for your SyncVault account.
+
+Click the link below to reset your password (valid for 1 hour):
+{{.ResetLink}}
+
+If you didn't request this, you can safely ignore this email.
+`))
+
+// SendPasswordResetLink sends a self-service password reset email containing the reset link.
+func (s *Service) SendPasswordResetLink(toEmail, resetLink string) error {
+	if !s.enabled {
+		return nil
+	}
+	data := struct {
+		ResetLink string
+	}{ResetLink: resetLink}
+
+	body, err := renderTemplate(passwordResetLinkTmpl, data)
+	if err != nil {
+		return fmt.Errorf("render password reset link template: %w", err)
+	}
+
+	return s.send(toEmail, "SyncVault \u2014 Password Reset", body)
+}
+
 var quotaWarningTmpl = template.Must(template.New("quota_warning").Parse(`Hello {{.Username}},
 
 Storage quota warning: You are using {{.Percentage}}% of your quota ({{.UsedHuman}} of {{.QuotaHuman}}).

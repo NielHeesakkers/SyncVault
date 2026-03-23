@@ -1,7 +1,9 @@
 package metadata
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -69,6 +71,14 @@ func (d *DB) GetUserByUsername(username string) (*User, error) {
 	return d.scanUser(d.db.QueryRow(
 		`SELECT id, username, email, password, role, quota_bytes, created_at, updated_at
 		 FROM users WHERE username = ?`, username,
+	))
+}
+
+// GetUserByEmail returns the user with the given email address.
+func (d *DB) GetUserByEmail(email string) (*User, error) {
+	return d.scanUser(d.db.QueryRow(
+		`SELECT id, username, email, password, role, quota_bytes, created_at, updated_at
+		 FROM users WHERE email = ?`, email,
 	))
 }
 
@@ -198,4 +208,86 @@ func containsStr(s, sub string) bool {
 func (db *DB) ResetAdminPassword(hash string) error {
 	_, err := db.db.Exec("UPDATE users SET password = ? WHERE role = 'admin'", hash)
 	return err
+}
+
+// ErrPasswordResetNotFound is returned when a password reset token cannot be found.
+var ErrPasswordResetNotFound = errors.New("metadata: password reset token not found")
+
+// ErrPasswordResetExpired is returned when a password reset token has expired.
+var ErrPasswordResetExpired = errors.New("metadata: password reset token expired")
+
+// ErrPasswordResetUsed is returned when a password reset token has already been used.
+var ErrPasswordResetUsed = errors.New("metadata: password reset token already used")
+
+// CreatePasswordReset generates a random 32-byte hex token, stores it in the database
+// with a 1-hour expiry, and returns the token.
+func (d *DB) CreatePasswordReset(userID string) (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("metadata: generate reset token: %w", err)
+	}
+	token := hex.EncodeToString(raw)
+
+	now := time.Now().UTC()
+	expiresAt := now.Add(time.Hour)
+
+	_, err := d.db.Exec(
+		`INSERT INTO password_resets (id, user_id, token, expires_at, used, created_at)
+		 VALUES (?, ?, ?, ?, 0, ?)`,
+		uuid.New().String(),
+		userID,
+		token,
+		expiresAt.Format(time.RFC3339Nano),
+		now.Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return "", fmt.Errorf("metadata: create password reset: %w", err)
+	}
+	return token, nil
+}
+
+// ValidatePasswordReset checks that the token exists, has not been used, and has not expired.
+// It returns the associated user ID on success.
+func (d *DB) ValidatePasswordReset(token string) (string, error) {
+	var userID, expiresAtStr string
+	var used int
+
+	err := d.db.QueryRow(
+		`SELECT user_id, expires_at, used FROM password_resets WHERE token = ?`, token,
+	).Scan(&userID, &expiresAtStr, &used)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrPasswordResetNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("metadata: validate password reset: %w", err)
+	}
+
+	if used != 0 {
+		return "", ErrPasswordResetUsed
+	}
+
+	expiresAt, err := time.Parse(time.RFC3339Nano, expiresAtStr)
+	if err != nil {
+		return "", fmt.Errorf("metadata: parse expires_at: %w", err)
+	}
+	if time.Now().UTC().After(expiresAt) {
+		return "", ErrPasswordResetExpired
+	}
+
+	return userID, nil
+}
+
+// MarkPasswordResetUsed marks a password reset token as used so it cannot be reused.
+func (d *DB) MarkPasswordResetUsed(token string) error {
+	res, err := d.db.Exec(
+		`UPDATE password_resets SET used = 1 WHERE token = ?`, token,
+	)
+	if err != nil {
+		return fmt.Errorf("metadata: mark password reset used: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrPasswordResetNotFound
+	}
+	return nil
 }
