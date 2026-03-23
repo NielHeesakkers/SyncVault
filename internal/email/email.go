@@ -3,9 +3,11 @@ package email
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"net/smtp"
 	"strconv"
 	"text/template"
+	"time"
 )
 
 // Service sends transactional emails via SMTP.
@@ -64,6 +66,55 @@ func (s *Service) UpdateFromSettings(settings map[string]string) {
 	if v, ok := settings["smtp.from"]; ok && v != "" {
 		s.from = v
 	}
+}
+
+// SMTPTestResult contains the result of an SMTP connection test.
+type SMTPTestResult struct {
+	Host  string `json:"host"`
+	Port  int    `json:"port"`
+	Error string `json:"error,omitempty"`
+}
+
+// TestConnection tests the SMTP connection and authentication without sending an email.
+func (s *Service) TestConnection() SMTPTestResult {
+	result := SMTPTestResult{Host: s.host, Port: s.port}
+
+	if !s.enabled {
+		result.Error = "SMTP is not enabled"
+		return result
+	}
+	if s.host == "" {
+		result.Error = "SMTP host is not configured"
+		return result
+	}
+
+	addr := fmt.Sprintf("%s:%d", s.host, s.port)
+
+	// Test TCP connection with timeout
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		result.Error = fmt.Sprintf("Cannot connect to %s — %v", addr, err)
+		return result
+	}
+
+	// Test SMTP handshake
+	client, err := smtp.NewClient(conn, s.host)
+	if err != nil {
+		conn.Close()
+		result.Error = fmt.Sprintf("SMTP handshake failed: %v", err)
+		return result
+	}
+	defer client.Close()
+
+	// Test authentication
+	auth := smtp.PlainAuth("", s.user, s.password, s.host)
+	if err := client.Auth(auth); err != nil {
+		result.Error = fmt.Sprintf("Authentication failed: %v", err)
+		return result
+	}
+
+	client.Quit()
+	return result
 }
 
 var testEmailTmpl = template.Must(template.New("test_email").Parse(`Hello,
@@ -212,10 +263,9 @@ func (s *Service) SendQuotaWarning(toEmail, username string, usedBytes, quotaByt
 	return s.send(toEmail, subject, body)
 }
 
-// send composes and sends a plain-text email via SMTP.
+// send composes and sends a plain-text email via SMTP with a 10-second timeout.
 func (s *Service) send(to, subject, body string) error {
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
-	auth := smtp.PlainAuth("", s.user, s.password, s.host)
 
 	msg := []byte(
 		"From: " + s.from + "\r\n" +
@@ -226,7 +276,46 @@ func (s *Service) send(to, subject, body string) error {
 			body,
 	)
 
-	return smtp.SendMail(addr, auth, s.user, []string{to}, msg)
+	// Use a dialer with timeout so we don't hang forever on unreachable SMTP servers.
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("SMTP connection failed: %w", err)
+	}
+
+	client, err := smtp.NewClient(conn, s.host)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("SMTP client error: %w", err)
+	}
+	defer client.Close()
+
+	// Auth
+	auth := smtp.PlainAuth("", s.user, s.password, s.host)
+	if err := client.Auth(auth); err != nil {
+		return fmt.Errorf("SMTP auth failed: %w", err)
+	}
+
+	// Set sender and recipient
+	if err := client.Mail(s.user); err != nil {
+		return fmt.Errorf("SMTP MAIL FROM failed: %w", err)
+	}
+	if err := client.Rcpt(to); err != nil {
+		return fmt.Errorf("SMTP RCPT TO failed: %w", err)
+	}
+
+	// Send body
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("SMTP DATA failed: %w", err)
+	}
+	if _, err := w.Write(msg); err != nil {
+		return fmt.Errorf("SMTP write failed: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("SMTP send failed: %w", err)
+	}
+
+	return client.Quit()
 }
 
 // renderTemplate executes t with data and returns the result as a string.

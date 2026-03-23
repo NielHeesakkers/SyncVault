@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Mail, Send, Save, Settings2, BookOpen, HardDrive, Code, Download, Upload, Trash2 } from 'lucide-svelte';
+	import { Mail, Send, Save, Settings2, BookOpen, HardDrive, Code, Download, Upload, Trash2, PlugZap } from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores';
 	import { formatBytes, formatDate } from '$lib/utils';
@@ -23,6 +23,7 @@
 	let loading = $state(true);
 	let saving = $state(false);
 	let testing = $state(false);
+	let testingConnection = $state(false);
 	let smtpEnabled = $state(false);
 	let smtpHost = $state('');
 	let smtpPort = $state('587');
@@ -75,7 +76,7 @@
 			}
 			if (versionRes.ok) {
 				const data = await versionRes.json();
-				currentVersion = data.version || '';
+				currentVersion = data.current_version || data.version || '';
 				changelogVersions = data.changelog || [];
 			}
 			loadBackups();
@@ -125,6 +126,23 @@
 			}
 		} finally {
 			testing = false;
+		}
+	}
+
+	async function testSmtpConnection() {
+		testingConnection = true;
+		try {
+			const res = await api.post('/api/admin/settings/test-smtp', {});
+			const data = await res.json().catch(() => ({}));
+			if (data.success) {
+				showToast(`SMTP connection OK — ${data.host}:${data.port}`, 'success');
+			} else {
+				showToast(data.error || 'Connection failed', 'error');
+			}
+		} catch {
+			showToast('Could not reach server', 'error');
+		} finally {
+			testingConnection = false;
 		}
 	}
 
@@ -326,10 +344,16 @@
 				</div>
 			</div>
 			<div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
-				<button onclick={openTestEmail} disabled={!smtpEnabled}
-					class="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700">
-					<Send size={15} /> Send Test Email
-				</button>
+				<div class="flex gap-2">
+					<button onclick={testSmtpConnection} disabled={!smtpEnabled || testingConnection}
+						class="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700">
+						<PlugZap size={15} /> {testingConnection ? 'Testing…' : 'Test Connection'}
+					</button>
+					<button onclick={openTestEmail} disabled={!smtpEnabled}
+						class="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700">
+						<Send size={15} /> Send Test Email
+					</button>
+				</div>
 				<button onclick={saveSettings} disabled={saving}
 					class="flex items-center gap-1 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:opacity-50">
 					<Save size={14} /> {saving ? 'Saving…' : 'Save'}

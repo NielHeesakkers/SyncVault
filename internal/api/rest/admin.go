@@ -50,6 +50,33 @@ func (s *Server) handleAdminPutSettings(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "settings saved"})
 }
 
+// handleAdminTestSMTP handles POST /api/admin/settings/test-smtp.
+// It tests the SMTP connection without sending an email.
+func (s *Server) handleAdminTestSMTP(w http.ResponseWriter, r *http.Request) {
+	if s.email == nil || !s.email.Enabled() {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "SMTP is not enabled — save your settings first"})
+		return
+	}
+
+	result := s.email.TestConnection()
+	if result.Error != "" {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"error":   result.Error,
+			"host":    result.Host,
+			"port":    result.Port,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"host":    result.Host,
+		"port":    result.Port,
+		"message": "SMTP connection successful — server is reachable and credentials are valid",
+	})
+}
+
 // handleAdminTestEmail handles POST /api/admin/settings/test-email.
 func (s *Server) handleAdminTestEmail(w http.ResponseWriter, r *http.Request) {
 	if s.email == nil || !s.email.Enabled() {

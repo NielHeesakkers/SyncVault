@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Clock, FolderOpen, FileText, Download, RotateCcw, Settings2, Share2, Copy, Check } from 'lucide-svelte';
+	import { Clock, FolderOpen, FileText, Download, RotateCcw, Settings2, Share2, Copy, Check, Trash2 } from 'lucide-svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores';
@@ -446,6 +446,49 @@
 		setTimeout(() => (shareCopied = false), 2000);
 	}
 
+	// Delete folder
+	let showDeleteFolder = $state(false);
+	let deleteFolderTarget = $state<HistoryFile | null>(null);
+	let deleteFolderHasSyncTask = $state(false);
+	let deletingFolder = $state(false);
+
+	async function openDeleteFolder(file: HistoryFile) {
+		deleteFolderTarget = file;
+		deleteFolderHasSyncTask = false;
+		deletingFolder = false;
+
+		// Check if this folder has a sync task
+		try {
+			const res = await api.get(`/api/tasks?folder_id=${file.id}`);
+			if (res.ok) {
+				const data = await res.json();
+				const tasks = data.tasks || [];
+				deleteFolderHasSyncTask = tasks.length > 0;
+			}
+		} catch { /* non-fatal */ }
+
+		showDeleteFolder = true;
+	}
+
+	async function confirmDeleteFolder() {
+		if (!deleteFolderTarget) return;
+		deletingFolder = true;
+		try {
+			const res = await api.del(`/api/files/${deleteFolderTarget.id}`);
+			if (res.ok) {
+				showToast(`"${deleteFolderTarget.name}" deleted`, 'success');
+				showDeleteFolder = false;
+				deleteFolderTarget = null;
+				loadHistory();
+			} else {
+				const data = await res.json().catch(() => ({}));
+				showToast(data.error || 'Could not delete folder', 'error');
+			}
+		} finally {
+			deletingFolder = false;
+		}
+	}
+
 	function formatSelectedDate(dateStr: string): string {
 		const d = new Date(dateStr + 'T12:00:00');
 		return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -589,6 +632,13 @@
 												class="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-800 font-medium px-2 py-1 rounded hover:bg-gray-100 transition-colors"
 											>
 												<RotateCcw size={13} /> Restore
+											</button>
+											<button
+												onclick={(e) => { e.stopPropagation(); openDeleteFolder(file); }}
+												title="Delete folder"
+												class="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors"
+											>
+												<Trash2 size={13} /> Delete
 											</button>
 										{:else}
 											<button
@@ -887,6 +937,34 @@
 			{/if}
 		</div>
 	</div>
+</Modal>
+{/if}
+
+{#if showDeleteFolder && deleteFolderTarget}
+<Modal title="Delete Folder" onclose={() => (showDeleteFolder = false)}>
+	{#snippet children()}
+		<div class="space-y-3">
+			{#if deleteFolderHasSyncTask}
+				<div class="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+					<div class="text-amber-600 mt-0.5">⚠️</div>
+					<div>
+						<p class="text-sm font-medium text-amber-800">This folder has an active sync task</p>
+						<p class="text-sm text-amber-700 mt-1">If you delete this folder, the sync client will recreate it and re-upload all files on the next sync cycle.</p>
+					</div>
+				</div>
+			{/if}
+			<p class="text-sm text-gray-600">Are you sure you want to delete <span class="font-semibold">"{deleteFolderTarget.name}"</span> and all its contents?</p>
+			<p class="text-xs text-gray-400">This will move the folder and all files inside to the trash.</p>
+		</div>
+	{/snippet}
+	{#snippet footer()}
+		<button onclick={() => (showDeleteFolder = false)}
+			class="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
+		<button onclick={confirmDeleteFolder} disabled={deletingFolder}
+			class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 disabled:opacity-50">
+			{deletingFolder ? 'Deleting…' : 'Delete'}
+		</button>
+	{/snippet}
 </Modal>
 {/if}
 

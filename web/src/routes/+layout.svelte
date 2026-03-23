@@ -32,6 +32,9 @@
 	let userMenuOpen = $state(false);
 	let user = $derived($currentUser);
 
+	// Server version
+	let serverVersion = $state('');
+
 	// Notifications
 	let unreadCount = $state(0);
 	let notifications = $state<any[]>([]);
@@ -73,7 +76,16 @@
 	let changePwdForm = $state({ current_password: '', new_password: '', confirm_password: '' });
 	let changingPwd = $state(false);
 
-	onMount(() => {
+	onMount(async () => {
+		// Fetch server version
+		try {
+			const res = await fetch('/api/health');
+			if (res.ok) {
+				const data = await res.json();
+				serverVersion = data.version || '';
+			}
+		} catch { /* non-fatal */ }
+
 		if (!isPublic) {
 			if (!api.isLoggedIn()) {
 				goto('/login');
@@ -201,23 +213,13 @@
 				{/if}
 			</nav>
 
-			<!-- Changelog + User section at bottom -->
+			<!-- User section at bottom -->
 			<div class="px-3 py-3 border-t border-white/10">
-				<a
-					href="/changelog"
-					class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors
-					{isActive('/changelog')
-						? 'bg-white/15 text-white'
-						: 'text-white/70 hover:bg-white/10 hover:text-white'}"
-				>
-					<BookOpen size={18} />
-					Changelog
-				</a>
 				<div class="px-3 py-2 text-xs text-white/40 truncate">
 					{user?.username || ''}
 				</div>
 				<div class="px-3 py-1 text-xs text-white/20">
-					v1.5
+					{serverVersion ? `v${serverVersion}` : ''}
 				</div>
 			</div>
 		</aside>

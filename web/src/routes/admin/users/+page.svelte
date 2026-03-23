@@ -127,7 +127,7 @@
 				} catch { /* team assignment is non-fatal */ }
 				showToast('User created', 'success');
 				showCreate = false;
-				loadUsers();
+				await loadUsers();
 			} else {
 				const data = await res.json().catch(() => ({}));
 				showToast(data.error || data.message || 'Failed to create user', 'error');

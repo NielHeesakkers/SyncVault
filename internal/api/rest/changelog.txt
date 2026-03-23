@@ -1,3 +1,9 @@
+## [2.1] — 2026-03-23
+- Sidebar shows server version dynamically
+- Changelog tab shows correct version number
+- Removed Changelog link from sidebar (now in Settings → Changelog)
+- Merged duplicate v1.9 entries
+
 ## [2.0] — 2026-03-23
 - One-time encrypted connection tokens (.syncvault files)
 - Token refresh with PIN re-emailed to user
@@ -11,10 +17,10 @@
 - Admin password reset via Docker env var
 
 ## [1.9] — 2026-03-23
-- One-time connection tokens, token refresh, sync engine auth fix, UI bug fixes
-
-## [1.9] — 2026-03-23
-- Password recovery, smart admin reset, forgot password UI
+- Password recovery and forgot password UI
+- Smart admin password reset via Docker env var
+- Security-scoped bookmarks for sync folders
+- Sync progress UI with file names and speed
 
 ## [1.8] — 2026-03-22
 - Admin password reset CLI, security-scoped bookmarks, sync progress UI, os.Logger debugging

@@ -139,6 +139,7 @@ func (s *Server) setupRoutes() {
 			r.Get("/api/admin/activity", s.handleAdminActivity)
 			r.Get("/api/admin/settings", s.handleAdminGetSettings)
 			r.Put("/api/admin/settings", s.handleAdminPutSettings)
+			r.Post("/api/admin/settings/test-smtp", s.handleAdminTestSMTP)
 			r.Post("/api/admin/settings/test-email", s.handleAdminTestEmail)
 			r.Post("/api/admin/backups/upload", s.handleUploadRestore)
 			r.Get("/api/admin/backups", s.handleListBackups)
@@ -153,7 +154,7 @@ func (s *Server) setupRoutes() {
 	r.NotFound(ServeSPA().ServeHTTP)
 }
 
-const AppVersion = "2.0"
+const AppVersion = "2.1"
 
 // handleHealth returns a simple health check response.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
