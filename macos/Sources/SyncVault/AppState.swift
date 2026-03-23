@@ -12,6 +12,7 @@ class AppState: ObservableObject {
     @Published var isConnected = false
     @Published var isSyncing = false
     @Published var syncProgress: SyncProgress?
+    @Published var syncQueue: [String] = []
     @Published var lastError: String?
     @Published var recentActivity: [ActivityItem] = []
     @Published var syncTasks: [SyncTask] = []
@@ -167,7 +168,12 @@ class AppState: ObservableObject {
 
         // Use local folder name as remote folder name
         let folderName = url.lastPathComponent
-        let taskType = mode == .twoWay ? "sync" : "backup"
+        let taskType: String
+        switch mode {
+        case .twoWay: taskType = "sync"
+        case .uploadOnly: taskType = "backup"
+        case .onDemand: taskType = "ondemand"
+        }
 
         // Create task on server (this creates the remote folder automatically)
         let body: [String: Any] = [
@@ -186,6 +192,11 @@ class AppState: ObservableObject {
         )
         syncTasks.append(task)
         saveConfig()
+
+        // For on-demand mode, register the File Provider domain
+        if mode == .onDemand {
+            try await setupOnDemandSync(folderID: response.folderID)
+        }
     }
 
     func deleteSyncTask(_ task: SyncTask) {
@@ -255,6 +266,9 @@ class AppState: ObservableObject {
         do {
             try await client.acceptNotification(id: notificationId)
 
+            // Save security-scoped bookmark for persistent access
+            saveBookmark(for: localFolder)
+
             // Create a sync task pointing at the team folder on the server
             let task = SyncTask(
                 localPath: localFolder.path,
@@ -300,7 +314,7 @@ class AppState: ObservableObject {
             syncProgress = nil
         }
 
-        for task in syncTasks where task.isEnabled {
+        for task in syncTasks where task.isEnabled && task.mode != .onDemand {
             logger.info("Starting task: \(task.remoteFolderName) (remote: \(task.remoteFolderID), local: \(task.localPath), mode: \(task.mode.rawValue))")
 
             // Resolve security-scoped bookmark for folder access
@@ -320,6 +334,7 @@ class AppState: ObservableObject {
                 let result = try await engine.syncTask(task) { [weak self] progress in
                     Task { @MainActor [weak self] in
                         self?.syncProgress = progress
+                        self?.syncQueue = progress.pendingFiles
                     }
                 }
 

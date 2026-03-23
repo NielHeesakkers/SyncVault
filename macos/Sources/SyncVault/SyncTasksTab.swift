@@ -47,11 +47,12 @@ struct SyncTasksTab: View {
                                     .foregroundColor(.secondary)
                             }
                             Spacer()
-                            Text(task.mode == .twoWay ? "Two-way" : "Backup")
+                            Text(task.mode.displayName)
                                 .font(.caption)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 2)
-                                .background(task.mode == .twoWay ? Color.blue.opacity(0.1) : Color.orange.opacity(0.1))
+                                .background(badgeColor(for: task.mode).opacity(0.1))
+                                .foregroundColor(badgeColor(for: task.mode))
                                 .cornerRadius(4)
                             Toggle("", isOn: Binding(
                                 get: { task.isEnabled },
@@ -128,6 +129,14 @@ struct SyncTasksTab: View {
             }
         }
     }
+
+    private func badgeColor(for mode: SyncTask.SyncMode) -> Color {
+        switch mode {
+        case .twoWay: return .blue
+        case .uploadOnly: return .orange
+        case .onDemand: return .purple
+        }
+    }
 }
 
 struct EditSyncTaskView: View {
@@ -166,6 +175,7 @@ struct EditSyncTaskView: View {
                         panel.canChooseFiles = false
                         if panel.runModal() == .OK, let url = panel.url {
                             localPath = url.path
+                            appState.saveBookmark(for: url)
                         }
                     }
                 }
@@ -178,8 +188,9 @@ struct EditSyncTaskView: View {
                 }
 
                 Picker("Mode", selection: $mode) {
-                    Text("Two-way Sync").tag(SyncTask.SyncMode.twoWay)
-                    Text("Upload Only (Backup)").tag(SyncTask.SyncMode.uploadOnly)
+                    ForEach(SyncTask.SyncMode.allCases, id: \.self) { m in
+                        Text(m.displayName).tag(m)
+                    }
                 }
 
                 Toggle("Enabled", isOn: $isEnabled)
@@ -195,6 +206,12 @@ struct EditSyncTaskView: View {
                     updated.mode = mode
                     updated.isEnabled = isEnabled
                     appState.updateSyncTask(updated)
+                    // Handle on-demand: setup File Provider
+                    if mode == .onDemand {
+                        Task {
+                            try? await appState.setupOnDemandSync(folderID: updated.remoteFolderID)
+                        }
+                    }
                     isPresented = nil
                 }
                 .disabled(localPath.isEmpty)
@@ -245,8 +262,15 @@ struct AddSyncTaskView: View {
                 }
 
                 Picker("Mode", selection: $mode) {
-                    Text("Two-way Sync").tag(SyncTask.SyncMode.twoWay)
-                    Text("Upload Only (Backup)").tag(SyncTask.SyncMode.uploadOnly)
+                    ForEach(SyncTask.SyncMode.allCases, id: \.self) { m in
+                        Text(m.displayName).tag(m)
+                    }
+                }
+
+                if mode == .onDemand {
+                    Text("Files appear in Finder but are downloaded only when opened. Requires macOS File Provider.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
 

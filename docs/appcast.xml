@@ -9,9 +9,9 @@
       <pubDate>Sun, 23 Mar 2026 14:00:00 +0100</pubDate>
       <enclosure
         url="https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1/SyncVault-2.1.dmg"
-        length=""
+        length="2515932"
         type="application/octet-stream"
-        sparkle:edSignature="" />
+        sparkle:edSignature="X2qoVpbk0GBGCm5TI86UfWQDzpNH0ALPnD82QdXLDMU4FwKqMUkCde1UleIta6w8uEXVyNK11UI8cotrB3b4CA==" />
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
     </item>
   </channel>

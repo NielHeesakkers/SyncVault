@@ -56,10 +56,12 @@ actor SyncEngine {
         var completed = 0
         var totalBytesTransferred: Int64 = 0
         let syncStart = Date()
+        let allFileNames = actions.map { $0.fileName }
 
-        for action in actions {
+        for (index, action) in actions.enumerated() {
             do {
                 let startTime = Date()
+                let pending = Array(allFileNames.dropFirst(index + 1).prefix(5))
 
                 switch action {
                 case .upload(let path, let remoteName):
@@ -70,7 +72,8 @@ actor SyncEngine {
                         currentFile: remoteName, action: "Uploading",
                         bytesTransferred: totalBytesTransferred, totalBytes: size,
                         filesCompleted: completed, filesTotal: totalActions,
-                        bytesPerSecond: Self.speed(bytes: totalBytesTransferred, since: syncStart)
+                        bytesPerSecond: Self.speed(bytes: totalBytesTransferred, since: syncStart),
+                        pendingFiles: pending
                     ))
 
                     let _ = try await apiClient.uploadFile(data: data, filename: remoteName, parentID: task.remoteFolderID)
@@ -86,7 +89,8 @@ actor SyncEngine {
                         currentFile: remoteName, action: "Downloading",
                         bytesTransferred: totalBytesTransferred, totalBytes: 0,
                         filesCompleted: completed, filesTotal: totalActions,
-                        bytesPerSecond: Self.speed(bytes: totalBytesTransferred, since: syncStart)
+                        bytesPerSecond: Self.speed(bytes: totalBytesTransferred, since: syncStart),
+                        pendingFiles: pending
                     ))
 
                     let data = try await apiClient.downloadFile(id: fileID)
@@ -275,6 +279,7 @@ struct SyncProgress {
     var filesCompleted: Int
     var filesTotal: Int
     var bytesPerSecond: Double
+    var pendingFiles: [String]  // filenames still to be synced
 }
 
 struct SyncResult {
@@ -292,6 +297,16 @@ enum SyncAction: CustomStringConvertible {
     case deleteRemote(String, String)        // remoteFileID, remoteName
     case deleteLocal(String, String)         // localPath, remoteName
     case conflict(String, String, String)    // localPath, remoteFileID, remoteName
+
+    var fileName: String {
+        switch self {
+        case .upload(_, let name): return name
+        case .download(_, _, let name): return name
+        case .deleteRemote(_, let name): return name
+        case .deleteLocal(_, let name): return name
+        case .conflict(_, _, let name): return name
+        }
+    }
 
     var description: String {
         switch self {

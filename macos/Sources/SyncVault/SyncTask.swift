@@ -14,6 +14,15 @@ struct SyncTask: Codable, Identifiable {
     enum SyncMode: String, Codable, CaseIterable {
         case twoWay = "two_way"
         case uploadOnly = "upload_only"
+        case onDemand = "on_demand"
+
+        var displayName: String {
+            switch self {
+            case .twoWay: return "Two-way Sync"
+            case .uploadOnly: return "Upload Only (Backup)"
+            case .onDemand: return "On-demand"
+            }
+        }
     }
 
     init(localPath: String, remoteFolderID: String, remoteFolderName: String, mode: SyncMode = .twoWay, isTeamFolder: Bool = false) {
