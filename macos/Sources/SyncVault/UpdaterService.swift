@@ -101,20 +101,22 @@ class UpdaterService: ObservableObject {
     }
 
     private func installUpdate(dmgPath: URL) {
-        let scriptPath = "/tmp/syncvault_update.sh"
+        // Use NSTemporaryDirectory which works inside sandbox
+        let scriptPath = NSTemporaryDirectory() + "syncvault_update.sh"
         let pid = ProcessInfo.processInfo.processIdentifier
         let appName = "SyncVault"
+        let appPath = Bundle.main.bundlePath
         let script = """
         #!/bin/bash
         set -e
         while kill -0 \(pid) 2>/dev/null; do sleep 0.5; done
         MOUNT_POINT=$(hdiutil attach "\(dmgPath.path)" -nobrowse -noverify | grep "/Volumes/" | awk -F'\\t' '{print $NF}')
         if [ -d "$MOUNT_POINT/\(appName).app" ]; then
-            rm -rf "/Applications/\(appName).app"
-            cp -R "$MOUNT_POINT/\(appName).app" "/Applications/"
+            rm -rf "\(appPath)"
+            cp -R "$MOUNT_POINT/\(appName).app" "\(appPath)"
             hdiutil detach "$MOUNT_POINT" -quiet
             rm -f "\(dmgPath.path)"
-            open "/Applications/\(appName).app"
+            open "\(appPath)"
         else
             hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || true
         fi
@@ -125,7 +127,7 @@ class UpdaterService: ObservableObject {
             try script.write(toFile: scriptPath, atomically: true, encoding: .utf8)
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: "/bin/bash")
-            proc.arguments = ["-c", "chmod +x \(scriptPath) && nohup \(scriptPath) &>/dev/null &"]
+            proc.arguments = ["-c", "chmod +x '\(scriptPath)' && nohup '\(scriptPath)' &>/dev/null &"]
             try proc.run()
             proc.waitUntilExit()
 
