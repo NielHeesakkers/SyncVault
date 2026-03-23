@@ -1,4 +1,4 @@
-## v2.0
+## [2.0] — 2026-03-23
 - One-time encrypted connection tokens (.syncvault files)
 - Token refresh with PIN re-emailed to user
 - JWT token TTL extended to 24h with auto re-auth
