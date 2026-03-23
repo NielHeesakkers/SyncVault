@@ -19,15 +19,35 @@ struct GeneralTab: View {
             }
 
             Section("Updates") {
-                Toggle("Automatically check for updates", isOn: Binding(
-                    get: { updaterService.updater.automaticallyChecksForUpdates },
-                    set: { updaterService.updater.automaticallyChecksForUpdates = $0 }
-                ))
+                Toggle("Automatically check for updates", isOn: $updaterService.automaticallyChecksForUpdates)
+
+                if let version = updaterService.availableVersion {
+                    HStack {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .foregroundColor(.orange)
+                        Text("Update available: v\(version)")
+                            .foregroundColor(.orange)
+                        Spacer()
+                        Button("Download") {
+                            updaterService.downloadAndInstallUpdate(version: version)
+                        }
+                        .disabled(updaterService.isDownloading)
+                    }
+                }
+
+                if updaterService.isDownloading {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        Text("Downloading update...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
 
             Section("About") {
                 LabeledContent("Version", value: "SyncVault v\(appVersion)")
-                LabeledContent("Build", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown")
             }
 
             Section("What's New in v\(appVersion)") {
@@ -45,7 +65,7 @@ struct GeneralTab: View {
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    Text("Changelog unavailable. Connect to a server to load.")
+                    Text("Changelog unavailable.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -58,7 +78,6 @@ struct GeneralTab: View {
     }
 
     private func loadChangelog() async {
-        // Retrieve server URL from shared defaults (set on connect)
         let sharedDefaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
         guard let serverURL = sharedDefaults?.string(forKey: "serverURL"), !serverURL.isEmpty else { return }
 
@@ -69,7 +88,6 @@ struct GeneralTab: View {
             let url = URL(string: "\(serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/api/version")!
             var request = URLRequest(url: url)
             request.timeoutInterval = 5
-            // Add auth token if available
             if let token = KeychainHelper.load(key: "access_token") {
                 request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
@@ -77,12 +95,9 @@ struct GeneralTab: View {
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let notes = json["changelog"] as? String ?? (json["release_notes"] as? String) {
                 changelog = notes
-            } else if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let version = json["version"] as? String {
-                changelog = "Server version: \(version)"
             }
         } catch {
-            // Silently ignore — changelog is non-critical
+            // Silently ignore
         }
     }
 }

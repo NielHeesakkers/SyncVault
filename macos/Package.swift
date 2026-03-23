@@ -6,14 +6,12 @@ let package = Package(
     platforms: [.macOS(.v13)],
     dependencies: [
         .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.15.0"),
-        .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
     ],
     targets: [
         .executableTarget(
             name: "SyncVault",
             dependencies: [
                 .product(name: "SQLite", package: "SQLite.swift"),
-                .product(name: "Sparkle", package: "Sparkle"),
             ],
         ),
         .testTarget(

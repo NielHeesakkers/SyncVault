@@ -148,8 +148,32 @@ struct MenuBarView: View {
             }
             .keyboardShortcut(",", modifiers: .command)
 
-            Button("Check for Updates...") {
-                updaterService.checkForUpdates()
+            if let version = updaterService.availableVersion {
+                Button {
+                    updaterService.downloadAndInstallUpdate(version: version)
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .foregroundColor(.orange)
+                        Text("Update to v\(version)")
+                            .foregroundColor(.orange)
+                    }
+                }
+                .disabled(updaterService.isDownloading)
+            } else {
+                Button("Check for Updates...") {
+                    updaterService.checkForUpdates()
+                }
+            }
+
+            if updaterService.isDownloading {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                    Text("Downloading...")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             }
 
             Divider()
