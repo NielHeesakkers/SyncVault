@@ -1,18 +1,31 @@
 {
-  "version": "1.9",
+  "version": "2.1",
   "min_version": "1.0",
   "release_date": "2026-03-23",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v1.9/SyncVault-1.9.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1/SyncVault-2.1.dmg",
   "history": [
     {
-      "version": "1.9",
+      "version": "2.1",
       "date": "2026-03-23",
       "changes": [
-        "Password recovery via email (forgot password flow)",
-        "Smart admin password reset via env vars",
-        "Custom update system (replaces Sparkle)",
-        "Security-scoped bookmarks for persistent folder access",
-        "Sync progress in menu bar with file names and speed"
+        "SMTP Test Connection button",
+        "SMTP 10s timeout (no more hanging)",
+        "Delete folders from Files with sync task warning",
+        "Sidebar version loaded dynamically",
+        "Changelog shows correct version"
+      ]
+    },
+    {
+      "version": "2.0",
+      "date": "2026-03-23",
+      "changes": [
+        "One-time encrypted connection tokens (.syncvault files)",
+        "Token refresh with PIN re-emailed to user",
+        "JWT token TTL extended to 24h with auto re-auth",
+        "Sync engine fixed (401 auth errors)",
+        "Combined edit user + password reset dialog",
+        "Test email fix (no more hanging)",
+        "Password reset sends warning email"
       ]
     }
   ]
