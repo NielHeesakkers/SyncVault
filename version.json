@@ -1,9 +1,16 @@
 {
-  "version": "2.1",
+  "version": "2.1.2",
   "min_version": "1.0",
   "release_date": "2026-03-23",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1/SyncVault-2.1.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1.2/SyncVault-2.1.2.dmg",
   "history": [
+    {
+      "version": "2.1.2",
+      "date": "2026-03-23",
+      "changes": [
+        "Menu bar redesign, settings sidebar, sync queue, on-demand mode, Check for Updates fix"
+      ]
+    },
     {
       "version": "2.1",
       "date": "2026-03-23",

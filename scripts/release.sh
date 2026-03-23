@@ -19,10 +19,10 @@ fi
 
 # Auto-increment if "bump"
 if [ "$VERSION" = "bump" ]; then
-    CURRENT=$(grep 'AppVersion = ' internal/api/rest/server.go | grep -oE '[0-9]+\.[0-9]+')
-    MAJOR=$(echo "$CURRENT" | cut -d. -f1)
-    MINOR=$(echo "$CURRENT" | cut -d. -f2)
-    VERSION="$MAJOR.$((MINOR + 1))"
+    CURRENT=$(grep 'AppVersion = ' internal/api/rest/server.go | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?')
+    IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+    PATCH=${PATCH:-0}
+    VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
     echo "Auto-bumping: $CURRENT → $VERSION"
 fi
 
@@ -141,10 +141,46 @@ cat > docs/appcast.xml << APPCAST
 </rss>
 APPCAST
 
+# 9. Update version.json (used by custom updater in the app)
+echo "[9/9] Updating version.json..."
+python3 -c "
+import json
+with open('version.json', 'r') as f:
+    vj = json.load(f)
+
+vj['version'] = '$VERSION'
+vj['release_date'] = '$DATE'
+vj['dmg_url'] = 'https://github.com/NielHeesakkers/SyncVault/releases/download/v$VERSION/SyncVault-$VERSION.dmg'
+
+# Add to history
+new_entry = {'version': '$VERSION', 'date': '$DATE', 'changes': ['$MESSAGE']}
+if not any(h['version'] == '$VERSION' for h in vj.get('history', [])):
+    vj.setdefault('history', []).insert(0, new_entry)
+
+with open('version.json', 'w') as f:
+    json.dump(vj, f, indent=2)
+print('version.json updated to $VERSION')
+"
+
+# 10. Auto commit, push, and release
+echo "[10/10] Committing, pushing, and creating release..."
+git add -A
+git commit -m "$(cat <<COMMIT
+v$VERSION: $MESSAGE
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+COMMIT
+)"
+git push origin main
+
+# Create GitHub release with both DMG and ZIP
+gh release create "v$VERSION" \
+    "macos/build/SyncVault-$VERSION.dmg" \
+    "macos/build/SyncVault-$VERSION.zip" \
+    --title "SyncVault v$VERSION" \
+    --notes "$MESSAGE"
+
 echo ""
-echo "=== v$VERSION ready! ==="
-echo ""
-echo "Next steps:"
-echo "  git add -A && git commit -m \"v$VERSION: $MESSAGE\""
-echo "  git push origin main"
-echo "  gh release create v$VERSION macos/build/SyncVault-$VERSION.dmg macos/build/SyncVault-$VERSION.zip --title \"SyncVault v$VERSION\" --notes \"$MESSAGE\""
+echo "=== v$VERSION released! ==="
+echo "  GitHub: https://github.com/NielHeesakkers/SyncVault/releases/tag/v$VERSION"
+echo "  Docker image building via GitHub Actions..."
