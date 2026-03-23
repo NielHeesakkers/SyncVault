@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
 	"github.com/NielHeesakkers/SyncVault/internal/metadata"
+	"github.com/NielHeesakkers/SyncVault/internal/token"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -55,32 +57,40 @@ func (s *Server) handleAdminTestEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims := auth.GetClaims(r.Context())
-	user, err := s.db.GetUserByID(claims.UserID)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load user"})
-		return
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := readJSON(r, &body); err != nil || body.Email == "" {
+		// Fall back to the logged-in admin's email if no body provided.
+		claims := auth.GetClaims(r.Context())
+		user, err := s.db.GetUserByID(claims.UserID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load user"})
+			return
+		}
+		body.Email = user.Email
 	}
 
-	if err := s.email.SendTestEmail(user.Email); err != nil {
+	if err := s.email.SendTestEmail(body.Email); err != nil {
 		log.Printf("admin: test email failed: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to send test email: " + err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "test email sent to " + user.Email})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "test email sent to " + body.Email})
 }
 
 // adminUserResponse is the JSON representation of a user with storage stats.
 type adminUserResponse struct {
-	ID           string    `json:"id"`
-	Username     string    `json:"username"`
-	Email        string    `json:"email"`
-	Role         string    `json:"role"`
-	QuotaBytes   int64     `json:"quota_bytes"`
-	StorageUsed  int64     `json:"storage_used"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID          string    `json:"id"`
+	Username    string    `json:"username"`
+	Email       string    `json:"email"`
+	Role        string    `json:"role"`
+	QuotaBytes  int64     `json:"quota_bytes"`
+	StorageUsed int64     `json:"storage_used"`
+	HasToken    bool      `json:"has_token"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // handleAdminListUsers handles GET /api/admin/users.
@@ -98,6 +108,7 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not compute storage usage"})
 			return
 		}
+		hasToken := s.db.HasConnectionToken(u.ID)
 		result = append(result, adminUserResponse{
 			ID:          u.ID,
 			Username:    u.Username,
@@ -105,6 +116,7 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 			Role:        u.Role,
 			QuotaBytes:  u.QuotaBytes,
 			StorageUsed: used,
+			HasToken:    hasToken,
 			CreatedAt:   u.CreatedAt,
 			UpdatedAt:   u.UpdatedAt,
 		})
@@ -366,6 +378,96 @@ func (s *Server) handleAdminStorageFolders(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"folders": result})
+}
+
+// handleDownloadToken handles GET /api/admin/users/{id}/token.
+// It returns the encrypted .syncvault file for the specified user.
+func (s *Server) handleDownloadToken(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "id")
+
+	user, err := s.db.GetUserByID(userID)
+	if err != nil {
+		if errors.Is(err, metadata.ErrUserNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get user"})
+		return
+	}
+
+	data, err := s.db.GetConnectionToken(userID)
+	if err != nil {
+		if errors.Is(err, metadata.ErrConnectionTokenNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no connection token for this user"})
+			return
+		}
+		if errors.Is(err, metadata.ErrConnectionTokenUsed) {
+			writeJSON(w, http.StatusGone, map[string]string{"error": "token already used — click refresh to generate a new one"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not retrieve token"})
+		return
+	}
+
+	// Mark token as used (one-time download)
+	_ = s.db.MarkConnectionTokenUsed(userID)
+
+	filename := fmt.Sprintf("%s.syncvault", user.Username)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+// handleRefreshToken handles POST /api/admin/users/{id}/token/refresh.
+// It generates a new connection token and PIN, emails the PIN, and stores the token.
+func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "id")
+
+	user, err := s.db.GetUserByID(userID)
+	if err != nil {
+		if errors.Is(err, metadata.ErrUserNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get user"})
+		return
+	}
+
+	// Get the base URL from settings
+	baseURL, _ := s.db.GetSetting("base_url")
+	if baseURL == "" {
+		baseURL = "https://" + r.Host
+	}
+
+	// Generate new PIN and encrypt credentials
+	pin := token.GeneratePIN()
+	connData := token.ConnectionData{
+		ServerURL: baseURL,
+		Username:  user.Username,
+		Password:  "", // Password is not stored — user must know it
+	}
+
+	// For refresh, we can't include the password since we don't have it.
+	// Instead, the token file just contains server URL and username.
+	encrypted, err := token.Encrypt(connData, pin)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not encrypt token"})
+		return
+	}
+
+	// Save token (resets used flag)
+	if err := s.db.SaveConnectionToken(userID, encrypted); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save token"})
+		return
+	}
+
+	// Email the PIN
+	if s.email != nil && s.email.Enabled() {
+		_ = s.email.SendWelcome(user.Email, user.Username, "(your existing password)", pin)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "New token generated and PIN emailed"})
 }
 
 // handleAdminActivity handles GET /api/admin/activity.

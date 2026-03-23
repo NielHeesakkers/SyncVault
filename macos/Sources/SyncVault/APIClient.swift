@@ -269,6 +269,20 @@ actor APIClient {
             throw APIError.serverError(http.statusCode)
         }
     }
+
+    /// Re-authenticate using saved credentials from Keychain
+    func reAuthenticate() async -> Bool {
+        guard let password = KeychainHelper.load(key: "server_password") else { return false }
+        // Get username from current state
+        let usernameKey = "saved_username"
+        guard let username = KeychainHelper.load(key: usernameKey) ?? UserDefaults.standard.string(forKey: "username") else { return false }
+        do {
+            try await login(username: username, password: password)
+            return true
+        } catch {
+            return false
+        }
+    }
 }
 
 // MARK: - Notification & Team response types
@@ -334,7 +348,7 @@ struct ShareLink: Codable, Identifiable {
 // Used for POST endpoints that return an empty or minimal body
 private struct EmptyResponse: Codable {}
 
-enum APIError: Error, LocalizedError {
+enum APIError: Error, LocalizedError, Equatable {
     case unauthorized
     case serverError(Int)
     case invalidResponse

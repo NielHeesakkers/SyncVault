@@ -144,6 +144,13 @@ CREATE TABLE IF NOT EXISTS password_resets (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS connection_tokens (
+    user_id        TEXT PRIMARY KEY REFERENCES users(id),
+    encrypted_data BLOB NOT NULL,
+    used           INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_files_parent_id   ON files(parent_id);
 CREATE INDEX IF NOT EXISTS idx_files_owner_id    ON files(owner_id);

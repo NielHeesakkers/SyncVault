@@ -90,7 +90,12 @@ Your account has been created.
 
 Username: {{.Username}}
 Password: {{.Password}}
+{{if .PIN}}
+Connection PIN: {{.PIN}}
 
+Download your .syncvault token file from the admin panel and open it with the SyncVault app on your Mac.
+When prompted, enter the PIN above to connect automatically.
+{{end}}
 Please change your password after your first login.
 
 This is an automated message — please do not reply.
@@ -98,11 +103,11 @@ This is an automated message — please do not reply.
 
 var passwordResetTmpl = template.Must(template.New("password_reset").Parse(`Hello {{.Username}},
 
-Your SyncVault password has been reset.
+Your SyncVault password has been reset by an administrator.
 
 New password: {{.Password}}
 
-Please change it after logging in.
+If this wasn't you, log in and change it immediately.
 
 This is an automated message — please do not reply.
 `))
@@ -142,14 +147,16 @@ This is an automated message — please do not reply.
 `))
 
 // SendWelcome sends a welcome email with login credentials to a newly created user.
-func (s *Service) SendWelcome(toEmail, username, password string) error {
+// The pin parameter is optional; pass an empty string if no token was generated.
+func (s *Service) SendWelcome(toEmail, username, password, pin string) error {
 	if !s.enabled {
 		return nil
 	}
 	data := struct {
 		Username string
 		Password string
-	}{Username: username, Password: password}
+		PIN      string
+	}{Username: username, Password: password, PIN: pin}
 
 	body, err := renderTemplate(welcomeTmpl, data)
 	if err != nil {

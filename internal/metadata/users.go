@@ -210,6 +210,80 @@ func (db *DB) ResetAdminPassword(hash string) error {
 	return err
 }
 
+// ErrConnectionTokenNotFound is returned when no connection token exists for a user.
+var ErrConnectionTokenNotFound = errors.New("metadata: connection token not found")
+
+// SaveConnectionToken upserts the encrypted .syncvault token data for a user. Resets used flag.
+func (d *DB) SaveConnectionToken(userID string, data []byte) error {
+	_, err := d.db.Exec(
+		`INSERT INTO connection_tokens (user_id, encrypted_data, used, created_at)
+		 VALUES (?, ?, 0, datetime('now'))
+		 ON CONFLICT(user_id) DO UPDATE SET encrypted_data=excluded.encrypted_data, used=0, created_at=excluded.created_at`,
+		userID, data,
+	)
+	if err != nil {
+		return fmt.Errorf("metadata: save connection token: %w", err)
+	}
+	return nil
+}
+
+// ErrConnectionTokenUsed is returned when a connection token has already been used.
+var ErrConnectionTokenUsed = errors.New("metadata: connection token already used")
+
+// GetConnectionToken retrieves the encrypted token bytes for a user. Returns error if already used.
+func (d *DB) GetConnectionToken(userID string) ([]byte, error) {
+	var data []byte
+	var used int
+	err := d.db.QueryRow(
+		`SELECT encrypted_data, used FROM connection_tokens WHERE user_id = ?`, userID,
+	).Scan(&data, &used)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrConnectionTokenNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("metadata: get connection token: %w", err)
+	}
+	if used > 0 {
+		return nil, ErrConnectionTokenUsed
+	}
+	return data, nil
+}
+
+// MarkConnectionTokenUsed marks a connection token as used (one-time use).
+func (d *DB) MarkConnectionTokenUsed(userID string) error {
+	_, err := d.db.Exec(`UPDATE connection_tokens SET used = 1 WHERE user_id = ?`, userID)
+	if err != nil {
+		return fmt.Errorf("metadata: mark connection token used: %w", err)
+	}
+	return nil
+}
+
+// HasConnectionToken checks if a user has an unused connection token.
+func (d *DB) HasConnectionToken(userID string) bool {
+	var count int
+	d.db.QueryRow(`SELECT COUNT(*) FROM connection_tokens WHERE user_id = ? AND used = 0`, userID).Scan(&count)
+	return count > 0
+}
+
+// RefreshConnectionToken regenerates a token for a user (admin action). Returns new PIN.
+func (d *DB) RefreshConnectionToken(userID string) error {
+	// Just reset the used flag — the caller will generate new encrypted data
+	_, err := d.db.Exec(`UPDATE connection_tokens SET used = 0 WHERE user_id = ?`, userID)
+	if err != nil {
+		return fmt.Errorf("metadata: refresh connection token: %w", err)
+	}
+	return nil
+}
+
+// DeleteConnectionToken removes a user's connection token.
+func (d *DB) DeleteConnectionToken(userID string) error {
+	_, err := d.db.Exec(`DELETE FROM connection_tokens WHERE user_id = ?`, userID)
+	if err != nil {
+		return fmt.Errorf("metadata: delete connection token: %w", err)
+	}
+	return nil
+}
+
 // ErrPasswordResetNotFound is returned when a password reset token cannot be found.
 var ErrPasswordResetNotFound = errors.New("metadata: password reset token not found")
 

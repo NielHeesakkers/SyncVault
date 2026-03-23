@@ -20,7 +20,7 @@ func TestNewService(t *testing.T) {
 func TestService_Disabled(t *testing.T) {
 	svc := NewService("", 587, "", "", "", false)
 
-	if err := svc.SendWelcome("u@example.com", "user", "pass"); err != nil {
+	if err := svc.SendWelcome("u@example.com", "user", "pass", ""); err != nil {
 		t.Errorf("SendWelcome on disabled service: %v", err)
 	}
 	if err := svc.SendPasswordReset("u@example.com", "user", "newpass"); err != nil {
@@ -33,20 +33,42 @@ func TestService_Disabled(t *testing.T) {
 
 // TestRenderWelcomeTemplate verifies the welcome template renders the expected content.
 func TestRenderWelcomeTemplate(t *testing.T) {
-	data := struct {
+	// Without PIN
+	dataNoPin := struct {
 		Username string
 		Password string
-	}{Username: "alice", Password: "secret123"}
+		PIN      string
+	}{Username: "alice", Password: "secret123", PIN: ""}
 
-	body, err := renderTemplate(welcomeTmpl, data)
+	body, err := renderTemplate(welcomeTmpl, dataNoPin)
 	if err != nil {
-		t.Fatalf("render welcome template: %v", err)
+		t.Fatalf("render welcome template (no PIN): %v", err)
 	}
-
 	checks := []string{"alice", "secret123", "Welcome to SyncVault", "change your password"}
 	for _, want := range checks {
 		if !strings.Contains(body, want) {
-			t.Errorf("welcome body missing %q; body = %q", want, body)
+			t.Errorf("welcome body (no PIN) missing %q; body = %q", want, body)
+		}
+	}
+	if strings.Contains(body, "Connection PIN") {
+		t.Error("welcome body without PIN should not contain 'Connection PIN'")
+	}
+
+	// With PIN
+	dataWithPin := struct {
+		Username string
+		Password string
+		PIN      string
+	}{Username: "alice", Password: "secret123", PIN: "AB3X7K"}
+
+	bodyWithPin, err := renderTemplate(welcomeTmpl, dataWithPin)
+	if err != nil {
+		t.Fatalf("render welcome template (with PIN): %v", err)
+	}
+	pinChecks := []string{"AB3X7K", "Connection PIN", ".syncvault"}
+	for _, want := range pinChecks {
+		if !strings.Contains(bodyWithPin, want) {
+			t.Errorf("welcome body (with PIN) missing %q; body = %q", want, bodyWithPin)
 		}
 	}
 }
@@ -126,7 +148,7 @@ func TestSendWelcome_EnabledNoServer(t *testing.T) {
 	// Use an address that is guaranteed to be unreachable.
 	svc := NewService("127.0.0.1", 19999, "u", "p", "Test <t@t.com>", true)
 
-	err := svc.SendWelcome("dest@example.com", "alice", "pass123")
+	err := svc.SendWelcome("dest@example.com", "alice", "pass123", "AB3X7K")
 	if err == nil {
 		t.Error("expected error when SMTP server is unreachable, got nil")
 	}

@@ -333,6 +333,16 @@ class AppState: ObservableObject {
                 if recentActivity.count > 20 {
                     recentActivity = Array(recentActivity.prefix(20))
                 }
+            } catch let error as APIError where error == .unauthorized {
+                logger.info(" Token expired, re-authenticating...")
+                if await client.reAuthenticate() {
+                    logger.info(" Re-authenticated, will retry on next cycle")
+                } else {
+                    logger.error(" Re-authentication failed")
+                    lastError = "Session expired — please reconnect"
+                    isConnected = false
+                }
+                break
             } catch {
                 logger.info(" Error: \(error)")
                 lastError = "Sync error: \(error.localizedDescription)"

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { UserPlus, Edit2, Key, Trash2, Users, Shield, User } from 'lucide-svelte';
+	import { UserPlus, Edit2, Trash2, Users, Shield, User, Key, RefreshCw } from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores';
 	import { formatBytes } from '$lib/utils';
@@ -15,6 +15,7 @@
 		role: string;
 		storage_used?: number;
 		storage_quota?: number;
+		has_token?: boolean;
 		created_at?: string;
 	}
 
@@ -26,20 +27,13 @@
 	let createForm = $state({ username: '', email: '', password: '', role: 'user' });
 	let creating = $state(false);
 
-	// Edit user modal
+	// Edit user modal (combined with password reset)
 	let showEdit = $state(false);
 	let editTarget = $state<UserRecord | null>(null);
-	let editForm = $state({ email: '', role: 'user', storage_quota: '', storage_quota_unit: 'GB' });
+	let editForm = $state({ email: '', role: 'user', storage_quota: '', storage_quota_unit: 'GB', newPassword: '', confirmPassword: '' });
 	let editing = $state(false);
 
-	// Reset password modal
-	let showResetPwd = $state(false);
-	let resetTarget = $state<UserRecord | null>(null);
-	let newPassword = $state('');
-	let confirmPassword = $state('');
-	let resettingPwd = $state(false);
-
-	// Delete
+	// Delete user modal
 	let showDelete = $state(false);
 	let deleteTarget = $state<UserRecord | null>(null);
 
@@ -156,7 +150,9 @@
 			email: user.email,
 			role: user.role,
 			storage_quota: quotaVal,
-			storage_quota_unit: quotaUnit
+			storage_quota_unit: quotaUnit,
+			newPassword: '',
+			confirmPassword: ''
 		};
 		editTeamSelections = await loadUserTeams(user.id);
 		showEdit = true;
@@ -164,6 +160,19 @@
 
 	async function saveEdit() {
 		if (!editTarget) return;
+
+		// Validate password fields if provided
+		if (editForm.newPassword || editForm.confirmPassword) {
+			if (editForm.newPassword !== editForm.confirmPassword) {
+				showToast('Passwords do not match', 'error');
+				return;
+			}
+			if (editForm.newPassword.length < 1) {
+				showToast('Password cannot be empty', 'error');
+				return;
+			}
+		}
+
 		editing = true;
 		try {
 			const body: Record<string, unknown> = {
@@ -178,49 +187,35 @@
 				body.storage_quota = Math.round(qb);
 			}
 			const res = await api.put(`/api/admin/users/${editTarget.id}`, body);
-			if (res.ok) {
-				await saveTeamMemberships(editTarget.id, editTeamSelections);
-				showToast('User updated', 'success');
-				showEdit = false;
-				editTarget = null;
-				loadUsers();
-			} else {
-				showToast('Failed to update user', 'error');
+			if (!res.ok) {
+				const data = await res.json().catch(() => ({}));
+				showToast(data.error || 'Failed to update user', 'error');
+				return;
 			}
+
+			await saveTeamMemberships(editTarget.id, editTeamSelections);
+
+			// If a new password was provided, reset it now
+			if (editForm.newPassword) {
+				const pwRes = await api.post(`/api/admin/users/${editTarget.id}/reset-password`, {
+					password: editForm.newPassword
+				});
+				if (!pwRes.ok) {
+					const data = await pwRes.json().catch(() => ({}));
+					showToast('User updated but password reset failed: ' + (data.error || 'unknown error'), 'error');
+					showEdit = false;
+					editTarget = null;
+					loadUsers();
+					return;
+				}
+			}
+
+			showToast(editForm.newPassword ? 'User updated and password reset' : 'User updated', 'success');
+			showEdit = false;
+			editTarget = null;
+			loadUsers();
 		} finally {
 			editing = false;
-		}
-	}
-
-	function startResetPwd(user: UserRecord) {
-		resetTarget = user;
-		newPassword = '';
-		confirmPassword = '';
-		showResetPwd = true;
-	}
-
-	async function doResetPwd() {
-		if (!resetTarget || !newPassword.trim()) return;
-		if (newPassword !== confirmPassword) {
-			showToast('Passwords do not match', 'error');
-			return;
-		}
-		resettingPwd = true;
-		try {
-			const res = await api.post(`/api/admin/users/${resetTarget.id}/reset-password`, {
-				password: newPassword
-			});
-			if (res.ok) {
-				showToast('Password reset successfully', 'success');
-				showResetPwd = false;
-				resetTarget = null;
-				newPassword = '';
-				confirmPassword = '';
-			} else {
-				showToast('Failed to reset password', 'error');
-			}
-		} finally {
-			resettingPwd = false;
 		}
 	}
 
@@ -232,6 +227,45 @@
 		deleteAction = 'delete';
 		transferToUserId = '';
 		showDelete = true;
+	}
+
+	async function downloadToken(user: UserRecord) {
+		try {
+			const res = await api.get(`/api/admin/users/${user.id}/token`);
+			if (res.status === 410) {
+				showToast('Token already used — click refresh to generate a new one', 'error');
+				return;
+			}
+			if (!res.ok) {
+				showToast('Token not available for this user', 'error');
+				return;
+			}
+			const blob = await res.blob();
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `${user.username}.syncvault`;
+			a.click();
+			URL.revokeObjectURL(url);
+			showToast('Token downloaded — this was a one-time download', 'success');
+			await loadUsers();
+		} catch {
+			showToast('Failed to download token', 'error');
+		}
+	}
+
+	async function refreshToken(user: UserRecord) {
+		try {
+			const res = await api.post(`/api/admin/users/${user.id}/token/refresh`, {});
+			if (!res.ok) {
+				showToast('Failed to refresh token', 'error');
+				return;
+			}
+			showToast('New token generated — PIN emailed to user', 'success');
+			await loadUsers();
+		} catch {
+			showToast('Failed to refresh token', 'error');
+		}
 	}
 
 	async function doDelete() {
@@ -327,19 +361,28 @@
 							</td>
 							<td class="px-4 py-3">
 								<div class="flex items-center justify-end gap-1">
+									{#if user.has_token}
+										<button
+											onclick={() => downloadToken(user)}
+											title="Download connection token (one-time)"
+											class="p-1.5 text-gray-400 hover:text-green-600 rounded hover:bg-gray-100 transition-colors"
+										>
+											<Key size={15} />
+										</button>
+									{/if}
+									<button
+										onclick={() => refreshToken(user)}
+										title="Generate new connection token"
+										class="p-1.5 text-gray-400 hover:text-orange-600 rounded hover:bg-gray-100 transition-colors"
+									>
+										<RefreshCw size={15} />
+									</button>
 									<button
 										onclick={() => startEdit(user)}
 										title="Edit user"
 										class="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-gray-100 transition-colors"
 									>
 										<Edit2 size={15} />
-									</button>
-									<button
-										onclick={() => startResetPwd(user)}
-										title="Reset password"
-										class="p-1.5 text-gray-400 hover:text-yellow-600 rounded hover:bg-gray-100 transition-colors"
-									>
-										<Key size={15} />
 									</button>
 									<button
 										onclick={() => confirmDelete(user)}
@@ -420,11 +463,16 @@
 	</Modal>
 {/if}
 
-<!-- Edit user modal -->
+<!-- Edit user modal (includes optional password reset) -->
 {#if showEdit && editTarget}
-	<Modal title="Edit User: {editTarget.username}" onclose={() => (showEdit = false)}>
+	<Modal title="Edit User" onclose={() => (showEdit = false)}>
 		{#snippet children()}
 			<div class="space-y-3">
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+					<input type="text" value={editTarget.username} readonly
+						class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500 cursor-not-allowed" />
+				</div>
 				<div>
 					<label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
 					<input type="email" bind:value={editForm.email} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
@@ -476,40 +524,33 @@
 						</div>
 					</div>
 				{/if}
+				<div class="border-t border-gray-100 pt-3">
+					<p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Reset Password (optional)</p>
+					<div class="space-y-2">
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-1">New password</label>
+							<input type="password" bind:value={editForm.newPassword} placeholder="Leave empty to keep current password"
+								class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+						</div>
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-1">Confirm new password</label>
+							<input type="password" bind:value={editForm.confirmPassword} placeholder="Confirm new password"
+								class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500
+									{editForm.confirmPassword && editForm.newPassword !== editForm.confirmPassword ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : ''}" />
+							{#if editForm.confirmPassword && editForm.newPassword !== editForm.confirmPassword}
+								<p class="text-xs text-red-500 mt-1">Passwords do not match</p>
+							{/if}
+						</div>
+					</div>
+				</div>
 			</div>
 		{/snippet}
 		{#snippet footer()}
 			<button onclick={() => (showEdit = false)} class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
-			<button onclick={saveEdit} disabled={editing} class="rounded-md px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white transition-colors">
+			<button onclick={saveEdit}
+				disabled={editing || !!(editForm.newPassword && editForm.newPassword !== editForm.confirmPassword)}
+				class="rounded-md px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white transition-colors">
 				{editing ? 'Saving…' : 'Save'}
-			</button>
-		{/snippet}
-	</Modal>
-{/if}
-
-<!-- Reset password modal -->
-{#if showResetPwd && resetTarget}
-	<Modal title="Reset Password: {resetTarget.username}" onclose={() => (showResetPwd = false)}>
-		{#snippet children()}
-			<div class="space-y-3">
-				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">New password</label>
-					<input type="password" bind:value={newPassword} placeholder="Enter new password" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-				</div>
-				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
-					<input type="password" bind:value={confirmPassword} placeholder="Confirm new password" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500
-						{confirmPassword && newPassword !== confirmPassword ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : ''}" />
-					{#if confirmPassword && newPassword !== confirmPassword}
-						<p class="text-xs text-red-500 mt-1">Passwords do not match</p>
-					{/if}
-				</div>
-			</div>
-		{/snippet}
-		{#snippet footer()}
-			<button onclick={() => (showResetPwd = false)} class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
-			<button onclick={doResetPwd} disabled={resettingPwd || !newPassword.trim() || newPassword !== confirmPassword} class="rounded-md px-4 py-2 text-sm font-medium bg-yellow-500 hover:bg-yellow-600 disabled:bg-yellow-300 text-white transition-colors">
-				{resettingPwd ? 'Resetting…' : 'Reset Password'}
 			</button>
 		{/snippet}
 	</Modal>

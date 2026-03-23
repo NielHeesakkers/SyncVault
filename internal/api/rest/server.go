@@ -131,6 +131,8 @@ func (s *Server) setupRoutes() {
 			r.Post("/api/admin/users/{id}/transfer", s.handleAdminTransferUser)
 			r.Delete("/api/admin/users/{id}", s.handleAdminDeleteUser)
 			r.Post("/api/admin/users/{id}/reset-password", s.handleAdminResetPassword)
+			r.Get("/api/admin/users/{id}/token", s.handleDownloadToken)
+			r.Post("/api/admin/users/{id}/token/refresh", s.handleRefreshToken)
 			r.Get("/api/admin/storage", s.handleAdminStorage)
 			r.Get("/api/admin/storage/users", s.handleAdminStorageUsers)
 			r.Get("/api/admin/storage/folders", s.handleAdminStorageFolders)

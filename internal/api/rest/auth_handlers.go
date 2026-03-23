@@ -8,6 +8,7 @@ import (
 
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
 	"github.com/NielHeesakkers/SyncVault/internal/metadata"
+	"github.com/NielHeesakkers/SyncVault/internal/token"
 )
 
 // loginRequest is the body for POST /api/auth/login.
@@ -306,9 +307,41 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		log.Printf("warning: could not create user root folder: %v", err)
 	}
 
+	// Generate connection token and store it; log but do not fail on error.
+	pin := ""
+	{
+		baseURL, _ := s.db.GetSetting("base_url")
+		if baseURL == "" {
+			// Fallback: derive from the request Host header.
+			scheme := "https"
+			if r.TLS == nil {
+				scheme = "http"
+			}
+			baseURL = scheme + "://" + r.Host
+		}
+
+		connData := token.ConnectionData{
+			ServerURL: baseURL,
+			Username:  req.Username,
+			Password:  req.Password,
+		}
+
+		generatedPIN := token.GeneratePIN()
+		encrypted, err := token.Encrypt(connData, generatedPIN)
+		if err != nil {
+			log.Printf("token: failed to encrypt connection token for user %s: %v", user.ID, err)
+		} else {
+			if err := s.db.SaveConnectionToken(user.ID, encrypted); err != nil {
+				log.Printf("token: failed to save connection token for user %s: %v", user.ID, err)
+			} else {
+				pin = generatedPIN
+			}
+		}
+	}
+
 	// Send welcome email; log but do not fail on error.
 	if s.email != nil && s.email.Enabled() {
-		if err := s.email.SendWelcome(user.Email, user.Username, req.Password); err != nil {
+		if err := s.email.SendWelcome(user.Email, user.Username, req.Password, pin); err != nil {
 			log.Printf("email: failed to send welcome email to %s: %v", user.Email, err)
 		}
 	}

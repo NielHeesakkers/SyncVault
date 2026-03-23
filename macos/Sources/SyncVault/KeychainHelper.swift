@@ -1,5 +1,7 @@
 import Foundation
 import Security
+import CryptoKit
+import CommonCrypto
 
 enum KeychainHelper {
     private static let accessGroup = "DE59N86W33.com.syncvault.shared"
@@ -73,5 +75,91 @@ enum KeychainHelper {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+}
+
+// MARK: - Connection Token Handling
+
+struct ConnectionData: Codable {
+    let serverURL: String
+    let username: String
+    let password: String
+
+    enum CodingKeys: String, CodingKey {
+        case serverURL = "server_url"
+        case username
+        case password
+    }
+}
+
+enum TokenError: Error, LocalizedError {
+    case invalidToken
+    case invalidPIN
+    case decodingFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidToken:  return "Invalid token file"
+        case .invalidPIN:    return "Incorrect PIN"
+        case .decodingFailed: return "Failed to decode connection data"
+        }
+    }
+}
+
+struct TokenHandler {
+    private static func deriveKey(pin: String) -> Data {
+        let password = pin.data(using: .utf8)!
+        let salt = "syncvault-token".data(using: .utf8)!
+        var derivedKey = Data(count: 32)
+
+        derivedKey.withUnsafeMutableBytes { derivedKeyPtr in
+            password.withUnsafeBytes { passwordPtr in
+                salt.withUnsafeBytes { saltPtr in
+                    CCKeyDerivationPBKDF(
+                        CCPBKDFAlgorithm(kCCPBKDF2),
+                        passwordPtr.baseAddress!.assumingMemoryBound(to: Int8.self),
+                        password.count,
+                        saltPtr.baseAddress!.assumingMemoryBound(to: UInt8.self),
+                        salt.count,
+                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                        100_000,
+                        derivedKeyPtr.baseAddress!.assumingMemoryBound(to: UInt8.self),
+                        32
+                    )
+                }
+            }
+        }
+        return derivedKey
+    }
+
+    static func decrypt(data: Data, pin: String) throws -> ConnectionData {
+        let nonceSize = 12
+        let tagSize = 16
+
+        guard data.count > nonceSize + tagSize else {
+            throw TokenError.invalidToken
+        }
+
+        let keyData = deriveKey(pin: pin)
+        let key = SymmetricKey(data: keyData)
+
+        let nonce = try AES.GCM.Nonce(data: data.prefix(nonceSize))
+        let ciphertext = data.dropFirst(nonceSize).dropLast(tagSize)
+        let tag = data.suffix(tagSize)
+
+        let sealedBox = try AES.GCM.SealedBox(nonce: nonce, ciphertext: ciphertext, tag: tag)
+
+        let plaintext: Data
+        do {
+            plaintext = try AES.GCM.open(sealedBox, using: key)
+        } catch {
+            throw TokenError.invalidPIN
+        }
+
+        do {
+            return try JSONDecoder().decode(ConnectionData.self, from: plaintext)
+        } catch {
+            throw TokenError.decodingFailed
+        }
     }
 }

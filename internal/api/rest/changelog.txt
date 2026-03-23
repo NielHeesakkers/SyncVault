@@ -1,3 +1,18 @@
+## v2.0
+- One-time encrypted connection tokens (.syncvault files)
+- Token refresh with PIN re-emailed to user
+- JWT token TTL extended to 24h with auto re-auth
+- Sync engine: fixed upload failures (401 auth errors)
+- Combined edit user + password reset dialog
+- Test email fix (no more hanging)
+- Password reset sends warning email
+- Share link delete in backend
+- Retention settings removed from macOS app
+- Admin password reset via Docker env var
+
+## [1.9] — 2026-03-23
+- One-time connection tokens, token refresh, sync engine auth fix, UI bug fixes
+
 ## [1.9] — 2026-03-23
 - Password recovery, smart admin reset, forgot password UI
 
