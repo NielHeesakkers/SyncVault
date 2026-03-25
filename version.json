@@ -1,9 +1,18 @@
 {
-  "version": "2.1.5",
+  "version": "2.1.6",
   "min_version": "1.0",
   "release_date": "2026-03-25",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1.5/SyncVault-2.1.5.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1.6/SyncVault-2.1.6.dmg",
   "history": [
+    {
+      "version": "2.1.6",
+      "date": "2026-03-25",
+      "changes": [
+        "Permanent 409 fix: server auto-deletes old task on recreate",
+        "Upload limit: max 5 files per sync cycle",
+        "Delete sync task removes from server"
+      ]
+    },
     {
       "version": "2.1.5",
       "date": "2026-03-25",

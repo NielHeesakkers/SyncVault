@@ -112,6 +112,12 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		taskName = "OnDemand"
 	}
 
+	// Delete any existing task with the same name and type for this user (handles re-creation after app reinstall)
+	// Skip for ondemand — those have a separate one-per-user check
+	if req.Type != "ondemand" {
+		s.db.DeleteSyncTaskByName(claims.UserID, taskName)
+	}
+
 	// Find the user's root folder.
 	rootFolder, err := s.db.GetUserRootFolder(claims.UserID)
 	if err != nil {

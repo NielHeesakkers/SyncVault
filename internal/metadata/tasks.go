@@ -136,6 +136,11 @@ func (d *DB) GetSyncTask(id string) (*SyncTask, error) {
 	return t, err
 }
 
+// DeleteSyncTaskByName removes any sync task with the given name for the user. No error if not found.
+func (d *DB) DeleteSyncTaskByName(userID, name string) {
+	d.db.Exec(`DELETE FROM sync_tasks WHERE user_id = ? AND name = ?`, userID, name)
+}
+
 // DeleteSyncTask removes the sync task with the given ID.
 func (d *DB) DeleteSyncTask(id string) error {
 	res, err := d.db.Exec(`DELETE FROM sync_tasks WHERE id = ?`, id)

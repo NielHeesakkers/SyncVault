@@ -1,3 +1,13 @@
+## [2.1.6] — 2026-03-25
+
+Backend/Web:
+- Server auto-deletes old sync task with same name on recreate (permanent 409 fix)
+
+macOS App:
+- Upload limit: max 5 files per sync cycle (prevents app freeze)
+- Delete sync task removes from server
+- Server task ID tracked per sync task
+
 ## [2.1.5] — 2026-03-25
 
 Backend/Web:

@@ -51,14 +51,20 @@ actor SyncEngine {
             logger.info("   action: \(a)")
         }
 
-        // 5. Execute actions with progress
+        // 5. Execute actions with progress (max 5 per cycle to prevent hanging)
+        let maxActionsPerCycle = 5
+        let limitedActions = Array(actions.prefix(maxActionsPerCycle))
         let totalActions = actions.count
         var completed = 0
         var totalBytesTransferred: Int64 = 0
         let syncStart = Date()
         let allFileNames = actions.map { $0.fileName }
 
-        for (index, action) in actions.enumerated() {
+        if limitedActions.count < totalActions {
+            logger.info(" Limiting to \(maxActionsPerCycle) of \(totalActions) actions this cycle")
+        }
+
+        for (index, action) in limitedActions.enumerated() {
             do {
                 let startTime = Date()
                 let pending = Array(allFileNames.dropFirst(index + 1).prefix(5))
