@@ -759,7 +759,7 @@
 			</div>
 
 			<!-- Confirmation -->
-			<div class="rounded-xl border overflow-hidden" style="background: #111927; border-color: rgba(239,68,68,0.20);">
+			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: rgba(239,68,68,0.20);">
 				<div class="px-5 py-4 space-y-3">
 					<p class="text-sm font-semibold" style="color: #f87171;">Warning: Dangerous — data will be permanently wiped.</p>
 					<div>

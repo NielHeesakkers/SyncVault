@@ -487,7 +487,7 @@
 		if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) return { icon: FileSpreadsheet, color: '#22c55e' };
 		if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv'].includes(ext)) return { icon: FileVideo, color: '#ec4899' };
 		if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].includes(ext)) return { icon: FileAudio, color: '#06b6d4' };
-		return { icon: File, color: '#71717a' };
+		return { icon: File, color: 'var(--text-tertiary)' };
 	}
 </script>
 

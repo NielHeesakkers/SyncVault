@@ -178,7 +178,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div class="flex h-screen overflow-hidden" style="background: var(--bg-base);" onclick={closeUserMenu}>
 		<!-- Sidebar -->
-		<aside class="w-56 flex-shrink-0 flex flex-col border-r" style="background: #0b1018; border-color: rgba(255,255,255,0.16);">
+		<aside class="w-56 flex-shrink-0 flex flex-col border-r" style="background: var(--sidebar-bg); border-color: var(--sidebar-border);">
 			<!-- Logo -->
 			<div class="px-4 py-5 flex items-center gap-2.5">
 				<div class="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
@@ -198,7 +198,7 @@
 								{isActive(item.href)
 									? 'text-white'
 									: 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'}"
-								style={isActive(item.href) ? 'background: rgba(255,255,255,0.18);' : ''}
+								style={isActive(item.href) ? 'background: var(--sidebar-active-bg);' : ''}
 							>
 								{#if isActive(item.href)}
 									<span class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full"></span>
@@ -212,7 +212,7 @@
 
 				{#if user?.role === 'admin'}
 					<div class="mt-5">
-						<p class="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest" style="color: rgba(255,255,255,0.25);">
+						<p class="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest" style="color: var(--sidebar-text); opacity: 0.35;">
 							Admin
 						</p>
 						<ul class="space-y-0.5">
@@ -224,7 +224,7 @@
 										{isActive(item.href)
 											? 'text-white'
 											: 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'}"
-										style={isActive(item.href) ? 'background: rgba(255,255,255,0.18);' : ''}
+										style={isActive(item.href) ? 'background: var(--sidebar-active-bg);' : ''}
 									>
 										{#if isActive(item.href)}
 											<span class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full"></span>
@@ -240,7 +240,7 @@
 			</nav>
 
 			<!-- User section at bottom -->
-			<div class="px-2 py-3 border-t" style="border-color: rgba(255,255,255,0.16);">
+			<div class="px-2 py-3 border-t" style="border-color: var(--sidebar-border);">
 				<!-- Theme toggle + Notification row -->
 				<div class="px-1 mb-1 flex items-center gap-1">
 					<button
@@ -269,25 +269,25 @@
 						{#if showNotifications}
 							<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 							<div class="absolute bottom-full left-0 mb-2 w-80 rounded-xl shadow-2xl border z-50 max-h-96 overflow-y-auto"
-								style="background: #192231; border-color: rgba(255,255,255,0.10);"
+								style="background: var(--bg-overlay); border-color: var(--border);"
 								onclick={(e) => e.stopPropagation()}>
-								<div class="px-4 py-3 border-b flex items-center justify-between" style="border-color: rgba(255,255,255,0.16);">
-									<span class="text-sm font-semibold text-white">Notifications</span>
-									<button onclick={() => (showNotifications = false)} class="text-xs text-white/30 hover:text-white/60 transition-colors">Close</button>
+								<div class="px-4 py-3 border-b flex items-center justify-between" style="border-color: var(--border-strong);">
+									<span class="text-sm font-semibold" style="color: var(--text-primary);">Notifications</span>
+									<button onclick={() => (showNotifications = false)} class="text-xs transition-colors" style="color: var(--text-tertiary);">Close</button>
 								</div>
 								{#if notifications.length === 0}
-									<div class="px-4 py-6 text-center text-sm" style="color: rgba(255,255,255,0.30);">No notifications</div>
+									<div class="px-4 py-6 text-center text-sm" style="color: var(--text-tertiary);">No notifications</div>
 								{:else}
 									{#each notifications as notif}
-										<div class="px-4 py-3 border-b {notif.read ? '' : 'bg-blue-500/5'}" style="border-color: rgba(255,255,255,0.12);">
-											<p class="text-sm font-medium text-white/80">{notif.title}</p>
-											<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.40);">{notif.message}</p>
+										<div class="px-4 py-3 border-b {notif.read ? '' : 'bg-blue-500/5'}" style="border-color: var(--border);">
+											<p class="text-sm font-medium" style="color: var(--text-primary);">{notif.title}</p>
+											<p class="text-xs mt-0.5" style="color: var(--text-secondary);">{notif.message}</p>
 											{#if notif.type === 'team_invite' && !notif.acted}
 												<div class="flex gap-2 mt-2">
 													<button onclick={() => acceptNotification(notif.id)}
 														class="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-500 transition-colors">Accept</button>
 													<button onclick={() => declineNotification(notif.id)}
-														class="px-3 py-1 text-xs font-medium text-white/60 border rounded-md hover:bg-white/5 transition-colors" style="border-color: rgba(255,255,255,0.10);">Decline</button>
+														class="px-3 py-1 text-xs font-medium border rounded-md hover:bg-white/5 transition-colors" style="color: var(--text-secondary); border-color: var(--border);">Decline</button>
 												</div>
 											{:else if notif.acted}
 												<span class="text-xs text-green-500 mt-1 inline-block">Accepted</span>
@@ -322,7 +322,7 @@
 						<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 						<div
 							class="absolute bottom-full left-0 mb-1 w-48 rounded-xl shadow-2xl border py-1 z-40"
-							style="background: #192231; border-color: rgba(255,255,255,0.10);"
+							style="background: var(--bg-overlay); border-color: var(--border);"
 							onclick={(e) => e.stopPropagation()}
 						>
 							<button
@@ -331,7 +331,7 @@
 							>
 								<KeyRound size={14} /> Change Password
 							</button>
-							<div class="my-1 border-t" style="border-color: rgba(255,255,255,0.16);"></div>
+							<div class="my-1 border-t" style="border-color: var(--border-strong);"></div>
 							<button
 								onclick={() => api.logout()}
 								class="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
@@ -372,7 +372,7 @@
 				<div>
 					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Confirm new password</label>
 					<input type="password" bind:value={changePwdForm.confirm_password} placeholder="Confirm new password"
-						style={changePwdForm.confirm_password && changePwdForm.new_password !== changePwdForm.confirm_password ? 'border-color: #ef4444;' : ''} />
+						style={changePwdForm.confirm_password && changePwdForm.new_password !== changePwdForm.confirm_password ? 'border-color: var(--accent-red);' : ''} />
 					{#if changePwdForm.confirm_password && changePwdForm.new_password !== changePwdForm.confirm_password}
 						<p class="text-xs text-red-400 mt-1">Passwords do not match</p>
 					{/if}

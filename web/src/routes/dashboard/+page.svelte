@@ -118,7 +118,7 @@
 		if (type === 'restore') return '#3b82f6';
 		if (type === 'download') return '#a855f7';
 		if (type === 'share') return '#f59e0b';
-		return '#71717a';
+		return 'var(--text-tertiary)';
 	}
 
 	function getActivityLabel(event: any): string {
@@ -129,7 +129,7 @@
 		if (status === 'syncing' || status === 'running') return '#3b82f6';
 		if (status === 'idle' || status === 'ready') return '#22c55e';
 		if (status === 'error' || status === 'failed') return '#ef4444';
-		return '#71717a';
+		return 'var(--text-tertiary)';
 	}
 
 	function getTaskStatusLabel(status: string): string {

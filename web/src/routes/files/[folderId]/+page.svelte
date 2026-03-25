@@ -412,7 +412,7 @@
 	<Modal title="New Folder" onclose={() => { showNewFolder = false; newFolderName = ''; }}>
 		{#snippet children()}
 			<div>
-				<label for="folderName" class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Folder name</label>
+				<label for="folderName" class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Folder name</label>
 				<input
 					id="folderName"
 					type="text"
@@ -423,7 +423,7 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => { showNewFolder = false; newFolderName = ''; }} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);">Cancel</button>
+			<button onclick={() => { showNewFolder = false; newFolderName = ''; }} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: var(--bg-hover); border: 1px solid var(--border);">Cancel</button>
 			<button onclick={createFolder} disabled={creatingFolder || !newFolderName.trim()} class="rounded-lg px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-all duration-150">
 				{creatingFolder ? 'Creating…' : 'Create'}
 			</button>
@@ -435,12 +435,12 @@
 	<Modal title="Rename" onclose={() => (showRename = false)}>
 		{#snippet children()}
 			<div>
-				<label for="renameName" class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">New name</label>
+				<label for="renameName" class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">New name</label>
 				<input id="renameName" type="text" bind:value={renameName} onkeydown={(e) => e.key === 'Enter' && doRename()} />
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showRename = false)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);">Cancel</button>
+			<button onclick={() => (showRename = false)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: var(--bg-hover); border: 1px solid var(--border);">Cancel</button>
 			<button onclick={doRename} disabled={!renameName.trim()} class="rounded-lg px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-all duration-150">Rename</button>
 		{/snippet}
 	</Modal>
@@ -458,7 +458,7 @@
 
 <style>
 	.file-row {
-		border-bottom: 1px solid rgba(255,255,255,0.04);
+		border-bottom: 1px solid var(--border);
 		cursor: pointer;
 		transition: background 0.1s;
 	}
@@ -466,7 +466,7 @@
 		border-bottom: none;
 	}
 	.file-row:hover {
-		background: rgba(255,255,255,0.03);
+		background: var(--bg-hover);
 	}
 	.selected-row {
 		background: rgba(59,130,246,0.08);
@@ -476,7 +476,7 @@
 		background: rgba(59,130,246,0.12);
 	}
 	.context-item:hover {
-		background: rgba(255,255,255,0.05);
+		background: var(--bg-hover);
 	}
 	.context-item-danger:hover {
 		background: rgba(239,68,68,0.08);
