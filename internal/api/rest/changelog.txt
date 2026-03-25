@@ -1,3 +1,21 @@
+## [2.1.3] — 2026-03-25
+
+Backend/Web:
+- SMTP: SSL/TLS support for port 465 (Purelymail, Gmail)
+- Backup: configurable interval (hours/days/weeks)
+- Trash: admin sees all users' trashed files
+- Files: duplicate folder names auto-renamed to _DELETED_[date]
+- Files: folder delete reloads current view correctly
+- Settings: test buttons show green/red feedback for 5 seconds
+- Users: combined edit modal with Details/Token/Delete tabs
+- Users: type DELETE to confirm user deletion
+- Info: added contact email
+
+macOS App:
+- Sync engine: re-throws 401 for auto re-authentication
+- Saved username to Keychain for re-auth
+- On-demand sync mode added to task picker
+
 ## [2.1.2] — 2026-03-23
 - Menu bar redesign, settings sidebar, sync queue, on-demand mode, Check for Updates fix
 

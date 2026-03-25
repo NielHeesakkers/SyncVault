@@ -262,11 +262,17 @@ func (s *Server) handleRestoreFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "restored"})
 }
 
-// handleListTrash handles GET /api/trash — list trashed files for the current user.
+// handleListTrash handles GET /api/trash — list trashed files (admin sees all users).
 func (s *Server) handleListTrash(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
 
-	files, err := s.db.ListTrashedFiles(claims.UserID)
+	var files []metadata.File
+	var err error
+	if claims.Role == "admin" {
+		files, err = s.db.ListAllTrashedFiles()
+	} else {
+		files, err = s.db.ListTrashedFiles(claims.UserID)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list trashed files"})
 		return

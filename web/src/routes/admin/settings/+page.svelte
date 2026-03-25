@@ -24,6 +24,8 @@
 	let saving = $state(false);
 	let testing = $state(false);
 	let testingConnection = $state(false);
+	let connectionResult = $state<'idle' | 'success' | 'error'>('idle');
+	let emailResult = $state<'idle' | 'success' | 'error'>('idle');
 	let smtpEnabled = $state(false);
 	let smtpHost = $state('');
 	let smtpPort = $state('587');
@@ -43,6 +45,8 @@
 	let backupLoading = $state(false);
 	let backupCreating = $state(false);
 	let backupAutoEnabled = $state(true);
+	let backupInterval = $state('24');
+	let backupIntervalUnit = $state('hours');
 
 	// Changelog
 	interface ChangelogVersion {
@@ -73,6 +77,8 @@
 				smtpPassword = data['smtp.password'] || '';
 				smtpFrom = data['smtp.from'] || 'SyncVault <noreply@example.com>';
 				backupAutoEnabled = data['backup.auto_enabled'] !== 'false';
+				backupInterval = data['backup.interval'] || '24';
+				backupIntervalUnit = data['backup.interval_unit'] || 'hours';
 			}
 			if (versionRes.ok) {
 				const data = await versionRes.json();
@@ -97,7 +103,9 @@
 				'smtp.user': smtpUser,
 				'smtp.password': smtpPassword,
 				'smtp.from': smtpFrom,
-				'backup.auto_enabled': backupAutoEnabled ? 'true' : 'false'
+				'backup.auto_enabled': backupAutoEnabled ? 'true' : 'false',
+				'backup.interval': backupInterval,
+				'backup.interval_unit': backupIntervalUnit
 			};
 			const res = await api.put('/api/admin/settings', payload);
 			if (res.ok) showToast('Settings saved', 'success');
@@ -115,34 +123,45 @@
 
 	async function sendTestEmail() {
 		testing = true;
+		emailResult = 'idle';
 		try {
 			const res = await api.post('/api/admin/settings/test-email', { email: testEmailAddress });
 			if (res.ok) {
+				emailResult = 'success';
 				showToast('Test email sent to ' + testEmailAddress, 'success');
-				showTestEmail = false;
 			} else {
+				emailResult = 'error';
 				const data = await res.json().catch(() => ({}));
 				showToast(data.error || 'Failed to send', 'error');
 			}
+		} catch {
+			emailResult = 'error';
+			showToast('Could not reach server', 'error');
 		} finally {
 			testing = false;
+			setTimeout(() => { emailResult = 'idle'; }, 5000);
 		}
 	}
 
 	async function testSmtpConnection() {
 		testingConnection = true;
+		connectionResult = 'idle';
 		try {
 			const res = await api.post('/api/admin/settings/test-smtp', {});
 			const data = await res.json().catch(() => ({}));
 			if (data.success) {
+				connectionResult = 'success';
 				showToast(`SMTP connection OK — ${data.host}:${data.port}`, 'success');
 			} else {
+				connectionResult = 'error';
 				showToast(data.error || 'Connection failed', 'error');
 			}
 		} catch {
+			connectionResult = 'error';
 			showToast('Could not reach server', 'error');
 		} finally {
 			testingConnection = false;
+			setTimeout(() => { connectionResult = 'idle'; }, 5000);
 		}
 	}
 
@@ -346,12 +365,18 @@
 			<div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
 				<div class="flex gap-2">
 					<button onclick={testSmtpConnection} disabled={!smtpEnabled || testingConnection}
-						class="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700">
-						<PlugZap size={15} /> {testingConnection ? 'Testing…' : 'Test Connection'}
+						class="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium border transition-all duration-300
+						{connectionResult === 'success' ? 'border-green-500 bg-green-500 text-white' :
+						 connectionResult === 'error' ? 'border-red-500 bg-red-500 text-white' :
+						 'border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700'}">
+						<PlugZap size={15} /> {testingConnection ? 'Testing…' : connectionResult === 'success' ? 'Connected!' : connectionResult === 'error' ? 'Failed' : 'Test Connection'}
 					</button>
 					<button onclick={openTestEmail} disabled={!smtpEnabled}
-						class="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700">
-						<Send size={15} /> Send Test Email
+						class="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium border transition-all duration-300
+						{emailResult === 'success' ? 'border-green-500 bg-green-500 text-white' :
+						 emailResult === 'error' ? 'border-red-500 bg-red-500 text-white' :
+						 'border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700'}">
+						<Send size={15} /> {emailResult === 'success' ? 'Sent!' : emailResult === 'error' ? 'Failed' : 'Send Test Email'}
 					</button>
 				</div>
 				<button onclick={saveSettings} disabled={saving}
@@ -375,8 +400,9 @@
 					<button onclick={() => (showTestEmail = false)}
 						class="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
 					<button onclick={sendTestEmail} disabled={testing || !testEmailAddress}
-						class="flex items-center gap-1 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:opacity-50">
-						<Send size={14} /> {testing ? 'Sending…' : 'Send'}
+						class="flex items-center gap-1 px-4 py-2 text-sm font-medium text-white rounded-md disabled:opacity-50 transition-all duration-300
+						{emailResult === 'success' ? 'bg-green-500' : emailResult === 'error' ? 'bg-red-500' : 'bg-blue-500 hover:bg-blue-600'}">
+						<Send size={14} /> {testing ? 'Sending…' : emailResult === 'success' ? 'Sent!' : emailResult === 'error' ? 'Failed' : 'Send'}
 					</button>
 				</div>
 			</div>
@@ -390,8 +416,8 @@
 				<div class="px-6 py-5">
 					<div class="flex items-center justify-between mb-4">
 						<div>
-							<p class="text-sm font-medium text-gray-700">Automatic daily backup</p>
-							<p class="text-xs text-gray-500 mt-0.5">Creates a backup of all settings, users, teams, and metadata daily</p>
+							<p class="text-sm font-medium text-gray-700">Automatic backup</p>
+							<p class="text-xs text-gray-500 mt-0.5">Creates a backup of all settings, users, teams, and metadata</p>
 						</div>
 						<button role="switch" aria-checked={backupAutoEnabled}
 							onclick={() => { backupAutoEnabled = !backupAutoEnabled; saveSettings(); }}
@@ -399,6 +425,21 @@
 							<span class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform {backupAutoEnabled ? 'translate-x-6' : 'translate-x-1'}"></span>
 						</button>
 					</div>
+					{#if backupAutoEnabled}
+						<div class="flex items-center gap-2 mb-3">
+							<label class="text-sm text-gray-600">Every</label>
+							<input type="number" min="1" bind:value={backupInterval}
+								onchange={saveSettings}
+								class="w-20 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+							<select bind:value={backupIntervalUnit}
+								onchange={saveSettings}
+								class="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+								<option value="hours">hours</option>
+								<option value="days">days</option>
+								<option value="weeks">weeks</option>
+							</select>
+						</div>
+					{/if}
 					<p class="text-xs text-gray-400">Backups are stored in the Docker volume at <code class="bg-gray-100 px-1 rounded">/data/backups/</code></p>
 				</div>
 				<div class="px-6 py-3 border-t border-gray-100 bg-gray-50 flex justify-between items-center">
@@ -502,6 +543,7 @@
 				<p class="text-sm text-gray-600">SyncVault is an open-source file sync and backup solution, built as an alternative to Synology Drive.</p>
 				<p class="text-sm text-gray-600 mt-2">Created by <span class="font-medium">Niel Heesakkers</span> — vibe-coded with <a href="https://claude.ai" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Claude</a> by Anthropic.</p>
 				<p class="text-sm text-gray-500 mt-3">Version {currentVersion || 'unknown'}</p>
+				<p class="text-sm text-gray-500 mt-2">Contact: <a href="mailto:development@heesakkers.com" class="text-blue-600 hover:underline">development@heesakkers.com</a></p>
 			</div>
 		</div>
 

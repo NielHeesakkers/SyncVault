@@ -479,7 +479,8 @@
 				showToast(`"${deleteFolderTarget.name}" deleted`, 'success');
 				showDeleteFolder = false;
 				deleteFolderTarget = null;
-				loadHistory();
+				// Reload current folder to reflect deletion
+				if (selectedDate) await loadHistory(currentFolderId, selectedDate);
 			} else {
 				const data = await res.json().catch(() => ({}));
 				showToast(data.error || 'Could not delete folder', 'error');

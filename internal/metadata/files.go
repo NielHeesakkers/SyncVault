@@ -58,6 +58,11 @@ func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, 
 		isDirInt = 1
 	}
 
+	// If a file/folder with the same name exists (including soft-deleted), rename the old one to trash
+	trashSuffix := "_DELETED_" + f.CreatedAt.Format("2006-01-02")
+	d.db.Exec(`UPDATE files SET name = name || ?, deleted_at = ? WHERE parent_id IS ? AND owner_id = ? AND name = ?`,
+		trashSuffix, f.CreatedAt.Format(time.RFC3339Nano), nullStringVal(f.ParentID), ownerID, name)
+
 	_, err := d.db.Exec(
 		`INSERT INTO files (id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -222,6 +227,29 @@ func (d *DB) ListTrashedFiles(ownerID string) ([]File, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("metadata: list trashed files: %w", err)
+	}
+	defer rows.Close()
+
+	var files []File
+	for rows.Next() {
+		f, err := scanFileRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, *f)
+	}
+	return files, rows.Err()
+}
+
+// ListAllTrashedFiles returns all soft-deleted files across all users (admin view).
+func (d *DB) ListAllTrashedFiles() ([]File, error) {
+	rows, err := d.db.Query(
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at
+		 FROM files WHERE deleted_at IS NOT NULL
+		 ORDER BY deleted_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("metadata: list all trashed files: %w", err)
 	}
 	defer rows.Close()
 
