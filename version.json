@@ -1,9 +1,16 @@
 {
-  "version": "2.1.9",
+  "version": "2.2.0",
   "min_version": "1.0",
   "release_date": "2026-03-25",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1.9/SyncVault-2.1.9.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.2.0/SyncVault-2.2.0.dmg",
   "history": [
+    {
+      "version": "2.2.0",
+      "date": "2026-03-25",
+      "changes": [
+        "Fix crash with duplicate filenames in subdirectories"
+      ]
+    },
     {
       "version": "2.1.9",
       "date": "2026-03-25",

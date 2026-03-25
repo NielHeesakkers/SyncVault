@@ -207,8 +207,9 @@ actor SyncEngine {
 
     private func determineActions(local: [LocalFileInfo], remote: [ServerFile], known: [String: SyncFileState], mode: SyncTask.SyncMode, basePath: String) -> [SyncAction] {
         var actions: [SyncAction] = []
-        let remoteByName = Dictionary(uniqueKeysWithValues: remote.filter { !$0.isDir }.map { ($0.name, $0) })
-        let localByName = Dictionary(uniqueKeysWithValues: local.filter { !$0.isDirectory }.map { (URL(fileURLWithPath: $0.relativePath).lastPathComponent, $0) })
+        // Use uniquingKeysWith to handle duplicate filenames (e.g. same name in different subdirs)
+        let remoteByName = Dictionary(remote.filter { !$0.isDir }.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        let localByName = Dictionary(local.filter { !$0.isDirectory }.map { (URL(fileURLWithPath: $0.relativePath).lastPathComponent, $0) }, uniquingKeysWith: { first, _ in first })
 
         // Check local files against remote
         for (name, localFile) in localByName {
