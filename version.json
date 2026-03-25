@@ -1,9 +1,19 @@
 {
-  "version": "2.2.0",
+  "version": "2.2.1",
   "min_version": "1.0",
   "release_date": "2026-03-25",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.2.0/SyncVault-2.2.0.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.2.1/SyncVault-2.2.1.dmg",
   "history": [
+    {
+      "version": "2.2.1",
+      "date": "2026-03-25",
+      "changes": [
+        "Recursive directory sync",
+        "FSEvents file watcher",
+        "Smart hashing",
+        "Incremental sync"
+      ]
+    },
     {
       "version": "2.2.0",
       "date": "2026-03-25",

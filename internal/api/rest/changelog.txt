@@ -1,3 +1,13 @@
+## [2.2.1] — 2026-03-25
+
+macOS App:
+- Recursive directory sync: local folder structure is mirrored identically on server
+- FSEvents file watcher: only changed files are hashed and synced (not full scan every 30s)
+- Smart hashing: skips files whose modification date hasn't changed since last sync
+- Incremental sync: after initial full scan, only processes FSEvents-reported changes
+- Subdirectories automatically created on server during upload
+- Max 10 actions per sync cycle (up from 5)
+
 ## [2.2.0] — 2026-03-25
 
 macOS App:

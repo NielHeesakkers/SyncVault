@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		04A986495AC7098AE5BA1511 /* FileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3FDEA20918B30FA0CD901D /* FileWatcher.swift */; };
 		0FFD8C8FA4507AFAD81A2887 /* MenuBarIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32C695CE88C91D36E0FBB28 /* MenuBarIcon.swift */; };
 		1B4100C50A43336FD88467C9 /* SyncTasksTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F5B9CC449B3A42443B1E69 /* SyncTasksTab.swift */; };
 		1DAD634F2B3829A9536687C1 /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1101721817B68D9FDCC83C38 /* SyncEngine.swift */; };
@@ -73,6 +74,7 @@
 		70702DA21BB966F6734603A7 /* GeneralTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralTab.swift; sourceTree = "<group>"; };
 		75F5B9CC449B3A42443B1E69 /* SyncTasksTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncTasksTab.swift; sourceTree = "<group>"; };
 		76463197A091E21481CFD296 /* SyncVault.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SyncVault.entitlements; sourceTree = "<group>"; };
+		7F3FDEA20918B30FA0CD901D /* FileWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileWatcher.swift; sourceTree = "<group>"; };
 		8187B14E43A7916AFBAC1406 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		92068AE2AC3CF43472FD2719 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		999BDA0F83E9BC06BCEB72F5 /* ServerFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerFile.swift; sourceTree = "<group>"; };
@@ -144,6 +146,7 @@
 				5F74C8C1FCEBD361908B1935 /* AppState.swift */,
 				4858A3968FCD2CC10DE49A4A /* ChangelogTab.swift */,
 				A0C61DE67A8E8BD551AF0FE4 /* ConnectionTab.swift */,
+				7F3FDEA20918B30FA0CD901D /* FileWatcher.swift */,
 				70702DA21BB966F6734603A7 /* GeneralTab.swift */,
 				8187B14E43A7916AFBAC1406 /* Info.plist */,
 				E28CF52AF24FAC1F1B5D8570 /* InfoTab.swift */,
@@ -282,6 +285,7 @@
 				4FE5B71D31457C6AC1BA5AAE /* AppState.swift in Sources */,
 				A13C391A71BA93C2E65D56B9 /* ChangelogTab.swift in Sources */,
 				E858017E8757C9E36E52E5AC /* ConnectionTab.swift in Sources */,
+				04A986495AC7098AE5BA1511 /* FileWatcher.swift in Sources */,
 				6C28CEC8AE32102FA34F3DE0 /* GeneralTab.swift in Sources */,
 				4BF3C5D5D1ED893E1663C578 /* InfoTab.swift in Sources */,
 				21C13CD1E7883379B8147945 /* KeychainHelper.swift in Sources */,

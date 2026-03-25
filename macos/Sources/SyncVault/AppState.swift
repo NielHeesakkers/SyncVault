@@ -35,6 +35,7 @@ class AppState: ObservableObject {
     private var syncEngine: SyncEngine?
     private var syncTimer: Timer?
     private var notificationTimer: Timer?
+    private var fileWatchers: [UUID: FileWatcher] = [:]  // per sync task
 
     init() {
         loadConfig()
@@ -222,6 +223,14 @@ class AppState: ObservableObject {
 
     func startSyncLoop() {
         stopSyncLoop()
+
+        // Start file watchers for each sync task
+        for task in syncTasks where task.isEnabled && task.mode != .onDemand {
+            let watcher = FileWatcher(path: task.localPath)
+            watcher.start()
+            fileWatchers[task.id] = watcher
+        }
+
         // Run sync every 30 seconds
         syncTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -235,6 +244,11 @@ class AppState: ObservableObject {
     func stopSyncLoop() {
         syncTimer?.invalidate()
         syncTimer = nil
+        // Stop all file watchers
+        for (_, watcher) in fileWatchers {
+            watcher.stop()
+        }
+        fileWatchers.removeAll()
     }
 
     // MARK: - Notification Polling
@@ -338,7 +352,10 @@ class AppState: ObservableObject {
                 let dbPath = Self.configDirectory.appendingPathComponent("sync.db")
                 let engine = try SyncEngine(apiClient: client, dbPath: dbPath)
 
-                let result = try await engine.syncTask(task) { [weak self] progress in
+                // Get changed paths from FSEvents watcher (nil = full scan needed)
+                let changedPaths = fileWatchers[task.id]?.consumeChangedPaths()
+
+                let result = try await engine.syncTask(task, changedPaths: changedPaths) { [weak self] progress in
                     Task { @MainActor [weak self] in
                         self?.syncProgress = progress
                         self?.syncQueue = progress.pendingFiles

@@ -8,13 +8,16 @@ actor SyncEngine {
     private let apiClient: APIClient
     private let db: SyncDatabase
     private var isRunning = false
+    /// Cache of relative directory path → server folder ID (built during sync)
+    private var folderIDCache: [String: String] = [:]
 
     init(apiClient: APIClient, dbPath: URL) throws {
         self.apiClient = apiClient
         self.db = try SyncDatabase(path: dbPath.path)
     }
 
-    func syncTask(_ task: SyncTask, onProgress: @Sendable @escaping (SyncProgress) -> Void = { _ in }) async throws -> SyncResult {
+    /// Sync a task. changedPaths == nil means full scan (first sync).
+    func syncTask(_ task: SyncTask, changedPaths: Set<String>?, onProgress: @Sendable @escaping (SyncProgress) -> Void = { _ in }) async throws -> SyncResult {
         guard !isRunning else { return SyncResult(uploaded: 0, downloaded: 0, deleted: 0, conflicts: 0, errors: 0, fileActivity: []) }
         isRunning = true
         defer { isRunning = false }
@@ -22,94 +25,98 @@ actor SyncEngine {
         var result = SyncResult(uploaded: 0, downloaded: 0, deleted: 0, conflicts: 0, errors: 0, fileActivity: [])
         let taskID = task.id.uuidString
         let basePath = task.localPath
+        let isFullScan = (changedPaths == nil)
+
+        // Reset folder cache each sync
+        folderIDCache = [:]
+        folderIDCache[""] = task.remoteFolderID  // root = task's remote folder
 
         // 1. Scan local files
-        let localFiles = scanLocalFiles(at: basePath, excludePatterns: task.excludePatterns)
-        logger.info("Local files: \(localFiles.count) (path: \(basePath))")
+        let localFiles: [LocalFileInfo]
+        if isFullScan {
+            logger.info("Full scan: \(basePath)")
+            localFiles = scanLocalFiles(at: basePath, excludePatterns: task.excludePatterns, hashMode: .modificationDateCheck(db: db, taskID: taskID))
+        } else if let changed = changedPaths, !changed.isEmpty {
+            logger.info("Incremental: \(changed.count) changed paths")
+            localFiles = scanChangedFiles(basePath: basePath, changedPaths: changed, excludePatterns: task.excludePatterns)
+        } else {
+            logger.info("No local changes, checking remote only")
+            localFiles = []
+        }
+        logger.info("Local files to process: \(localFiles.count)")
 
-        // 2. Get remote files
-        let remoteFiles = try await apiClient.listFiles(parentID: task.remoteFolderID)
-        logger.info(" Remote files: \(remoteFiles.count) (folderID: \(task.remoteFolderID))")
-        for f in remoteFiles.prefix(10) {
-            logger.info("   remote: \(f.name) (dir=\(f.isDir), hash=\(f.contentHash ?? "nil"))")
+        // 2. Get ALL remote files recursively (flatten the tree)
+        let remoteTree = try await fetchRemoteTree(rootID: task.remoteFolderID)
+        logger.info(" Remote files (recursive): \(remoteTree.count)")
+
+        // 3. Get known state
+        let knownState = try db.getStates(taskID: taskID)
+        logger.info(" Known state: \(knownState.count)")
+
+        // 4. Determine actions using relative paths
+        let actions: [SyncAction]
+        if isFullScan {
+            actions = determineActions(local: localFiles, remote: remoteTree, known: knownState, mode: task.mode, basePath: basePath)
+        } else {
+            actions = determineIncrementalActions(changedLocal: localFiles, remote: remoteTree, known: knownState, mode: task.mode, basePath: basePath)
         }
 
-        // 3. Get known state from sync database
-        let knownState = try db.getStates(taskID: taskID)
-        logger.info(" Known state: \(knownState.count) entries")
-
-        // 4. Determine actions
-        let actions = determineActions(
-            local: localFiles,
-            remote: remoteFiles,
-            known: knownState,
-            mode: task.mode,
-            basePath: basePath
-        )
         logger.info(" Actions: \(actions.count)")
         for a in actions.prefix(10) {
-            logger.info("   action: \(a)")
+            logger.info("   \(a)")
         }
 
-        // 5. Execute actions with progress (max 5 per cycle to prevent hanging)
-        let maxActionsPerCycle = 5
-        let limitedActions = Array(actions.prefix(maxActionsPerCycle))
-        let totalActions = actions.count
+        // 5. Execute (max 10 per cycle)
+        let maxPerCycle = 10
+        let limited = Array(actions.prefix(maxPerCycle))
+        let total = actions.count
         var completed = 0
-        var totalBytesTransferred: Int64 = 0
-        let syncStart = Date()
-        let allFileNames = actions.map { $0.fileName }
+        var bytes: Int64 = 0
+        let start = Date()
+        let names = actions.map { $0.fileName }
 
-        if limitedActions.count < totalActions {
-            logger.info(" Limiting to \(maxActionsPerCycle) of \(totalActions) actions this cycle")
+        if limited.count < total {
+            logger.info(" Limiting to \(maxPerCycle) of \(total)")
         }
 
-        for (index, action) in limitedActions.enumerated() {
+        for (i, action) in limited.enumerated() {
             do {
-                let startTime = Date()
-                let pending = Array(allFileNames.dropFirst(index + 1).prefix(5))
+                let pending = Array(names.dropFirst(i + 1).prefix(5))
 
                 switch action {
-                case .upload(let path, let remoteName):
+                case .upload(let path, let relativePath):
                     let fileURL = URL(fileURLWithPath: path)
                     let attrs = try FileManager.default.attributesOfItem(atPath: path)
                     let size = (attrs[.size] as? Int64) ?? 0
+                    let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
 
                     onProgress(SyncProgress(
-                        currentFile: remoteName, action: "Uploading",
-                        bytesTransferred: totalBytesTransferred, totalBytes: size,
-                        filesCompleted: completed, filesTotal: totalActions,
-                        bytesPerSecond: Self.speed(bytes: totalBytesTransferred, since: syncStart),
+                        currentFile: displayName, action: "Uploading",
+                        bytesTransferred: bytes, totalBytes: size,
+                        filesCompleted: completed, filesTotal: total,
+                        bytesPerSecond: Self.speed(bytes: bytes, since: start),
                         pendingFiles: pending
                     ))
 
-                    // Compute hash by streaming (never load full file in memory)
-                    let hashChunkSize = 256 * 1024 * 1024
-                    let hashHandle = try FileHandle(forReadingFrom: fileURL)
-                    var fileHash = SHA256()
-                    while autoreleasepool(invoking: {
-                        let chunk = hashHandle.readData(ofLength: hashChunkSize)
-                        if chunk.isEmpty { return false }
-                        fileHash.update(data: chunk)
-                        return true
-                    }) {}
-                    hashHandle.closeFile()
-                    let hash = fileHash.finalize().compactMap { String(format: "%02x", $0) }.joined()
+                    // Ensure parent directories exist on server
+                    let parentRelPath = (relativePath as NSString).deletingLastPathComponent
+                    let parentID = try await ensureRemoteDirectory(parentRelPath, rootID: task.remoteFolderID)
 
-                    // Upload file streamed from disk (URLSession reads from file, not memory)
-                    let _ = try await apiClient.uploadFileFromDisk(fileURL: fileURL, filename: remoteName, parentID: task.remoteFolderID)
-                    try db.updateState(taskID: taskID, fileName: remoteName, contentHash: hash)
-                    totalBytesTransferred += size
+                    let hash = try Self.hashFile(at: fileURL)
+                    let _ = try await apiClient.uploadFileFromDisk(fileURL: fileURL, filename: displayName, parentID: parentID)
+                    try db.updateState(taskID: taskID, fileName: relativePath, contentHash: hash)
+                    bytes += size
                     result.uploaded += 1
-                    result.fileActivity.append(ActivityItem(filename: remoteName, action: "uploaded", timestamp: Date()))
-                    logger.info(" Uploaded: \(remoteName) (\(size) bytes)")
+                    result.fileActivity.append(ActivityItem(filename: displayName, action: "uploaded", timestamp: Date()))
+                    logger.info(" Uploaded: \(relativePath) (\(size) bytes)")
 
-                case .download(let fileID, let localPath, let remoteName):
+                case .download(let fileID, let localPath, let relativePath):
+                    let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
                     onProgress(SyncProgress(
-                        currentFile: remoteName, action: "Downloading",
-                        bytesTransferred: totalBytesTransferred, totalBytes: 0,
-                        filesCompleted: completed, filesTotal: totalActions,
-                        bytesPerSecond: Self.speed(bytes: totalBytesTransferred, since: syncStart),
+                        currentFile: displayName, action: "Downloading",
+                        bytesTransferred: bytes, totalBytes: 0,
+                        filesCompleted: completed, filesTotal: total,
+                        bytesPerSecond: Self.speed(bytes: bytes, since: start),
                         pendingFiles: pending
                     ))
 
@@ -118,45 +125,47 @@ actor SyncEngine {
                     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try data.write(to: url)
                     let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
-                    try db.updateState(taskID: taskID, fileName: remoteName, contentHash: hash)
+                    try db.updateState(taskID: taskID, fileName: relativePath, contentHash: hash)
                     let size = Int64(data.count)
-                    totalBytesTransferred += size
+                    bytes += size
                     result.downloaded += 1
-                    result.fileActivity.append(ActivityItem(filename: remoteName, action: "downloaded", timestamp: Date()))
-                    logger.info(" Downloaded: \(remoteName) (\(size) bytes)")
+                    result.fileActivity.append(ActivityItem(filename: displayName, action: "downloaded", timestamp: Date()))
+                    logger.info(" Downloaded: \(relativePath) (\(size) bytes)")
 
-                case .deleteRemote(let fileID, let remoteName):
+                case .deleteRemote(let fileID, let relativePath):
                     try await apiClient.deleteFile(id: fileID)
-                    try db.removeState(taskID: taskID, fileName: remoteName)
+                    try db.removeState(taskID: taskID, fileName: relativePath)
                     result.deleted += 1
-                    result.fileActivity.append(ActivityItem(filename: remoteName, action: "deleted", timestamp: Date()))
+                    let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
+                    result.fileActivity.append(ActivityItem(filename: displayName, action: "deleted", timestamp: Date()))
 
-                case .deleteLocal(let path, let remoteName):
+                case .deleteLocal(let path, let relativePath):
                     try FileManager.default.removeItem(atPath: path)
-                    try db.removeState(taskID: taskID, fileName: remoteName)
+                    try db.removeState(taskID: taskID, fileName: relativePath)
                     result.deleted += 1
-                    result.fileActivity.append(ActivityItem(filename: remoteName, action: "deleted", timestamp: Date()))
+                    let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
+                    result.fileActivity.append(ActivityItem(filename: displayName, action: "deleted", timestamp: Date()))
 
-                case .conflict(let localPath, let remoteID, let remoteName):
+                case .conflict(let localPath, let remoteID, let relativePath):
+                    let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
                     let data = try await apiClient.downloadFile(id: remoteID)
                     let url = URL(fileURLWithPath: localPath)
-                    let conflictName = Self.conflictName(for: url.lastPathComponent)
+                    let conflictName = Self.conflictName(for: displayName)
                     let conflictPath = url.deletingLastPathComponent().appendingPathComponent(conflictName)
                     try FileManager.default.moveItem(at: url, to: conflictPath)
                     try data.write(to: url)
                     let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
-                    try db.updateState(taskID: taskID, fileName: remoteName, contentHash: hash)
+                    try db.updateState(taskID: taskID, fileName: relativePath, contentHash: hash)
                     result.conflicts += 1
-                    result.fileActivity.append(ActivityItem(filename: "\(remoteName) (conflict)", action: "downloaded", timestamp: Date()))
+                    result.fileActivity.append(ActivityItem(filename: "\(displayName) (conflict)", action: "downloaded", timestamp: Date()))
                 }
 
                 completed += 1
             } catch let error as APIError where error == .unauthorized {
-                // Re-throw auth errors so AppState can re-authenticate
-                logger.info(" Auth failed on \(action) — re-throwing for re-auth")
+                logger.info(" Auth failed — re-throwing")
                 throw error
             } catch {
-                logger.info(" Action failed: \(action) — \(error)")
+                logger.info(" Failed: \(action) — \(error)")
                 result.errors += 1
             }
         }
@@ -164,19 +173,101 @@ actor SyncEngine {
         return result
     }
 
-    private static func speed(bytes: Int64, since: Date) -> Double {
-        let elapsed = Date().timeIntervalSince(since)
-        guard elapsed > 0 else { return 0 }
-        return Double(bytes) / elapsed
+    // MARK: - Remote Tree
+
+    /// Recursively fetch all files/folders from a remote folder, returning them with relative paths.
+    private func fetchRemoteTree(rootID: String) async throws -> [RemoteFileInfo] {
+        var allFiles: [RemoteFileInfo] = []
+        try await fetchRemoteRecursive(folderID: rootID, relativePath: "", into: &allFiles)
+        return allFiles
     }
 
-    private func scanLocalFiles(at path: String, excludePatterns: [String]) -> [LocalFileInfo] {
+    private func fetchRemoteRecursive(folderID: String, relativePath: String, into files: inout [RemoteFileInfo]) async throws {
+        let children = try await apiClient.listFiles(parentID: folderID)
+        for child in children {
+            let childRelPath = relativePath.isEmpty ? child.name : "\(relativePath)/\(child.name)"
+            if child.isDir {
+                // Cache the folder ID for later use
+                folderIDCache[childRelPath] = child.id
+                // Recurse into subdirectory
+                try await fetchRemoteRecursive(folderID: child.id, relativePath: childRelPath, into: &files)
+            } else {
+                files.append(RemoteFileInfo(
+                    id: child.id,
+                    name: child.name,
+                    relativePath: childRelPath,
+                    contentHash: child.contentHash,
+                    size: child.size
+                ))
+            }
+        }
+    }
+
+    /// Ensure a remote directory path exists, creating parent dirs as needed.
+    /// Returns the server folder ID for the given relative path.
+    private func ensureRemoteDirectory(_ relativePath: String, rootID: String) async throws -> String {
+        if relativePath.isEmpty || relativePath == "." {
+            return rootID
+        }
+
+        // Check cache first
+        if let cached = folderIDCache[relativePath] {
+            return cached
+        }
+
+        // Split into components and create each level
+        let components = relativePath.split(separator: "/").map(String.init)
+        var currentParentID = rootID
+        var currentPath = ""
+
+        for component in components {
+            currentPath = currentPath.isEmpty ? component : "\(currentPath)/\(component)"
+
+            if let cached = folderIDCache[currentPath] {
+                currentParentID = cached
+                continue
+            }
+
+            // Try to create the folder (will 409 if exists — that's ok)
+            do {
+                let folder = try await apiClient.createFolder(name: component, parentID: currentParentID)
+                folderIDCache[currentPath] = folder.id
+                currentParentID = folder.id
+                logger.info(" Created remote dir: \(currentPath)")
+            } catch APIError.serverError(409) {
+                // Folder already exists — find its ID by listing parent
+                let children = try await apiClient.listFiles(parentID: currentParentID)
+                if let existing = children.first(where: { $0.name == component && $0.isDir }) {
+                    folderIDCache[currentPath] = existing.id
+                    currentParentID = existing.id
+                } else {
+                    throw APIError.serverError(500)
+                }
+            }
+        }
+
+        return currentParentID
+    }
+
+    // MARK: - File Scanning
+
+    enum HashMode {
+        case always
+        case modificationDateCheck(db: SyncDatabase, taskID: String)
+    }
+
+    /// Full scan with smart hashing (only hash if mod date changed).
+    private func scanLocalFiles(at path: String, excludePatterns: [String], hashMode: HashMode) -> [LocalFileInfo] {
         var files: [LocalFileInfo] = []
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(atPath: path) else { return files }
 
+        var knownStates: [String: SyncFileState] = [:]
+        if case .modificationDateCheck(let db, let taskID) = hashMode {
+            knownStates = (try? db.getStates(taskID: taskID)) ?? [:]
+        }
+
         while let relativePath = enumerator.nextObject() as? String {
-            // Check exclude patterns
             if excludePatterns.contains(where: { matchPattern($0, against: relativePath) }) {
                 continue
             }
@@ -187,10 +278,13 @@ actor SyncEngine {
             let size = (attrs[.size] as? Int64) ?? 0
             let modified = (attrs[.modificationDate] as? Date) ?? Date()
 
-            // Compute hash for files (not dirs)
             var hash: String? = nil
-            if !isDir, let data = fm.contents(atPath: fullPath) {
-                hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
+            if !isDir {
+                if let known = knownStates[relativePath], modified <= known.syncedAt {
+                    hash = known.contentHash // File unchanged
+                } else {
+                    hash = try? Self.hashFile(at: URL(fileURLWithPath: fullPath))
+                }
             }
 
             files.append(LocalFileInfo(
@@ -205,59 +299,156 @@ actor SyncEngine {
         return files
     }
 
-    private func determineActions(local: [LocalFileInfo], remote: [ServerFile], known: [String: SyncFileState], mode: SyncTask.SyncMode, basePath: String) -> [SyncAction] {
-        var actions: [SyncAction] = []
-        // Use uniquingKeysWith to handle duplicate filenames (e.g. same name in different subdirs)
-        let remoteByName = Dictionary(remote.filter { !$0.isDir }.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-        let localByName = Dictionary(local.filter { !$0.isDirectory }.map { (URL(fileURLWithPath: $0.relativePath).lastPathComponent, $0) }, uniquingKeysWith: { first, _ in first })
+    /// Incremental: only scan FSEvents-reported files.
+    private func scanChangedFiles(basePath: String, changedPaths: Set<String>, excludePatterns: [String]) -> [LocalFileInfo] {
+        var files: [LocalFileInfo] = []
+        let fm = FileManager.default
 
-        // Check local files against remote
-        for (name, localFile) in localByName {
-            if let remoteFile = remoteByName[name] {
-                // Both exist — check if changed
+        for changedPath in changedPaths {
+            guard changedPath.hasPrefix(basePath) else { continue }
+            let dropCount = basePath.hasSuffix("/") ? basePath.count : basePath.count + 1
+            guard changedPath.count > dropCount else { continue }
+            let relativePath = String(changedPath.dropFirst(dropCount))
+
+            if excludePatterns.contains(where: { matchPattern($0, against: relativePath) }) {
+                continue
+            }
+
+            guard let attrs = try? fm.attributesOfItem(atPath: changedPath) else { continue }
+            let isDir = attrs[.type] as? FileAttributeType == .typeDirectory
+            let size = (attrs[.size] as? Int64) ?? 0
+            let modified = (attrs[.modificationDate] as? Date) ?? Date()
+
+            var hash: String? = nil
+            if !isDir {
+                hash = try? Self.hashFile(at: URL(fileURLWithPath: changedPath))
+            }
+
+            files.append(LocalFileInfo(
+                relativePath: relativePath,
+                fullPath: changedPath,
+                isDirectory: isDir,
+                size: size,
+                modifiedAt: modified,
+                contentHash: hash
+            ))
+        }
+        return files
+    }
+
+    // MARK: - Action Determination
+
+    /// Full scan: compare all local vs all remote using relative paths.
+    private func determineActions(local: [LocalFileInfo], remote: [RemoteFileInfo], known: [String: SyncFileState], mode: SyncTask.SyncMode, basePath: String) -> [SyncAction] {
+        var actions: [SyncAction] = []
+        let remoteByPath = Dictionary(remote.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
+        let localByPath = Dictionary(local.filter { !$0.isDirectory }.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
+
+        // Local files → upload if new/changed
+        for (relPath, localFile) in localByPath {
+            if let remoteFile = remoteByPath[relPath] {
                 if localFile.contentHash != remoteFile.contentHash {
-                    let knownHash = known[name]?.contentHash
+                    let knownHash = known[relPath]?.contentHash
                     if knownHash == remoteFile.contentHash {
-                        // Only local changed -> upload
-                        actions.append(.upload(localFile.fullPath, name))
+                        actions.append(.upload(localFile.fullPath, relPath))
                     } else if knownHash == localFile.contentHash {
-                        // Only remote changed -> download (if two-way)
                         if mode == .twoWay {
-                            let localPath = (basePath as NSString).appendingPathComponent(name)
-                            actions.append(.download(remoteFile.id, localPath, name))
+                            let localPath = (basePath as NSString).appendingPathComponent(relPath)
+                            actions.append(.download(remoteFile.id, localPath, relPath))
                         }
                     } else {
-                        // Both changed -> conflict
                         if mode == .twoWay {
-                            actions.append(.conflict(localFile.fullPath, remoteFile.id, name))
+                            actions.append(.conflict(localFile.fullPath, remoteFile.id, relPath))
                         } else {
-                            actions.append(.upload(localFile.fullPath, name))
+                            actions.append(.upload(localFile.fullPath, relPath))
                         }
                     }
                 }
             } else {
-                // Local only -> upload
-                actions.append(.upload(localFile.fullPath, name))
+                actions.append(.upload(localFile.fullPath, relPath))
             }
         }
 
-        // Check remote files not in local (two-way only)
+        // Remote files not in local → download (two-way only)
         if mode == .twoWay {
-            for (name, remoteFile) in remoteByName {
-                if localByName[name] == nil {
-                    if known[name] != nil {
-                        // Was known but deleted locally -> delete remote
-                        actions.append(.deleteRemote(remoteFile.id, name))
+            for (relPath, remoteFile) in remoteByPath {
+                if localByPath[relPath] == nil {
+                    if known[relPath] != nil {
+                        actions.append(.deleteRemote(remoteFile.id, relPath))
                     } else {
-                        // New remote file -> download
-                        let localPath = (basePath as NSString).appendingPathComponent(name)
-                        actions.append(.download(remoteFile.id, localPath, name))
+                        let localPath = (basePath as NSString).appendingPathComponent(relPath)
+                        actions.append(.download(remoteFile.id, localPath, relPath))
                     }
                 }
             }
         }
 
         return actions
+    }
+
+    /// Incremental: only changed local + new remote.
+    private func determineIncrementalActions(changedLocal: [LocalFileInfo], remote: [RemoteFileInfo], known: [String: SyncFileState], mode: SyncTask.SyncMode, basePath: String) -> [SyncAction] {
+        var actions: [SyncAction] = []
+        let remoteByPath = Dictionary(remote.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
+
+        for localFile in changedLocal where !localFile.isDirectory {
+            let relPath = localFile.relativePath
+            if let remoteFile = remoteByPath[relPath] {
+                if localFile.contentHash != remoteFile.contentHash {
+                    let knownHash = known[relPath]?.contentHash
+                    if knownHash == remoteFile.contentHash {
+                        actions.append(.upload(localFile.fullPath, relPath))
+                    } else if knownHash == localFile.contentHash {
+                        if mode == .twoWay {
+                            let localPath = (basePath as NSString).appendingPathComponent(relPath)
+                            actions.append(.download(remoteFile.id, localPath, relPath))
+                        }
+                    } else {
+                        if mode == .twoWay {
+                            actions.append(.conflict(localFile.fullPath, remoteFile.id, relPath))
+                        } else {
+                            actions.append(.upload(localFile.fullPath, relPath))
+                        }
+                    }
+                }
+            } else {
+                actions.append(.upload(localFile.fullPath, relPath))
+            }
+        }
+
+        // New remote files
+        if mode == .twoWay {
+            for (relPath, remoteFile) in remoteByPath {
+                if known[relPath] == nil {
+                    let localPath = (basePath as NSString).appendingPathComponent(relPath)
+                    actions.append(.download(remoteFile.id, localPath, relPath))
+                }
+            }
+        }
+
+        return actions
+    }
+
+    // MARK: - Helpers
+
+    static func hashFile(at url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { handle.closeFile() }
+        let chunkSize = 256 * 1024 * 1024
+        var hasher = SHA256()
+        while autoreleasepool(invoking: {
+            let chunk = handle.readData(ofLength: chunkSize)
+            if chunk.isEmpty { return false }
+            hasher.update(data: chunk)
+            return true
+        }) {}
+        return hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func speed(bytes: Int64, since: Date) -> Double {
+        let elapsed = Date().timeIntervalSince(since)
+        guard elapsed > 0 else { return 0 }
+        return Double(bytes) / elapsed
     }
 
     private func matchPattern(_ pattern: String, against path: String) -> Bool {
@@ -276,12 +467,11 @@ actor SyncEngine {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd_HHmmss"
         let timestamp = formatter.string(from: Date())
-        if ext.isEmpty {
-            return "\(name)_\(host)_\(timestamp)"
-        }
-        return "\(name)_\(host)_\(timestamp).\(ext)"
+        return ext.isEmpty ? "\(name)_\(host)_\(timestamp)" : "\(name)_\(host)_\(timestamp).\(ext)"
     }
 }
+
+// MARK: - Types
 
 struct LocalFileInfo {
     let relativePath: String
@@ -292,15 +482,24 @@ struct LocalFileInfo {
     let contentHash: String?
 }
 
+/// Remote file with its relative path in the folder tree.
+struct RemoteFileInfo {
+    let id: String
+    let name: String
+    let relativePath: String
+    let contentHash: String?
+    let size: Int64
+}
+
 struct SyncProgress {
     var currentFile: String
-    var action: String          // "Uploading", "Downloading"
+    var action: String
     var bytesTransferred: Int64
     var totalBytes: Int64
     var filesCompleted: Int
     var filesTotal: Int
     var bytesPerSecond: Double
-    var pendingFiles: [String]  // filenames still to be synced
+    var pendingFiles: [String]
 }
 
 struct SyncResult {
@@ -313,29 +512,29 @@ struct SyncResult {
 }
 
 enum SyncAction: CustomStringConvertible {
-    case upload(String, String)              // localPath, remoteName
-    case download(String, String, String)    // remoteFileID, localPath, remoteName
-    case deleteRemote(String, String)        // remoteFileID, remoteName
-    case deleteLocal(String, String)         // localPath, remoteName
-    case conflict(String, String, String)    // localPath, remoteFileID, remoteName
+    case upload(String, String)           // localPath, relativePath
+    case download(String, String, String) // remoteFileID, localPath, relativePath
+    case deleteRemote(String, String)     // remoteFileID, relativePath
+    case deleteLocal(String, String)      // localPath, relativePath
+    case conflict(String, String, String) // localPath, remoteFileID, relativePath
 
     var fileName: String {
         switch self {
-        case .upload(_, let name): return name
-        case .download(_, _, let name): return name
-        case .deleteRemote(_, let name): return name
-        case .deleteLocal(_, let name): return name
-        case .conflict(_, _, let name): return name
+        case .upload(_, let p): return URL(fileURLWithPath: p).lastPathComponent
+        case .download(_, _, let p): return URL(fileURLWithPath: p).lastPathComponent
+        case .deleteRemote(_, let p): return URL(fileURLWithPath: p).lastPathComponent
+        case .deleteLocal(_, let p): return URL(fileURLWithPath: p).lastPathComponent
+        case .conflict(_, _, let p): return URL(fileURLWithPath: p).lastPathComponent
         }
     }
 
     var description: String {
         switch self {
-        case .upload(_, let name): return "upload(\(name))"
-        case .download(_, _, let name): return "download(\(name))"
-        case .deleteRemote(_, let name): return "deleteRemote(\(name))"
-        case .deleteLocal(_, let name): return "deleteLocal(\(name))"
-        case .conflict(_, _, let name): return "conflict(\(name))"
+        case .upload(_, let p): return "upload(\(p))"
+        case .download(_, _, let p): return "download(\(p))"
+        case .deleteRemote(_, let p): return "deleteRemote(\(p))"
+        case .deleteLocal(_, let p): return "deleteLocal(\(p))"
+        case .conflict(_, _, let p): return "conflict(\(p))"
         }
     }
 }
