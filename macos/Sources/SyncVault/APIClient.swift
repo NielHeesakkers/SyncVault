@@ -256,6 +256,56 @@ actor APIClient {
         return try JSONDecoder().decode(ServerFile.self, from: data)
     }
 
+    /// Upload a file from disk without loading it into memory.
+    /// Writes a multipart body to a temp file, then uses URLSession.upload(for:fromFile:).
+    func uploadFileFromDisk(fileURL: URL, filename: String, parentID: String?) async throws -> ServerFile {
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/upload")!)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        addAuth(&request)
+
+        // Write multipart body to a temp file
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("upload-\(UUID().uuidString).multipart")
+        FileManager.default.createFile(atPath: tempURL.path, contents: nil)
+        let tempHandle = try FileHandle(forWritingTo: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        func writeString(_ s: String) { tempHandle.write(s.data(using: .utf8)!) }
+
+        // parent_id field
+        if let parentID = parentID {
+            writeString("--\(boundary)\r\n")
+            writeString("Content-Disposition: form-data; name=\"parent_id\"\r\n\r\n")
+            writeString("\(parentID)\r\n")
+        }
+
+        // file field header
+        writeString("--\(boundary)\r\n")
+        writeString("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
+        writeString("Content-Type: application/octet-stream\r\n\r\n")
+
+        // Stream file content in chunks
+        let sourceHandle = try FileHandle(forReadingFrom: fileURL)
+        let chunkSize = 256 * 1024 * 1024 // 256MB
+        while autoreleasepool(invoking: {
+            let chunk = sourceHandle.readData(ofLength: chunkSize)
+            if chunk.isEmpty { return false }
+            tempHandle.write(chunk)
+            return true
+        }) {}
+        sourceHandle.closeFile()
+
+        // closing boundary
+        writeString("\r\n--\(boundary)--\r\n")
+        tempHandle.closeFile()
+
+        // Upload from file (URLSession streams from disk, not memory)
+        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: tempURL)
+        try checkResponse(response)
+        return try JSONDecoder().decode(ServerFile.self, from: data)
+    }
+
     private func addAuth(_ request: inout URLRequest) {
         if let token = accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

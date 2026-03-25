@@ -83,41 +83,21 @@ actor SyncEngine {
                         pendingFiles: pending
                     ))
 
-                    // Stream upload: read file in 256MB chunks to avoid loading entire file in memory
-                    let chunkSize = 256 * 1024 * 1024 // 256MB
-                    let fileHandle = try FileHandle(forReadingFrom: fileURL)
-                    defer { fileHandle.closeFile() }
-
+                    // Compute hash by streaming (never load full file in memory)
+                    let hashChunkSize = 256 * 1024 * 1024
+                    let hashHandle = try FileHandle(forReadingFrom: fileURL)
                     var fileHash = SHA256()
-                    var uploadData = Data()
-                    uploadData.reserveCapacity(min(Int(size), chunkSize))
-
-                    while true {
-                        let chunk = fileHandle.readData(ofLength: chunkSize)
-                        if chunk.isEmpty { break }
+                    while autoreleasepool(invoking: {
+                        let chunk = hashHandle.readData(ofLength: hashChunkSize)
+                        if chunk.isEmpty { return false }
                         fileHash.update(data: chunk)
-                        uploadData.append(chunk)
-                        if uploadData.count >= chunkSize || chunk.count < chunkSize {
-                            break
-                        }
-                    }
-
-                    // If file is larger than 256MB, read remaining for hash but upload in one multipart request
-                    if size > Int64(chunkSize) {
-                        // Read rest for hash only
-                        while true {
-                            let chunk = fileHandle.readData(ofLength: chunkSize)
-                            if chunk.isEmpty { break }
-                            fileHash.update(data: chunk)
-                        }
-                        // Re-read entire file for upload (streamed via URLSession)
-                        let fullData = try Data(contentsOf: fileURL, options: .mappedIfSafe)
-                        let _ = try await apiClient.uploadFile(data: fullData, filename: remoteName, parentID: task.remoteFolderID)
-                    } else {
-                        let _ = try await apiClient.uploadFile(data: uploadData, filename: remoteName, parentID: task.remoteFolderID)
-                    }
-
+                        return true
+                    }) {}
+                    hashHandle.closeFile()
                     let hash = fileHash.finalize().compactMap { String(format: "%02x", $0) }.joined()
+
+                    // Upload file streamed from disk (URLSession reads from file, not memory)
+                    let _ = try await apiClient.uploadFileFromDisk(fileURL: fileURL, filename: remoteName, parentID: task.remoteFolderID)
                     try db.updateState(taskID: taskID, fileName: remoteName, contentHash: hash)
                     totalBytesTransferred += size
                     result.uploaded += 1

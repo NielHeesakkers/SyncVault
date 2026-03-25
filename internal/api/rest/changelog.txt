@@ -1,3 +1,10 @@
+## [2.1.9] — 2026-03-25
+
+macOS App:
+- True streamed upload: file never loaded in memory, streamed from disk via URLSession
+- Hash computed in 256MB chunks without memory allocation
+- Fixes crash on GB-sized files
+
 ## [2.1.8] — 2026-03-25
 
 macOS App:
