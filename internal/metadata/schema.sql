@@ -1,12 +1,13 @@
 CREATE TABLE IF NOT EXISTS users (
-    id          TEXT PRIMARY KEY,
-    username    TEXT NOT NULL UNIQUE,
-    email       TEXT NOT NULL UNIQUE,
-    password    TEXT NOT NULL,
-    role        TEXT NOT NULL CHECK(role IN ('admin', 'user')),
-    quota_bytes INTEGER NOT NULL DEFAULT 0,
-    created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL
+    id                   TEXT PRIMARY KEY,
+    username             TEXT NOT NULL UNIQUE,
+    email                TEXT NOT NULL UNIQUE,
+    password             TEXT NOT NULL,
+    role                 TEXT NOT NULL CHECK(role IN ('admin', 'user')),
+    quota_bytes          INTEGER NOT NULL DEFAULT 0,
+    token_invalidated_at TEXT,
+    created_at           TEXT NOT NULL,
+    updated_at           TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS files (
@@ -163,12 +164,36 @@ CREATE TABLE IF NOT EXISTS sync_states (
     UNIQUE(user_id, device_id, task_name, file_path)
 );
 
+CREATE TABLE IF NOT EXISTS upload_sessions (
+    id             TEXT PRIMARY KEY,
+    user_id        TEXT NOT NULL REFERENCES users(id),
+    parent_id      TEXT REFERENCES files(id),
+    filename       TEXT NOT NULL,
+    total_size     INTEGER NOT NULL,
+    chunk_size     INTEGER NOT NULL,
+    total_chunks   INTEGER NOT NULL,
+    received_chunks TEXT NOT NULL DEFAULT '[]',
+    created_at     TEXT NOT NULL,
+    expires_at     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS file_blocks (
+    file_id      TEXT NOT NULL REFERENCES files(id),
+    version_num  INTEGER NOT NULL,
+    block_index  INTEGER NOT NULL,
+    weak_hash    INTEGER NOT NULL,
+    strong_hash  TEXT NOT NULL,
+    PRIMARY KEY (file_id, version_num, block_index)
+);
+
 -- Indexes
-CREATE INDEX IF NOT EXISTS idx_files_parent_id   ON files(parent_id);
-CREATE INDEX IF NOT EXISTS idx_files_owner_id    ON files(owner_id);
-CREATE INDEX IF NOT EXISTS idx_files_deleted_at  ON files(deleted_at);
-CREATE INDEX IF NOT EXISTS idx_versions_file_id  ON versions(file_id);
-CREATE INDEX IF NOT EXISTS idx_devices_user_id   ON devices(user_id);
-CREATE INDEX IF NOT EXISTS idx_activity_user_id  ON activity_log(user_id);
-CREATE INDEX IF NOT EXISTS idx_activity_created  ON activity_log(created_at);
-CREATE INDEX IF NOT EXISTS idx_share_token       ON share_links(token);
+CREATE INDEX IF NOT EXISTS idx_files_parent_id    ON files(parent_id);
+CREATE INDEX IF NOT EXISTS idx_files_owner_id     ON files(owner_id);
+CREATE INDEX IF NOT EXISTS idx_files_deleted_at   ON files(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_versions_file_id   ON versions(file_id);
+CREATE INDEX IF NOT EXISTS idx_devices_user_id    ON devices(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_user_id   ON activity_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_created   ON activity_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_share_token        ON share_links(token);
+CREATE INDEX IF NOT EXISTS idx_upload_sessions_user ON upload_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_file_blocks_file   ON file_blocks(file_id);

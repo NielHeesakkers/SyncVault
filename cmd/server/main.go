@@ -52,8 +52,10 @@ func main() {
 	log.Printf("  gRPC port:         %d", cfg.GRPCPort)
 	log.Printf("  Max chunk size:    %d bytes", cfg.MaxChunkSize)
 
+	uploadsDir := filepath.Join(cfg.DataDir, "uploads")
+
 	// 2. Create data directories.
-	for _, dir := range []string{cfg.DataDir, cfg.StorageDir} {
+	for _, dir := range []string{cfg.DataDir, cfg.StorageDir, uploadsDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			log.Fatalf("Failed to create directory %s: %v", dir, err)
 		}
@@ -149,7 +151,7 @@ func main() {
 	}
 
 	// 8. Create REST server.
-	srv := rest.NewServer(db, store, jwtManager, emailSvc)
+	srv := rest.NewServer(db, store, jwtManager, emailSvc, uploadsDir)
 
 	addr := fmt.Sprintf(":%d", cfg.HTTPPort)
 	httpServer := &http.Server{

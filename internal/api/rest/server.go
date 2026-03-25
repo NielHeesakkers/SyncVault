@@ -14,22 +14,27 @@ import (
 
 // Server is the SyncVault REST API server.
 type Server struct {
-	db     *metadata.DB
-	store  *storage.Store
-	jwt    *auth.JWT
-	email  *email.Service
-	router chi.Router
+	db         *metadata.DB
+	store      *storage.Store
+	jwt        *auth.JWT
+	email      *email.Service
+	router     chi.Router
+	uploadsDir string // base directory for chunked upload staging files
 }
 
 // NewServer creates a new Server and registers all routes.
-func NewServer(db *metadata.DB, store *storage.Store, jwt *auth.JWT, emailSvc *email.Service) *Server {
+// uploadsDir is the base directory for temporary chunked upload staging files (e.g. /data/uploads).
+func NewServer(db *metadata.DB, store *storage.Store, jwt *auth.JWT, emailSvc *email.Service, uploadsDir string) *Server {
 	s := &Server{
-		db:     db,
-		store:  store,
-		jwt:    jwt,
-		email:  emailSvc,
-		router: chi.NewRouter(),
+		db:         db,
+		store:      store,
+		jwt:        jwt,
+		email:      emailSvc,
+		router:     chi.NewRouter(),
+		uploadsDir: uploadsDir,
 	}
+	// Clean up any expired upload sessions left from a previous run.
+	_, _ = db.DeleteExpiredUploadSessions()
 	s.setupRoutes()
 	return s
 }
@@ -64,7 +69,7 @@ func (s *Server) setupRoutes() {
 
 	// Protected routes.
 	r.Group(func(r chi.Router) {
-		r.Use(auth.RequireAuth(s.jwt))
+		r.Use(auth.RequireAuth(s.jwt, s.db))
 
 		r.Get("/api/me", s.handleMe)
 		r.Put("/api/me/password", s.handleChangeMyPassword)
@@ -88,6 +93,16 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/files/{id}/download", s.handleDownloadFile)
 		r.Get("/api/trash", s.handleListTrash)
 		r.Get("/api/changes", s.handleListChanges)
+
+		// Chunked uploads.
+		r.Post("/api/uploads/init", s.handleInitUpload)
+		r.Put("/api/uploads/{id}/chunks/{n}", s.handleUploadChunk)
+		r.Get("/api/uploads/{id}/status", s.handleUploadStatus)
+		r.Post("/api/uploads/{id}/complete", s.handleCompleteUpload)
+
+		// Delta sync.
+		r.Get("/api/files/{id}/blocks", s.handleGetBlocks)
+		r.Post("/api/files/{id}/delta", s.handleDeltaUpload)
 
 		// Version management.
 		r.Get("/api/files/{id}/versions", s.handleListVersions)
@@ -154,6 +169,9 @@ func (s *Server) setupRoutes() {
 			r.Get("/api/admin/backups/{name}/download", s.handleDownloadBackup)
 			r.Delete("/api/admin/backups/{name}", s.handleDeleteBackup)
 			r.Post("/api/admin/backups/{name}/restore", s.handleRestoreBackup)
+			r.Post("/api/admin/cleanup", s.handleAdminCleanup)
+			r.Get("/api/admin/cleanup/preview", s.handleCleanupPreview)
+			r.Get("/api/admin/cleanup/calendar", s.handleCleanupCalendar)
 		})
 	})
 
@@ -161,7 +179,7 @@ func (s *Server) setupRoutes() {
 	r.NotFound(ServeSPA().ServeHTTP)
 }
 
-const AppVersion = "2.3.0"
+const AppVersion = "2.4.0"
 
 // handleHealth returns a simple health check response.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

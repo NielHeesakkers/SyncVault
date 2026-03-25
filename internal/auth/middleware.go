@@ -5,15 +5,27 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type contextKey string
 
 const claimsKey contextKey = "claims"
 
+// TokenInvalidationChecker checks if a user's tokens have been invalidated.
+type TokenInvalidationChecker interface {
+	GetTokenInvalidatedAt(userID string) (*time.Time, error)
+}
+
 // RequireAuth returns middleware that validates a Bearer access token and
 // stores the resulting Claims in the request context.
-func RequireAuth(j *JWT) func(http.Handler) http.Handler {
+// If checker is provided, it also verifies the token was issued after any invalidation.
+func RequireAuth(j *JWT, checker ...TokenInvalidationChecker) func(http.Handler) http.Handler {
+	var chk TokenInvalidationChecker
+	if len(checker) > 0 {
+		chk = checker[0]
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -32,6 +44,15 @@ func RequireAuth(j *JWT) func(http.Handler) http.Handler {
 			if err != nil {
 				writeJSONError(w, http.StatusUnauthorized, "invalid or expired token")
 				return
+			}
+
+			// Check if tokens have been invalidated (e.g. password changed)
+			if chk != nil {
+				invalidatedAt, err := chk.GetTokenInvalidatedAt(claims.UserID)
+				if err == nil && invalidatedAt != nil && claims.IssuedAt.Before(*invalidatedAt) {
+					writeJSONError(w, http.StatusUnauthorized, "session expired — please log in again")
+					return
+				}
 			}
 
 			ctx := context.WithValue(r.Context(), claimsKey, claims)

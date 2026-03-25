@@ -50,6 +50,7 @@ func Open(path string) (*DB, error) {
 	// Run incremental migrations that are safe to re-apply on existing databases.
 	migrations := []string{
 		`ALTER TABLE files ADD COLUMN removed_locally INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN token_invalidated_at TEXT`,
 	}
 	for _, m := range migrations {
 		if _, err := rawDB.Exec(m); err != nil {

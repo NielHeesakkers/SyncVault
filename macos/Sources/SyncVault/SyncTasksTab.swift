@@ -18,10 +18,10 @@ struct SyncTasksTab: View {
                 VStack(spacing: 12) {
                     Spacer()
                     Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 32))
-                        .foregroundColor(.secondary.opacity(0.4))
+                        .font(.system(size: 36))
+                        .foregroundColor(.secondary.opacity(0.3))
                     Text("No sync tasks")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.secondary)
                     Text("Add a task to start syncing files.")
                         .font(.system(size: 12))
@@ -30,72 +30,31 @@ struct SyncTasksTab: View {
                 }
                 .frame(maxWidth: .infinity)
             } else {
-                List {
-                    ForEach(appState.syncTasks) { task in
-                        HStack(spacing: 8) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(task.remoteFolderName)
-                                        .font(.system(size: 13, weight: .medium))
-                                    if task.isTeamFolder {
-                                        Text("Team")
-                                            .font(.system(size: 9, weight: .semibold))
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 5)
-                                            .padding(.vertical, 1)
-                                            .background(Color.purple, in: RoundedRectangle(cornerRadius: 3))
-                                    }
-                                }
-                                Text(task.localPath)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-                            Spacer()
-                            Text(task.mode.displayName)
-                                .font(.system(size: 10))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(badgeColor(for: task.mode).opacity(0.15))
-                                .foregroundColor(badgeColor(for: task.mode))
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                            Toggle("", isOn: Binding(
-                                get: { task.isEnabled },
-                                set: { newValue in
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(appState.syncTasks) { task in
+                            TaskCard(
+                                task: task,
+                                isSyncing: appState.isSyncing,
+                                onEdit: { taskToEdit = task },
+                                onDelete: {
+                                    taskToDelete = task
+                                    showingDeleteConfirmation = true
+                                },
+                                onToggle: { newValue in
                                     var updated = task
                                     updated.isEnabled = newValue
                                     appState.updateSyncTask(updated)
                                 }
-                            ))
-                            .labelsHidden()
-                            .scaleEffect(0.8)
-
-                            Button {
-                                taskToEdit = task
-                            } label: {
-                                Image(systemName: "pencil")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.accentColor)
-                            }
-                            .buttonStyle(.borderless)
-
-                            Button {
-                                taskToDelete = task
-                                showingDeleteConfirmation = true
-                            } label: {
-                                Image(systemName: "trash")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.red)
-                            }
-                            .buttonStyle(.borderless)
+                            )
                         }
-                        .padding(.vertical, 2)
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                 }
             }
 
-            // Bottom bar with 3 buttons
+            // Bottom bar
             Divider()
             HStack(spacing: 8) {
                 Button {
@@ -160,15 +119,106 @@ struct SyncTasksTab: View {
             }
         }
     }
+}
 
-    private func badgeColor(for mode: SyncTask.SyncMode) -> Color {
-        switch mode {
-        case .twoWay: return .blue
-        case .uploadOnly: return .orange
-        case .onDemand: return .purple
+// MARK: - Task Card
+
+struct TaskCard: View {
+    let task: SyncTask
+    let isSyncing: Bool
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    let onToggle: (Bool) -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Status dot with pulse when syncing
+            Group {
+                if task.isEnabled && isSyncing {
+                    PulsingDot(color: dotColor)
+                } else {
+                    Circle()
+                        .fill(dotColor)
+                        .frame(width: 8, height: 8)
+                }
+            }
+
+            // Main info
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(task.remoteFolderName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    if task.isTeamFolder {
+                        Text("Team")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.purple, in: Capsule())
+                    }
+                }
+                HStack(spacing: 4) {
+                    Image(systemName: "folder.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(.yellow)
+                    Text(task.localPath)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+
+            Spacer()
+
+            // Mode badge
+            ModeBadge(mode: task.mode)
+
+            // Toggle
+            Toggle("", isOn: Binding(
+                get: { task.isEnabled },
+                set: { onToggle($0) }
+            ))
+            .labelsHidden()
+            .scaleEffect(0.8)
+
+            // Edit button
+            Button(action: onEdit) {
+                Image(systemName: "pencil")
+                    .font(.system(size: 11))
+                    .foregroundColor(.accentColor)
+            }
+            .buttonStyle(.borderless)
+
+            // Delete button
+            Button(action: onDelete) {
+                Image(systemName: "trash")
+                    .font(.system(size: 11))
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(.borderless)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.7))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
+                )
+        )
+    }
+
+    private var dotColor: Color {
+        if !task.isEnabled { return Color(white: 0.35) }
+        if task.mode == .onDemand { return .purple }
+        return isSyncing ? .blue : .green
     }
 }
+
+// MARK: - Edit Sync Task
 
 struct EditSyncTaskView: View {
     @ObservedObject var appState: AppState

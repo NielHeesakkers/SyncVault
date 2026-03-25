@@ -35,7 +35,7 @@ func setupServer(t *testing.T) (*httptest.Server, *metadata.DB) {
 	}
 
 	jwtManager := auth.NewJWT("integration-test-secret")
-	srv := rest.NewServer(db, store, jwtManager, nil)
+	srv := rest.NewServer(db, store, jwtManager, nil, filepath.Join(dir, "uploads"))
 
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)

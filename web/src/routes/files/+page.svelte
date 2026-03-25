@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Clock, FolderOpen, FileText, Download, RotateCcw, Settings2, Share2, Copy, Check, Trash2 } from 'lucide-svelte';
+	import {
+		Clock, FolderOpen, FileText, Download, RotateCcw, Settings2, Share2, Copy, Check, Trash2,
+		FileImage, FileCode, FileArchive, FileSpreadsheet, FileVideo, FileAudio, File
+	} from 'lucide-svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores';
@@ -44,7 +47,7 @@
 	const today = new Date();
 	const sixMonthsAgo = new Date(today);
 	sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-	sixMonthsAgo.setDate(1); // Start at first of month
+	sixMonthsAgo.setDate(1);
 	const rangeStart = sixMonthsAgo.getTime();
 	const rangeEnd = today.getTime();
 	const rangeDuration = rangeEnd - rangeStart;
@@ -55,16 +58,13 @@
 		return TIMELINE_PADDING + ratio * (timelineWidth - 2 * TIMELINE_PADDING);
 	}
 
-	// Generate day/week/month tick marks
 	function generateTicks() {
 		const days: { x: number; isWeek: boolean; isMonth: boolean; label?: string }[] = [];
 		const d = new Date(sixMonthsAgo);
-
 		while (d <= today) {
 			const x = dateToX(d);
 			const isFirstOfMonth = d.getDate() === 1;
 			const isMonday = d.getDay() === 1;
-
 			if (isFirstOfMonth) {
 				const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 				days.push({ x, isWeek: false, isMonth: true, label: monthNames[d.getMonth()] });
@@ -73,14 +73,11 @@
 			} else {
 				days.push({ x, isWeek: false, isMonth: false });
 			}
-
 			d.setDate(d.getDate() + 1);
 		}
-
 		return days;
 	}
 
-	// Generate version dots from changeDates
 	function generateDots() {
 		return changeDates
 			.map((dateStr) => {
@@ -112,12 +109,8 @@
 	let dots = $derived(generateDots());
 
 	onMount(async () => {
-		// Save initial state
 		history.replaceState({ folderId: currentFolderId, breadcrumbs: JSON.parse(JSON.stringify(breadcrumbs)) }, '');
-
 		loadChangeDates(currentFolderId);
-
-		// Handle browser back/forward
 		const handlePopState = (e: PopStateEvent) => {
 			if (e.state?.breadcrumbs) {
 				breadcrumbs = e.state.breadcrumbs;
@@ -142,13 +135,10 @@
 				const data = await res.json();
 				changeDates = data.dates || [];
 				if (!selectedDate) {
-					// Always default to today so all current files/folders are visible
 					selectDate(new Date().toISOString().slice(0, 10));
 				}
 			}
-		} catch {
-			// non-fatal
-		}
+		} catch {}
 	}
 
 	async function loadHistory(folderId: string | null, dateStr: string) {
@@ -166,7 +156,6 @@
 				showToast('Failed to load history', 'error');
 			}
 
-			// At root level, also load team folders
 			if (!folderId) {
 				try {
 					const user = api.getUser();
@@ -175,16 +164,12 @@
 					if (teamRes.ok) {
 						const teamData = await teamRes.json();
 						const teamList = teamData.teams || teamData || [];
-						// Mark existing file folders that belong to teams
-						const teamIds = new Set(teamList.map((t: any) => t.id));
 						files = files.map((f: any) => {
 							if (f.is_dir && f.name.startsWith('Team-') && !f._isTeam) {
 								return { ...f, _isTeam: true };
 							}
 							return f;
 						});
-
-						// Only add team folders that aren't already in the files list
 						const existingNames = new Set(files.map((f: any) => f.name));
 						const teamFolders = teamList
 							.filter((t: any) => !existingNames.has('Team-' + t.name))
@@ -201,7 +186,7 @@
 							}));
 						files = [...files, ...teamFolders];
 					}
-				} catch { /* non-fatal */ }
+				} catch {}
 			}
 		} catch {
 			showToast('Network error', 'error');
@@ -220,11 +205,9 @@
 		selectedFileDates = [];
 		breadcrumbs = [...breadcrumbs, { id: file.id, name: file.name }];
 		currentFolderId = file.id;
-		// Update URL without page reload
 		const url = new URL(window.location.href);
 		url.searchParams.set('folder', file.id);
 		history.pushState({ folderId: file.id, breadcrumbs: JSON.parse(JSON.stringify(breadcrumbs)) }, '', url);
-
 		loadChangeDates(file.id);
 		if (selectedDate) loadHistory(file.id, selectedDate);
 	}
@@ -245,23 +228,19 @@
 
 	async function selectFile(file: HistoryFile) {
 		if (selectedFile?.id === file.id) {
-			// Deselect
 			selectedFile = null;
 			selectedFileDates = [];
 			return;
 		}
 		selectedFile = file;
-		// Load version dates for this file
 		try {
 			if (file.is_dir) {
-				// For folders, load change dates scoped to this folder
 				const res = await api.get(`/api/files/history/dates?parent_id=${file.id}`);
 				if (res.ok) {
 					const data = await res.json();
 					selectedFileDates = data.dates || [];
 				}
 			} else {
-				// For files, load versions and extract dates
 				const res = await api.get(`/api/files/${file.id}/versions`);
 				if (res.ok) {
 					const versions = await res.json();
@@ -343,7 +322,6 @@
 
 	async function openRetention(file: HistoryFile) {
 		retentionFolder = file;
-		// Find the sync task for this folder
 		try {
 			const res = await api.get('/api/tasks');
 			if (res.ok) {
@@ -416,7 +394,6 @@
 			if (shareExpiry) body.expires_at = new Date(shareExpiry).toISOString();
 			if (shareMaxDownloads > 0) body.max_downloads = shareMaxDownloads;
 			if (shareNotifyOnDownload) body.notify_on_download = true;
-
 			const res = await api.post(`/api/files/${shareFile.id}/shares`, body);
 			if (res.ok) {
 				const data = await res.json();
@@ -427,7 +404,7 @@
 						const settings = await settingsRes.json();
 						if (settings.base_url) baseUrl = settings.base_url.replace(/\/$/, '');
 					}
-				} catch { /* use default */ }
+				} catch {}
 				shareUrl = `${baseUrl}/s/${data.token}`;
 				showToast('Share link created', 'success');
 			} else {
@@ -457,8 +434,6 @@
 		deleteFolderTarget = file;
 		deleteFolderHasSyncTask = false;
 		deletingFolder = false;
-
-		// Check if this folder has a sync task
 		try {
 			const res = await api.get(`/api/tasks?folder_id=${file.id}`);
 			if (res.ok) {
@@ -466,8 +441,7 @@
 				const tasks = data.tasks || [];
 				deleteFolderHasSyncTask = tasks.length > 0;
 			}
-		} catch { /* non-fatal */ }
-
+		} catch {}
 		showDeleteFolder = true;
 	}
 
@@ -480,7 +454,6 @@
 				showToast(`"${deleteFolderTarget.name}" deleted`, 'success');
 				showDeleteFolder = false;
 				deleteFolderTarget = null;
-				// Reload current folder to reflect deletion
 				if (selectedDate) await loadHistory(currentFolderId, selectedDate);
 			} else {
 				const data = await res.json().catch(() => ({}));
@@ -495,178 +468,186 @@
 		const d = new Date(dateStr + 'T12:00:00');
 		return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 	}
+
+	// File type icons
+	type FileIconType = {
+		icon: typeof File;
+		color: string;
+	};
+
+	function getFileIcon(file: HistoryFile): FileIconType {
+		if (file.is_dir && file._isTeam) return { icon: FolderOpen, color: '#3b82f6' };
+		if (file.is_dir) return { icon: FolderOpen, color: '#f59e0b' };
+		const ext = file.name.split('.').pop()?.toLowerCase() || '';
+		if (['pdf'].includes(ext)) return { icon: FileText, color: '#ef4444' };
+		if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'bmp', 'ico', 'tiff'].includes(ext)) return { icon: FileImage, color: '#22c55e' };
+		if (['js', 'ts', 'jsx', 'tsx', 'py', 'go', 'swift', 'rs', 'c', 'cpp', 'h', 'java', 'rb', 'php', 'sh', 'bash', 'json', 'yaml', 'yml', 'toml'].includes(ext)) return { icon: FileCode, color: '#a855f7' };
+		if (['zip', 'tar', 'gz', 'bz2', 'rar', '7z', 'xz'].includes(ext)) return { icon: FileArchive, color: '#f97316' };
+		if (['doc', 'docx', 'txt', 'md', 'rtf', 'odt'].includes(ext)) return { icon: FileText, color: '#3b82f6' };
+		if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) return { icon: FileSpreadsheet, color: '#22c55e' };
+		if (['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv'].includes(ext)) return { icon: FileVideo, color: '#ec4899' };
+		if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].includes(ext)) return { icon: FileAudio, color: '#06b6d4' };
+		return { icon: File, color: '#71717a' };
+	}
 </script>
 
 <svelte:head>
 	<title>Files — SyncVault</title>
 </svelte:head>
 
-<div class="h-full flex flex-col">
+<div class="h-full flex flex-col" style="background: #0a0a0b;">
 	<!-- Top bar -->
-	<div class="px-6 py-4 bg-white border-b border-gray-200">
+	<div class="px-6 py-4 border-b flex-shrink-0" style="border-color: rgba(255,255,255,0.06);">
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-3">
-				<FolderOpen size={22} class="text-blue-500 flex-shrink-0" />
-				<h1 class="text-lg font-semibold text-gray-900">Files</h1>
+				<FolderOpen size={20} class="text-blue-400 flex-shrink-0" />
+				<h1 class="text-base font-semibold text-white">Files</h1>
 				{#if selectedDate}
-					<span class="text-sm text-gray-500">— {formatSelectedDate(selectedDate)}</span>
+					<span class="text-sm" style="color: rgba(255,255,255,0.35);">— {formatSelectedDate(selectedDate)}</span>
 				{/if}
 			</div>
 		</div>
 	</div>
 
 	<!-- Breadcrumb bar -->
-	<div class="px-6 py-2 bg-gray-50 border-b border-gray-100">
+	<div class="px-6 py-2.5 border-b flex-shrink-0" style="background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.04);">
 		<BreadcrumbNav items={breadcrumbs} onclick={navigateToBreadcrumb} />
 	</div>
 
 	<!-- File list -->
 	<div class="flex-1 overflow-auto p-6">
 		{#if !selectedDate && changeDates.length === 0}
-			<div class="text-center py-24 text-gray-400">
-				<Clock size={56} class="mx-auto mb-4 opacity-30" />
-				<p class="text-base font-medium">No version history found</p>
-				<p class="text-sm mt-1">Upload and modify files to start building version history.</p>
+			<div class="flex flex-col items-center justify-center py-24">
+				<div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
+					<Clock size={28} style="color: rgba(255,255,255,0.20);" />
+				</div>
+				<p class="text-base font-medium text-white/40">No version history found</p>
+				<p class="text-sm mt-1.5" style="color: rgba(255,255,255,0.25);">Upload and modify files to start building version history.</p>
 			</div>
 		{:else if !selectedDate}
-			<div class="text-center py-24 text-gray-400">
-				<Clock size={56} class="mx-auto mb-4 opacity-30" />
-				<p class="text-base font-medium">Select a point on the timeline below</p>
-				<p class="text-sm mt-1">Click a blue dot to see files as they were on that date.</p>
+			<div class="flex flex-col items-center justify-center py-24">
+				<div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
+					<Clock size={28} style="color: rgba(255,255,255,0.20);" />
+				</div>
+				<p class="text-base font-medium text-white/40">Select a point on the timeline below</p>
+				<p class="text-sm mt-1.5" style="color: rgba(255,255,255,0.25);">Click a dot to see files as they were on that date.</p>
 			</div>
 		{:else if loading}
-			<div class="flex items-center justify-center py-24">
-				<div class="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+			<!-- Skeleton loading -->
+			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+				<div class="px-4 py-3 border-b" style="border-color: rgba(255,255,255,0.04);">
+					<div class="flex gap-4">
+						<div class="skeleton h-3 rounded w-8"></div>
+						<div class="skeleton h-3 rounded w-40"></div>
+						<div class="skeleton h-3 rounded w-20 ml-auto hidden sm:block"></div>
+					</div>
+				</div>
+				{#each [1,2,3,4,5] as _}
+					<div class="px-4 py-3.5 border-b flex items-center gap-3" style="border-color: rgba(255,255,255,0.04);">
+						<div class="skeleton w-5 h-5 rounded flex-shrink-0"></div>
+						<div class="skeleton h-3 rounded flex-1 max-w-[200px]"></div>
+						<div class="skeleton h-3 rounded w-16 ml-auto hidden sm:block"></div>
+					</div>
+				{/each}
 			</div>
 		{:else if files.length === 0}
-			<div class="text-center py-24 text-gray-400">
-				<Clock size={56} class="mx-auto mb-4 opacity-30" />
-				<p class="text-base font-medium">No files at this point in time</p>
-				<p class="text-sm mt-1">Try a different date on the timeline.</p>
+			<div class="flex flex-col items-center justify-center py-24">
+				<div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
+					<FolderOpen size={28} style="color: rgba(255,255,255,0.20);" />
+				</div>
+				<p class="text-base font-medium text-white/40">No files yet</p>
+				<p class="text-sm mt-1.5" style="color: rgba(255,255,255,0.25);">Upload or sync to get started.</p>
 			</div>
 		{:else}
 			{@const userFiles = breadcrumbs.length <= 1 ? files.filter(f => !f._isTeam) : files}
 			{@const teamFiles = breadcrumbs.length <= 1 ? files.filter(f => f._isTeam) : []}
 
 			{#if breadcrumbs.length <= 1 && userFiles.length > 0}
-				<p class="px-1 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">Users</p>
+				<p class="px-1 mb-2 text-[10px] font-semibold uppercase tracking-widest" style="color: rgba(255,255,255,0.25);">My Files</p>
 			{/if}
 
 			{#if userFiles.length > 0}
-			<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-				<table class="min-w-full divide-y divide-gray-200">
-					<thead class="bg-gray-50">
-						<tr>
-							<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-8"></th>
-							<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-							<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Size</th>
-							<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Version</th>
-							<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Date</th>
-							<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+			<div class="rounded-xl border overflow-hidden mb-6" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+				<table class="min-w-full">
+					<thead>
+						<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider w-8" style="color: rgba(255,255,255,0.30);"></th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Name</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Size</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Version</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Date</th>
+							<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Actions</th>
 						</tr>
 					</thead>
-					<tbody class="bg-white divide-y divide-gray-200">
+					<tbody>
 						{#each userFiles as file}
+							{@const fi = getFileIcon(file)}
 							<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
 							<tr
-								class="hover:bg-gray-50 transition-colors cursor-pointer {selectedFile?.id === file.id ? 'bg-blue-50' : ''}"
+								class="transition-colors cursor-pointer file-row {selectedFile?.id === file.id ? 'selected-row' : ''}"
 								onclick={() => selectFile(file)}
 								ondblclick={() => { if (file.is_dir) navigateToFolder(file); }}
 							>
-								<td class="px-4 py-3">
-									{#if file.is_dir && file._isTeam}
-										<FolderOpen size={20} class="text-blue-500" />
-									{:else if file.is_dir}
-										<FolderOpen size={20} class="text-yellow-500" />
-									{:else}
-										<FileText size={20} class="text-gray-400" />
-									{/if}
+								<td class="px-4 py-3.5">
+									<svelte:component this={fi.icon} size={18} style="color: {fi.color};" />
 								</td>
-								<td class="px-4 py-3">
-									<span class="text-sm font-medium text-gray-900">{file.name}</span>
-									{#if file.removed_locally}
-										<span class="ml-2 text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">Removed locally</span>
-									{/if}
+								<td class="px-4 py-3.5">
+									<div class="flex items-center gap-2">
+										<span class="text-sm font-medium text-white/80">{file.name}</span>
+										{#if file.removed_locally}
+											<span class="text-[10px] text-white/30 border rounded px-1.5 py-0.5" style="border-color: rgba(255,255,255,0.10);">Removed locally</span>
+										{/if}
+									</div>
 								</td>
-								<td class="px-4 py-3 hidden sm:table-cell">
-									<span class="text-sm text-gray-500">
-										{formatBytes(file.size)}
-									</span>
+								<td class="px-4 py-3.5 hidden sm:table-cell">
+									<span class="text-sm" style="color: rgba(255,255,255,0.40);">{formatBytes(file.size)}</span>
 								</td>
-								<td class="px-4 py-3 hidden md:table-cell">
+								<td class="px-4 py-3.5 hidden md:table-cell">
 									{#if !file.is_dir}
-										<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+										<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium" style="background: rgba(59,130,246,0.12); color: #60a5fa;">
 											v{file.version_num}
 										</span>
 									{:else}
-										<span class="text-gray-400 text-sm">—</span>
+										<span style="color: rgba(255,255,255,0.20);">—</span>
 									{/if}
 								</td>
-								<td class="px-4 py-3 hidden md:table-cell">
-									<span class="text-sm text-gray-500">{formatDate(file.updated_at)}</span>
+								<td class="px-4 py-3.5 hidden md:table-cell">
+									<span class="text-sm" style="color: rgba(255,255,255,0.40);">{formatDate(file.updated_at)}</span>
 								</td>
-								<td class="px-4 py-3">
-									<div class="flex items-center gap-2 justify-end">
+								<td class="px-4 py-3.5">
+									<div class="flex items-center gap-1 justify-end">
 										{#if file.is_dir}
 											{#if breadcrumbs.length <= 2}
 												<button
 													onclick={(e) => { e.stopPropagation(); openRetention(file); }}
 													title="Retention policy"
-													class="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-800 font-medium px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+													class="action-btn"
 												>
 													<Settings2 size={13} /> Retention
 												</button>
 											{/if}
-											<button
-												onclick={(e) => { e.stopPropagation(); openShare(file); }}
-												title="Share folder"
-												class="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 font-medium px-2 py-1 rounded hover:bg-purple-50 transition-colors"
-											>
+											<button onclick={(e) => { e.stopPropagation(); openShare(file); }} title="Share folder" class="action-btn action-btn-purple">
 												<Share2 size={13} /> Share
 											</button>
-											<button
-												onclick={(e) => { e.stopPropagation(); downloadFolder(file); }}
-												title="Download folder as ZIP"
-												class="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
-											>
+											<button onclick={(e) => { e.stopPropagation(); downloadFolder(file); }} title="Download as ZIP" class="action-btn action-btn-blue">
 												<Download size={13} /> Download
 											</button>
-											<button
-												onclick={(e) => { e.stopPropagation(); restoreFolder(file); }}
-												title="Restore all files in folder"
-												class="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-800 font-medium px-2 py-1 rounded hover:bg-gray-100 transition-colors"
-											>
+											<button onclick={(e) => { e.stopPropagation(); restoreFolder(file); }} title="Restore folder" class="action-btn">
 												<RotateCcw size={13} /> Restore
 											</button>
 											{#if currentFolderId}
-												<button
-													onclick={(e) => { e.stopPropagation(); openDeleteFolder(file); }}
-													title="Delete folder"
-													class="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors"
-												>
+												<button onclick={(e) => { e.stopPropagation(); openDeleteFolder(file); }} title="Delete folder" class="action-btn action-btn-red">
 													<Trash2 size={13} /> Delete
 												</button>
 											{/if}
 										{:else}
-											<button
-												onclick={(e) => { e.stopPropagation(); openShare(file); }}
-												title="Share file"
-												class="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 font-medium px-2 py-1 rounded hover:bg-purple-50 transition-colors"
-											>
+											<button onclick={(e) => { e.stopPropagation(); openShare(file); }} title="Share file" class="action-btn action-btn-purple">
 												<Share2 size={13} /> Share
 											</button>
-											<button
-												onclick={(e) => { e.stopPropagation(); downloadVersion(file); }}
-												title="Download this version"
-												class="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
-											>
+											<button onclick={(e) => { e.stopPropagation(); downloadVersion(file); }} title="Download this version" class="action-btn action-btn-blue">
 												<Download size={13} /> Download
 											</button>
-											<button
-												onclick={(e) => { e.stopPropagation(); restoreVersion(file); }}
-												title="Restore to current"
-												class="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-800 font-medium px-2 py-1 rounded hover:bg-gray-100 transition-colors"
-											>
+											<button onclick={(e) => { e.stopPropagation(); restoreVersion(file); }} title="Restore to current" class="action-btn">
 												<RotateCcw size={13} /> Restore
 											</button>
 										{/if}
@@ -680,56 +661,48 @@
 			{/if}
 
 			{#if teamFiles.length > 0}
-				<p class="px-1 mt-6 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">Team Folders</p>
-				<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-					<table class="min-w-full divide-y divide-gray-200">
-						<thead class="bg-gray-50">
-							<tr>
-								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-8"></th>
-								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Size</th>
-								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Version</th>
-								<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Date</th>
-								<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+				<p class="px-1 mt-2 mb-2 text-[10px] font-semibold uppercase tracking-widest" style="color: rgba(255,255,255,0.25);">Team Folders</p>
+				<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+					<table class="min-w-full">
+						<thead>
+							<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider w-8" style="color: rgba(255,255,255,0.30);"></th>
+								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Name</th>
+								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Size</th>
+								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Version</th>
+								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Date</th>
+								<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Actions</th>
 							</tr>
 						</thead>
-						<tbody class="bg-white divide-y divide-gray-200">
+						<tbody>
 							{#each teamFiles as file}
 								<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
 								<tr
-									class="hover:bg-gray-50 transition-colors cursor-pointer {selectedFile?.id === file.id ? 'bg-blue-50' : ''}"
+									class="transition-colors cursor-pointer file-row {selectedFile?.id === file.id ? 'selected-row' : ''}"
 									onclick={() => selectFile(file)}
 									ondblclick={() => navigateToFolder(file)}
 								>
-									<td class="px-4 py-3">
-										<FolderOpen size={20} class="text-blue-500" />
+									<td class="px-4 py-3.5">
+										<FolderOpen size={18} style="color: #3b82f6;" />
 									</td>
-									<td class="px-4 py-3">
-										<span class="text-sm font-medium text-gray-900">{file.name.replace('Team-', '')}</span>
+									<td class="px-4 py-3.5">
+										<span class="text-sm font-medium text-white/80">{file.name.replace('Team-', '')}</span>
 									</td>
-									<td class="px-4 py-3 hidden sm:table-cell">
-										<span class="text-sm text-gray-500">{file.size ? formatBytes(file.size) : '—'}</span>
+									<td class="px-4 py-3.5 hidden sm:table-cell">
+										<span class="text-sm" style="color: rgba(255,255,255,0.40);">{file.size ? formatBytes(file.size) : '—'}</span>
 									</td>
-									<td class="px-4 py-3 hidden md:table-cell">
-										<span class="text-gray-400 text-sm">—</span>
+									<td class="px-4 py-3.5 hidden md:table-cell">
+										<span style="color: rgba(255,255,255,0.20);">—</span>
 									</td>
-									<td class="px-4 py-3 hidden md:table-cell">
-										<span class="text-sm text-gray-500">{formatDate(file.updated_at)}</span>
+									<td class="px-4 py-3.5 hidden md:table-cell">
+										<span class="text-sm" style="color: rgba(255,255,255,0.40);">{formatDate(file.updated_at)}</span>
 									</td>
-									<td class="px-4 py-3">
-										<div class="flex items-center gap-2 justify-end">
-											<button
-												onclick={(e) => { e.stopPropagation(); openShare(file); }}
-												title="Share"
-												class="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 font-medium px-2 py-1 rounded hover:bg-purple-50 transition-colors"
-											>
+									<td class="px-4 py-3.5">
+										<div class="flex items-center gap-1 justify-end">
+											<button onclick={(e) => { e.stopPropagation(); openShare(file); }} title="Share" class="action-btn action-btn-purple">
 												<Share2 size={13} /> Share
 											</button>
-											<button
-												onclick={(e) => { e.stopPropagation(); downloadFolder(file); }}
-												title="Download"
-												class="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
-											>
+											<button onclick={(e) => { e.stopPropagation(); downloadFolder(file); }} title="Download" class="action-btn action-btn-blue">
 												<Download size={13} /> Download
 											</button>
 										</div>
@@ -744,7 +717,7 @@
 	</div>
 
 	<!-- Timeline -->
-	<div class="bg-white border-t border-gray-200 px-4 py-2" bind:this={timelineContainer}>
+	<div class="border-t flex-shrink-0 px-4 py-2" style="background: #0d0d0f; border-color: rgba(255,255,255,0.06);" bind:this={timelineContainer}>
 		<svg width="100%" height={TIMELINE_HEIGHT} class="select-none">
 			<!-- Base line -->
 			<line
@@ -752,47 +725,34 @@
 				y1={TIMELINE_HEIGHT - 16}
 				x2={timelineWidth - TIMELINE_PADDING}
 				y2={TIMELINE_HEIGHT - 16}
-				stroke="#e5e7eb"
+				stroke="rgba(255,255,255,0.08)"
 				stroke-width="1"
 			/>
 
 			<!-- Day / Week / Month ticks -->
 			{#each ticks as tick}
 				{#if tick.isMonth}
-					<!-- Month tick: tallest + label -->
 					<line
-						x1={tick.x}
-						y1={TIMELINE_HEIGHT - 16}
-						x2={tick.x}
-						y2={TIMELINE_HEIGHT - 48}
-						stroke="#9ca3af"
-						stroke-width="1"
+						x1={tick.x} y1={TIMELINE_HEIGHT - 16}
+						x2={tick.x} y2={TIMELINE_HEIGHT - 48}
+						stroke="rgba(255,255,255,0.15)" stroke-width="1"
 					/>
 					<text
-						x={tick.x}
-						y={TIMELINE_HEIGHT - 52}
+						x={tick.x} y={TIMELINE_HEIGHT - 52}
 						text-anchor="middle"
-						class="text-[10px] fill-gray-500 font-medium"
+						style="font-size: 9px; fill: rgba(255,255,255,0.35); font-weight: 500;"
 					>{tick.label}</text>
 				{:else if tick.isWeek}
-					<!-- Week tick: medium -->
 					<line
-						x1={tick.x}
-						y1={TIMELINE_HEIGHT - 16}
-						x2={tick.x}
-						y2={TIMELINE_HEIGHT - 34}
-						stroke="#d1d5db"
-						stroke-width="0.5"
+						x1={tick.x} y1={TIMELINE_HEIGHT - 16}
+						x2={tick.x} y2={TIMELINE_HEIGHT - 30}
+						stroke="rgba(255,255,255,0.06)" stroke-width="0.5"
 					/>
 				{:else}
-					<!-- Day tick: short -->
 					<line
-						x1={tick.x}
-						y1={TIMELINE_HEIGHT - 16}
-						x2={tick.x}
-						y2={TIMELINE_HEIGHT - 24}
-						stroke="#e5e7eb"
-						stroke-width="0.5"
+						x1={tick.x} y1={TIMELINE_HEIGHT - 16}
+						x2={tick.x} y2={TIMELINE_HEIGHT - 22}
+						stroke="rgba(255,255,255,0.04)" stroke-width="0.5"
 					/>
 				{/if}
 			{/each}
@@ -809,32 +769,17 @@
 					onclick={() => selectDate(dot.date)}
 					onkeydown={(e) => { if (e.key === 'Enter') selectDate(dot.date); }}
 				>
-					<!-- Blue version line -->
-					<line
-						class="dot-line"
-						x1={dot.x}
-						y1={TIMELINE_HEIGHT - 16}
-						x2={dot.x}
-						y2={TIMELINE_HEIGHT - 38}
-					/>
-					<!-- Clickable dot -->
-					<circle
-						class="dot-circle"
-						cx={dot.x}
-						cy={TIMELINE_HEIGHT - 40}
-						stroke="none"
-					>
+					<line class="dot-line" x1={dot.x} y1={TIMELINE_HEIGHT - 16} x2={dot.x} y2={TIMELINE_HEIGHT - 38} />
+					<circle class="dot-circle" cx={dot.x} cy={TIMELINE_HEIGHT - 40} stroke="none">
 						<title>{dot.date}</title>
 					</circle>
 				</g>
 
-				<!-- Date label for selected dot -->
 				{#if dot.isSelected}
 					<text
-						x={dot.x}
-						y={TIMELINE_HEIGHT - 52}
+						x={dot.x} y={TIMELINE_HEIGHT - 52}
 						text-anchor="middle"
-						class="text-[10px] fill-blue-600 font-semibold"
+						style="font-size: 9px; fill: #60a5fa; font-weight: 600;"
 					>{dot.date.slice(5)}</text>
 				{/if}
 			{/each}
@@ -844,106 +789,92 @@
 
 {#if showRetention}
 <Modal title="Retention Policy — {retentionFolder?.name}" onclose={() => (showRetention = false)}>
-	<div class="space-y-3">
-		<p class="text-sm text-gray-500">Set how long versions are kept. Use 0 for unlimited.</p>
-		{#each [
-			{ label: 'Hourly', unit: 'hours', key: 'hourly_hours', desc: 'Keep one version per hour' },
-			{ label: 'Daily', unit: 'days', key: 'daily_days', desc: 'Keep one version per day' },
-			{ label: 'Weekly', unit: 'weeks', key: 'weekly_weeks', desc: 'Keep one version per week' },
-			{ label: 'Monthly', unit: 'months', key: 'monthly_months', desc: 'Keep one version per month' },
-			{ label: 'Yearly', unit: 'years', key: 'yearly_years', desc: 'Keep one version per year' },
-			{ label: 'Max versions', unit: '', key: 'max_versions', desc: 'Hard cap on total versions' }
-		] as field}
-			<div class="flex items-center justify-between gap-4">
-				<div class="flex-1">
-					<span class="text-sm font-medium text-gray-700">{field.label}</span>
-					<span class="text-xs text-gray-400 ml-1">— {field.desc}</span>
+	{#snippet children()}
+		<div class="space-y-3">
+			<p class="text-sm" style="color: rgba(255,255,255,0.45);">Set how long versions are kept. Use 0 for unlimited.</p>
+			{#each [
+				{ label: 'Hourly', unit: 'hours', key: 'hourly_hours', desc: 'Keep one version per hour' },
+				{ label: 'Daily', unit: 'days', key: 'daily_days', desc: 'Keep one version per day' },
+				{ label: 'Weekly', unit: 'weeks', key: 'weekly_weeks', desc: 'Keep one version per week' },
+				{ label: 'Monthly', unit: 'months', key: 'monthly_months', desc: 'Keep one version per month' },
+				{ label: 'Yearly', unit: 'years', key: 'yearly_years', desc: 'Keep one version per year' },
+				{ label: 'Max versions', unit: '', key: 'max_versions', desc: 'Hard cap on total versions' }
+			] as field}
+				<div class="flex items-center justify-between gap-4">
+					<div class="flex-1">
+						<span class="text-sm font-medium text-white/70">{field.label}</span>
+						<span class="text-xs ml-1" style="color: rgba(255,255,255,0.30);">— {field.desc}</span>
+					</div>
+					<div class="flex items-center gap-2 w-28">
+						<input type="number" min="0" bind:value={retention[field.key]} style="width: 80px; text-align: right;" />
+						{#if field.unit}
+							<span class="text-xs w-12" style="color: rgba(255,255,255,0.30);">{field.unit}</span>
+						{/if}
+					</div>
 				</div>
-				<div class="flex items-center gap-2 w-28">
-					<input type="number" min="0" bind:value={retention[field.key]}
-						class="w-20 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-right focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-					{#if field.unit}
-						<span class="text-xs text-gray-400 w-12">{field.unit}</span>
-					{/if}
-				</div>
-			</div>
-		{/each}
-		<div class="flex justify-end gap-3 pt-3 border-t border-gray-100">
-			<button onclick={() => (showRetention = false)}
-				class="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50">
-				Cancel
-			</button>
-			<button onclick={saveRetention} disabled={retentionSaving}
-				class="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:opacity-50">
-				{retentionSaving ? 'Saving…' : 'Save'}
-			</button>
+			{/each}
 		</div>
-	</div>
+	{/snippet}
+	{#snippet footer()}
+		<button onclick={() => (showRetention = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">Cancel</button>
+		<button onclick={saveRetention} disabled={retentionSaving} class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-lg transition-all">
+			{retentionSaving ? 'Saving…' : 'Save'}
+		</button>
+	{/snippet}
 </Modal>
 {/if}
 
 {#if showShare}
-<Modal title="Share" onclose={() => (showShare = false)}>
-	<div class="space-y-3">
-		<div>
-			<span class="text-sm font-medium text-gray-700">Name</span>
-			<input type="text" bind:value={shareName}
-				class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-		</div>
-		{#if shareUrl}
+<Modal title="Share — {shareFile?.name}" onclose={() => (showShare = false)}>
+	{#snippet children()}
+		<div class="space-y-3">
 			<div>
-				<span class="text-sm font-medium text-gray-700">Share URL</span>
-				<div class="flex items-center gap-2 mt-1">
-					<input type="text" readonly value={shareUrl}
-						class="flex-1 rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 select-all" />
-					<button onclick={copyShareUrl}
-						class="flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-md transition-colors
-						{shareCopied ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}">
-						{#if shareCopied}
-							<Check size={14} /> Copied
-						{:else}
-							<Copy size={14} /> Copy
-						{/if}
-					</button>
-				</div>
+				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Name</label>
+				<input type="text" bind:value={shareName} />
 			</div>
-		{/if}
-		<div>
-			<span class="text-sm font-medium text-gray-700">Password</span>
-			<span class="text-xs text-gray-400 ml-1">— optional</span>
-			<input type="text" bind:value={sharePassword} placeholder="Leave empty for no password"
-				class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-		</div>
-		<div>
-			<span class="text-sm font-medium text-gray-700">Expiry date</span>
-			<span class="text-xs text-gray-400 ml-1">— optional</span>
-			<input type="datetime-local" bind:value={shareExpiry}
-				class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-		</div>
-		<div>
-			<span class="text-sm font-medium text-gray-700">Max downloads</span>
-			<span class="text-xs text-gray-400 ml-1">— 0 = unlimited</span>
-			<input type="number" min="0" bind:value={shareMaxDownloads}
-				class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-		</div>
-		<div class="flex items-center gap-3">
-			<input type="checkbox" id="notify-download" bind:checked={shareNotifyOnDownload}
-				class="rounded border-gray-300 text-blue-500 focus:ring-blue-500" />
-			<label for="notify-download" class="text-sm text-gray-700">Email me when someone downloads</label>
-		</div>
-		<div class="flex justify-end gap-3 pt-3 border-t border-gray-100">
-			<button onclick={() => (showShare = false)}
-				class="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50">
-				{shareUrl ? 'Close' : 'Cancel'}
-			</button>
-			{#if !shareUrl}
-				<button onclick={createShare} disabled={shareCreating}
-					class="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600 disabled:opacity-50">
-					{shareCreating ? 'Creating…' : 'Create Share Link'}
-				</button>
+			{#if shareUrl}
+				<div>
+					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Share URL</label>
+					<div class="flex items-center gap-2">
+						<input type="text" readonly value={shareUrl} style="font-size: 12px;" />
+						<button onclick={copyShareUrl}
+							class="flex items-center gap-1 px-3 py-2 text-xs font-medium rounded-lg transition-all flex-shrink-0"
+							style="{shareCopied ? 'background: rgba(34,197,94,0.12); color: #4ade80;' : 'background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.60);'}">
+							{#if shareCopied}
+								<Check size={12} /> Copied
+							{:else}
+								<Copy size={12} /> Copy
+							{/if}
+						</button>
+					</div>
+				</div>
 			{/if}
+			<div>
+				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Password <span style="color: rgba(255,255,255,0.25);">— optional</span></label>
+				<input type="text" bind:value={sharePassword} placeholder="Leave empty for no password" />
+			</div>
+			<div>
+				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Expiry date <span style="color: rgba(255,255,255,0.25);">— optional</span></label>
+				<input type="datetime-local" bind:value={shareExpiry} />
+			</div>
+			<div>
+				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Max downloads <span style="color: rgba(255,255,255,0.25);">— 0 = unlimited</span></label>
+				<input type="number" min="0" bind:value={shareMaxDownloads} />
+			</div>
+			<div class="flex items-center gap-3">
+				<input type="checkbox" id="notify-download" bind:checked={shareNotifyOnDownload} />
+				<label for="notify-download" class="text-sm" style="color: rgba(255,255,255,0.60);">Email me when someone downloads</label>
+			</div>
 		</div>
-	</div>
+	{/snippet}
+	{#snippet footer()}
+		<button onclick={() => (showShare = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">{shareUrl ? 'Close' : 'Cancel'}</button>
+		{#if !shareUrl}
+			<button onclick={createShare} disabled={shareCreating} class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-lg transition-all">
+				{shareCreating ? 'Creating…' : 'Create Share Link'}
+			</button>
+		{/if}
+	{/snippet}
 </Modal>
 {/if}
 
@@ -952,23 +883,21 @@
 	{#snippet children()}
 		<div class="space-y-3">
 			{#if deleteFolderHasSyncTask}
-				<div class="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-					<div class="text-amber-600 mt-0.5">⚠️</div>
+				<div class="flex items-start gap-3 p-3 rounded-lg border" style="background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.20);">
+					<span class="text-yellow-400 mt-0.5 flex-shrink-0">⚠</span>
 					<div>
-						<p class="text-sm font-medium text-amber-800">This folder has an active sync task</p>
-						<p class="text-sm text-amber-700 mt-1">If you delete this folder, the sync client will recreate it and re-upload all files on the next sync cycle.</p>
+						<p class="text-sm font-medium text-yellow-300">This folder has an active sync task</p>
+						<p class="text-sm mt-1" style="color: rgba(245,158,11,0.70);">If you delete this folder, the sync client will recreate it and re-upload all files on the next sync cycle.</p>
 					</div>
 				</div>
 			{/if}
-			<p class="text-sm text-gray-600">Are you sure you want to delete <span class="font-semibold">"{deleteFolderTarget.name}"</span> and all its contents?</p>
-			<p class="text-xs text-gray-400">This will move the folder and all files inside to the trash.</p>
+			<p class="text-sm" style="color: rgba(255,255,255,0.60);">Are you sure you want to delete <span class="font-semibold text-white/80">"{deleteFolderTarget.name}"</span> and all its contents?</p>
+			<p class="text-xs" style="color: rgba(255,255,255,0.35);">This will move the folder and all files inside to the trash.</p>
 		</div>
 	{/snippet}
 	{#snippet footer()}
-		<button onclick={() => (showDeleteFolder = false)}
-			class="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50">Cancel</button>
-		<button onclick={confirmDeleteFolder} disabled={deletingFolder}
-			class="px-4 py-2 text-sm font-medium text-white bg-red-500 rounded-md hover:bg-red-600 disabled:opacity-50">
+		<button onclick={() => (showDeleteFolder = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">Cancel</button>
+		<button onclick={confirmDeleteFolder} disabled={deletingFolder} class="px-4 py-2 text-sm font-medium rounded-lg transition-all bg-red-600/10 text-red-400 hover:bg-red-600/20 border border-red-500/20">
 			{deletingFolder ? 'Deleting…' : 'Delete'}
 		</button>
 	{/snippet}
@@ -976,71 +905,107 @@
 {/if}
 
 <style>
+	.file-row {
+		border-bottom: 1px solid rgba(255,255,255,0.04);
+	}
+	.file-row:hover {
+		background: rgba(255,255,255,0.03);
+	}
+	.file-row:last-child {
+		border-bottom: none;
+	}
+	.selected-row {
+		background: rgba(59,130,246,0.08) !important;
+		border-left: 2px solid #3b82f6;
+	}
+
+	.action-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 11px;
+		font-weight: 500;
+		padding: 4px 8px;
+		border-radius: 6px;
+		transition: all 0.15s;
+		color: rgba(255,255,255,0.45);
+	}
+	.action-btn:hover {
+		background: rgba(255,255,255,0.06);
+		color: rgba(255,255,255,0.75);
+	}
+	.action-btn-blue {
+		color: #60a5fa;
+	}
+	.action-btn-blue:hover {
+		background: rgba(59,130,246,0.12);
+		color: #93c5fd;
+	}
+	.action-btn-purple {
+		color: #c084fc;
+	}
+	.action-btn-purple:hover {
+		background: rgba(168,85,247,0.12);
+		color: #d8b4fe;
+	}
+	.action-btn-red {
+		color: #f87171;
+	}
+	.action-btn-red:hover {
+		background: rgba(239,68,68,0.12);
+		color: #fca5a5;
+	}
+
+	/* Timeline dots */
 	.version-dot {
 		cursor: pointer;
 	}
-
 	.version-dot .dot-line {
-		stroke: #93c5fd;
+		stroke: rgba(147,197,253,0.50);
 		stroke-width: 1.5;
 		transition: all 0.15s ease;
 	}
-
 	.version-dot .dot-circle {
 		r: 3px;
-		fill: #93c5fd;
+		fill: rgba(147,197,253,0.60);
 		transition: all 0.15s ease;
 	}
-
-	/* Hover: bigger and darker */
 	.version-dot:hover .dot-line {
-		stroke: #2563eb;
+		stroke: #3b82f6;
 		stroke-width: 2;
 	}
-
 	.version-dot:hover .dot-circle {
 		r: 5px;
-		fill: #2563eb;
+		fill: #3b82f6;
 	}
-
-	/* Selected date: biggest and darkest */
 	.version-dot.selected .dot-line {
-		stroke: #1d4ed8;
+		stroke: #60a5fa;
 		stroke-width: 2.5;
 	}
-
 	.version-dot.selected .dot-circle {
 		r: 5px;
-		fill: #1d4ed8;
+		fill: #60a5fa;
 	}
-
-	/* File version highlight: orange */
 	.version-dot.file-version .dot-line {
 		stroke: #f59e0b;
 		stroke-width: 2;
 	}
-
 	.version-dot.file-version .dot-circle {
 		r: 4px;
 		fill: #f59e0b;
 	}
-
 	.version-dot.file-version:hover .dot-line {
 		stroke: #d97706;
 		stroke-width: 2.5;
 	}
-
 	.version-dot.file-version:hover .dot-circle {
 		r: 5px;
 		fill: #d97706;
 	}
-
-	/* Selected + file version: orange stays dominant */
 	.version-dot.selected.file-version .dot-line {
 		stroke: #d97706;
 		stroke-width: 2.5;
 	}
-
 	.version-dot.selected.file-version .dot-circle {
 		r: 5px;
 		fill: #d97706;

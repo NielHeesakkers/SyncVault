@@ -75,77 +75,89 @@
 	<title>Shared — SyncVault</title>
 </svelte:head>
 
-<div class="p-6">
+<div class="p-6" style="background: #0a0a0b; min-height: 100%;">
 	<div class="mb-6">
-		<h1 class="text-xl font-semibold text-gray-900">Shared Links</h1>
-		<p class="text-sm text-gray-500 mt-1">Links you have created to share files externally.</p>
+		<h1 class="text-base font-semibold text-white">Shared Links</h1>
+		<p class="text-sm mt-1" style="color: rgba(255,255,255,0.35);">Links you have created to share files externally.</p>
 	</div>
 
-	<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+	<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
 		{#if loading}
-			<div class="flex items-center justify-center py-16">
-				<div class="w-7 h-7 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+			<div class="px-4 py-3 border-b" style="border-color: rgba(255,255,255,0.05);">
+				<div class="flex gap-4">
+					<div class="skeleton h-3 rounded w-32"></div>
+					<div class="skeleton h-3 rounded w-24"></div>
+				</div>
 			</div>
+			{#each [1,2,3] as _}
+				<div class="px-4 py-3.5 border-b flex items-center gap-3" style="border-color: rgba(255,255,255,0.04);">
+					<div class="skeleton h-3 rounded w-36"></div>
+					<div class="skeleton h-3 rounded w-24 ml-4"></div>
+					<div class="skeleton h-3 rounded w-16 ml-auto"></div>
+				</div>
+			{/each}
 		{:else if links.length === 0}
-			<div class="text-center py-16 text-gray-400">
-				<Link size={48} class="mx-auto mb-3 opacity-30" />
-				<p class="text-base font-medium">No share links</p>
-				<p class="text-sm mt-1">Create share links from the file browser.</p>
+			<div class="flex flex-col items-center justify-center py-20">
+				<div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
+					<Link size={24} style="color: rgba(255,255,255,0.20);" />
+				</div>
+				<p class="text-base font-medium" style="color: rgba(255,255,255,0.40);">No shared links</p>
+				<p class="text-sm mt-1.5" style="color: rgba(255,255,255,0.25);">Create share links from the file browser.</p>
 			</div>
 		{:else}
-			<table class="min-w-full divide-y divide-gray-200">
-				<thead class="bg-gray-50">
-					<tr>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Link</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Downloads</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Expires</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Created</th>
+			<table class="min-w-full">
+				<thead>
+					<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">File</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Link</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Downloads</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Expires</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Created</th>
 						<th class="px-4 py-3 w-20"></th>
 					</tr>
 				</thead>
-				<tbody class="bg-white divide-y divide-gray-200">
+				<tbody>
 					{#each links as link}
-						<tr class="hover:bg-gray-50">
-							<td class="px-4 py-3">
-								<span class="text-sm font-medium text-gray-900">{link.file_name || 'Unknown file'}</span>
+						<tr class="shared-row">
+							<td class="px-4 py-3.5">
+								<span class="text-sm font-medium text-white/70">{link.file_name || 'Unknown file'}</span>
 							</td>
-							<td class="px-4 py-3">
+							<td class="px-4 py-3.5">
 								<div class="flex items-center gap-2">
-									<span class="text-xs font-mono text-gray-500 truncate max-w-32">/s/{link.token}</span>
+									<span class="text-xs font-mono truncate max-w-32" style="color: rgba(255,255,255,0.35);">/s/{link.token}</span>
 									{#if link.password_protected}
-										<span class="text-xs bg-yellow-50 text-yellow-700 border border-yellow-200 rounded px-1.5 py-0.5">Password</span>
+										<span class="text-[10px] font-medium px-1.5 py-0.5 rounded" style="background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.20);">Password</span>
 									{/if}
 								</div>
 							</td>
-							<td class="px-4 py-3 hidden sm:table-cell">
-								<span class="text-sm text-gray-500">
+							<td class="px-4 py-3.5 hidden sm:table-cell">
+								<span class="text-sm" style="color: rgba(255,255,255,0.40);">
 									{link.download_count ?? 0}{link.max_downloads ? `/${link.max_downloads}` : ''}
 								</span>
 							</td>
-							<td class="px-4 py-3 hidden md:table-cell">
-								<span class="text-sm text-gray-500">
+							<td class="px-4 py-3.5 hidden md:table-cell">
+								<span class="text-sm" style="color: rgba(255,255,255,0.40);">
 									{link.expires_at ? formatDate(link.expires_at) : 'Never'}
 								</span>
 							</td>
-							<td class="px-4 py-3 hidden md:table-cell">
-								<span class="text-sm text-gray-500">{formatDateAbsolute(link.created_at)}</span>
+							<td class="px-4 py-3.5 hidden md:table-cell">
+								<span class="text-sm" style="color: rgba(255,255,255,0.40);">{formatDateAbsolute(link.created_at)}</span>
 							</td>
-							<td class="px-4 py-3">
-								<div class="flex items-center gap-1">
+							<td class="px-4 py-3.5">
+								<div class="flex items-center gap-1 justify-end">
 									<button
 										onclick={() => copyLink(link)}
 										title="Copy link"
-										class="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-gray-100 transition-colors"
+										class="p-1.5 text-white/30 hover:text-blue-400 rounded-md hover:bg-blue-500/10 transition-all"
 									>
-										<Copy size={15} />
+										<Copy size={14} />
 									</button>
-	<button
+									<button
 										onclick={() => confirmDelete(link)}
 										title="Delete link"
-										class="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-gray-100 transition-colors"
+										class="p-1.5 text-white/30 hover:text-red-400 rounded-md hover:bg-red-500/10 transition-all"
 									>
-										<Trash2 size={15} />
+										<Trash2 size={14} />
 									</button>
 								</div>
 							</td>
@@ -166,3 +178,15 @@
 		oncancel={() => { showDelete = false; deleteTarget = null; }}
 	/>
 {/if}
+
+<style>
+	.shared-row {
+		border-bottom: 1px solid rgba(255,255,255,0.04);
+	}
+	.shared-row:hover {
+		background: rgba(255,255,255,0.03);
+	}
+	.shared-row:last-child {
+		border-bottom: none;
+	}
+</style>

@@ -26,6 +26,7 @@ type Claims struct {
 	UserID   string
 	Username string
 	Role     string
+	IssuedAt time.Time
 }
 
 // tokenClaims is the internal JWT claims structure.
@@ -125,9 +126,15 @@ func (j *JWT) validateToken(tokenStr, expectedType string) (*Claims, error) {
 		return nil, ErrInvalidToken
 	}
 
+	issuedAt := time.Time{}
+	if tc.IssuedAt != nil {
+		issuedAt = tc.IssuedAt.Time
+	}
+
 	return &Claims{
 		UserID:   tc.UserID,
 		Username: tc.Username,
 		Role:     tc.Role,
+		IssuedAt: issuedAt,
 	}, nil
 }

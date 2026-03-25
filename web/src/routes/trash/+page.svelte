@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Trash2, RotateCcw, FileText, FolderOpen, AlertTriangle } from 'lucide-svelte';
+	import { Trash2, RotateCcw, FileText, FolderOpen, Sparkles } from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores';
 	import { formatBytes, formatDate } from '$lib/utils';
@@ -128,102 +128,117 @@
 	<title>Trash — SyncVault</title>
 </svelte:head>
 
-<div class="p-6">
+<div class="p-6" style="background: #0a0a0b; min-height: 100%;">
 	<div class="mb-6 flex items-center justify-between">
 		<div>
-			<h1 class="text-xl font-semibold text-gray-900">Trash</h1>
-			<p class="text-sm text-gray-500 mt-1">Files here will be permanently deleted after 30 days.</p>
+			<h1 class="text-base font-semibold text-white">Trash</h1>
+			<p class="text-sm mt-1" style="color: rgba(255,255,255,0.35);">Files here will be permanently deleted after 30 days.</p>
 		</div>
 		{#if items.length > 0}
 			{#if selected.size > 0}
 				<button
 					onclick={() => (showRemoveSelected = true)}
-					class="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-md px-4 py-2 transition-colors"
+					class="flex items-center gap-2 text-sm font-medium rounded-lg px-4 py-2 transition-all duration-150 bg-red-600/10 text-red-400 hover:bg-red-600/20 border border-red-500/20"
 				>
-					<Trash2 size={16} /> Remove ({selected.size})
+					<Trash2 size={15} /> Remove ({selected.size})
 				</button>
 			{:else}
 				<button
 					onclick={() => (showEmptyTrash = true)}
-					class="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-md px-4 py-2 transition-colors"
+					class="flex items-center gap-2 text-sm font-medium rounded-lg px-4 py-2 transition-all duration-150 bg-red-600/10 text-red-400 hover:bg-red-600/20 border border-red-500/20"
 				>
-					<Trash2 size={16} /> Empty Trash
+					<Trash2 size={15} /> Empty Trash
 				</button>
 			{/if}
 		{/if}
 	</div>
 
-	<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+	<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
 		{#if loading}
-			<div class="flex items-center justify-center py-16">
-				<div class="w-7 h-7 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+			<!-- Skeleton -->
+			<div class="px-4 py-3 border-b" style="border-color: rgba(255,255,255,0.05);">
+				<div class="flex gap-4">
+					<div class="skeleton h-3 rounded w-3"></div>
+					<div class="skeleton h-3 rounded w-3"></div>
+					<div class="skeleton h-3 rounded w-32"></div>
+				</div>
 			</div>
+			{#each [1,2,3,4] as _}
+				<div class="px-4 py-3.5 border-b flex items-center gap-3" style="border-color: rgba(255,255,255,0.04);">
+					<div class="skeleton w-4 h-4 rounded"></div>
+					<div class="skeleton w-5 h-5 rounded"></div>
+					<div class="skeleton h-3 rounded w-48"></div>
+					<div class="skeleton h-3 rounded w-16 ml-auto"></div>
+				</div>
+			{/each}
 		{:else if items.length === 0}
-			<div class="text-center py-16 text-gray-400">
-				<Trash2 size={48} class="mx-auto mb-3 opacity-30" />
-				<p class="text-base font-medium">Trash is empty</p>
-				<p class="text-sm mt-1">Deleted files will appear here.</p>
+			<div class="flex flex-col items-center justify-center py-20">
+				<div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
+					<Sparkles size={24} style="color: rgba(255,255,255,0.20);" />
+				</div>
+				<p class="text-base font-medium" style="color: rgba(255,255,255,0.40);">Trash is empty</p>
+				<p class="text-sm mt-1.5" style="color: rgba(255,255,255,0.25);">Deleted files will appear here.</p>
 			</div>
 		{:else}
-			<table class="min-w-full divide-y divide-gray-200">
-				<thead class="bg-gray-50">
-					<tr>
+			<table class="min-w-full">
+				<thead>
+					<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
 						<th class="px-4 py-3 w-8">
-							<input type="checkbox" checked={selected.size === items.length && items.length > 0} onchange={selectAll}
-								class="rounded border-gray-300 text-blue-500 focus:ring-blue-500" />
+							<input type="checkbox" checked={selected.size === items.length && items.length > 0} onchange={selectAll} />
 						</th>
 						<th class="px-4 py-3 w-8"></th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Size</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Deleted</th>
-						<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Name</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Size</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Deleted</th>
+						<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Actions</th>
 					</tr>
 				</thead>
-				<tbody class="bg-white divide-y divide-gray-200">
+				<tbody>
 					{#each items as item, i}
 						<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
-						<tr class="hover:bg-gray-50 cursor-pointer {selected.has(item.id) ? 'bg-blue-50' : ''}"
-							onclick={(e) => toggleSelect(item, i, e)}>
-							<td class="px-4 py-3">
-								<input type="checkbox" checked={selected.has(item.id)} onclick={(e) => e.stopPropagation()} onchange={(e) => toggleSelect(item, i, e)}
-									class="rounded border-gray-300 text-blue-500 focus:ring-blue-500" />
+						<tr
+							class="transition-colors cursor-pointer trash-row {selected.has(item.id) ? 'selected-row' : ''}"
+							onclick={(e) => toggleSelect(item, i, e)}
+						>
+							<td class="px-4 py-3.5">
+								<input type="checkbox" checked={selected.has(item.id)} onclick={(e) => e.stopPropagation()} onchange={(e) => toggleSelect(item, i, e)} />
 							</td>
-							<td class="px-4 py-3">
+							<td class="px-4 py-3.5">
 								{#if isDir(item)}
-									<FolderOpen size={20} class="text-yellow-400 opacity-60" />
+									<FolderOpen size={18} style="color: #f59e0b; opacity: 0.7;" />
 								{:else}
-									<FileText size={20} class="text-gray-300" />
+									<FileText size={18} style="color: rgba(255,255,255,0.25);" />
 								{/if}
 							</td>
-							<td class="px-4 py-3">
+							<td class="px-4 py-3.5">
 								<div>
-									<p class="text-sm font-medium text-gray-600">{item.name}</p>
+									<p class="text-sm font-medium text-white/70">{item.name}</p>
 									{#if item.original_path}
-										<p class="text-xs text-gray-400 mt-0.5">{item.original_path}</p>
+										<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.25);">{item.original_path}</p>
 									{/if}
 								</div>
 							</td>
-							<td class="px-4 py-3 hidden sm:table-cell">
-								<span class="text-sm text-gray-500">
+							<td class="px-4 py-3.5 hidden sm:table-cell">
+								<span class="text-sm" style="color: rgba(255,255,255,0.35);">
 									{isDir(item) ? '—' : formatBytes(item.size)}
 								</span>
 							</td>
-							<td class="px-4 py-3 hidden md:table-cell">
-								<span class="text-sm text-gray-500">{formatDate(item.deleted_at)}</span>
+							<td class="px-4 py-3.5 hidden md:table-cell">
+								<span class="text-sm" style="color: rgba(255,255,255,0.35);">{formatDate(item.deleted_at)}</span>
 							</td>
-							<td class="px-4 py-3">
-								<div class="flex items-center justify-end gap-2">
+							<td class="px-4 py-3.5">
+								<div class="flex items-center justify-end gap-1">
 									<button
-										onclick={() => restoreItem(item)}
-										class="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors"
+										onclick={(e) => { e.stopPropagation(); restoreItem(item); }}
+										class="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md transition-all text-blue-400 hover:bg-blue-500/10"
 									>
-										<RotateCcw size={14} /> Restore
+										<RotateCcw size={13} /> Restore
 									</button>
 									<button
-										onclick={() => confirmPermanentDelete(item)}
-										class="flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 font-medium transition-colors"
+										onclick={(e) => { e.stopPropagation(); confirmPermanentDelete(item); }}
+										class="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md transition-all text-red-400 hover:bg-red-500/10"
 									>
-										<Trash2 size={14} /> Delete
+										<Trash2 size={13} /> Delete
 									</button>
 								</div>
 							</td>
@@ -264,3 +279,18 @@
 		oncancel={() => (showEmptyTrash = false)}
 	/>
 {/if}
+
+<style>
+	.trash-row {
+		border-bottom: 1px solid rgba(255,255,255,0.04);
+	}
+	.trash-row:hover {
+		background: rgba(255,255,255,0.03);
+	}
+	.trash-row:last-child {
+		border-bottom: none;
+	}
+	.selected-row {
+		background: rgba(59,130,246,0.06) !important;
+	}
+</style>

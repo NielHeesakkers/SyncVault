@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import {
+		Folder,
 		FolderOpen,
 		FileText,
 		Upload,
@@ -11,7 +12,13 @@
 		Download,
 		Edit2,
 		Move,
-		Trash2
+		Trash2,
+		File,
+		FileImage,
+		FileCode,
+		FileArchive,
+		Music,
+		Video
 	} from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores';
@@ -36,6 +43,20 @@
 	interface BreadcrumbItem {
 		id: string | null;
 		name: string;
+	}
+
+	function getFileIcon(file: FileItem): { icon: any; color: string } {
+		if (file.type === 'folder') return { icon: Folder, color: '#f59e0b' };
+		const ext = file.name.split('.').pop()?.toLowerCase() || '';
+		if (['jpg','jpeg','png','gif','webp','svg','bmp','ico','tiff'].includes(ext)) return { icon: FileImage, color: '#22c55e' };
+		if (['mp4','mov','avi','mkv','webm','flv','wmv'].includes(ext)) return { icon: Video, color: '#ec4899' };
+		if (['mp3','wav','flac','aac','ogg','m4a'].includes(ext)) return { icon: Music, color: '#06b6d4' };
+		if (['zip','tar','gz','rar','7z','bz2'].includes(ext)) return { icon: FileArchive, color: '#f97316' };
+		if (['js','ts','jsx','tsx','py','go','rs','java','c','cpp','cs','php','rb','swift','kt','vue','svelte'].includes(ext)) return { icon: FileCode, color: '#a855f7' };
+		if (['pdf'].includes(ext)) return { icon: FileText, color: '#ef4444' };
+		if (['doc','docx','odt','rtf','txt','md'].includes(ext)) return { icon: FileText, color: '#3b82f6' };
+		if (['xls','xlsx','csv','ods'].includes(ext)) return { icon: FileText, color: '#22c55e' };
+		return { icon: File, color: 'rgba(255,255,255,0.40)' };
 	}
 
 	let folderId = $derived($page.params.folderId);
@@ -70,14 +91,10 @@
 	async function loadFolder() {
 		loading = true;
 		try {
-			// Load folder name from file metadata
-			const folderRes = await api.get(`/api/files?parent_id=${folderId}`);
-			// We don't have a get-single-file endpoint easily, so just set the name from the ID for now
+			const res = await api.get(`/api/files?parent_id=${folderId}`);
 			folderName = folderId;
 			breadcrumbs = [{ id: null, name: 'Files' }, { id: folderId, name: 'Folder' }];
 
-			// Load contents
-			const res = await api.get(`/api/files?parent_id=${folderId}`);
 			if (res.ok) {
 				const data = await res.json();
 				const rawFiles = data.files || data.items || data || [];
@@ -231,73 +248,96 @@
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 <div
 	class="h-full flex flex-col"
+	style="background: #0a0a0b;"
 	onclick={closeContextMenu}
 	ondragover={(e) => { e.preventDefault(); dragOver = true; }}
 	ondragleave={() => { dragOver = false; }}
 	ondrop={onDrop}
 >
 	{#if dragOver}
-		<div class="fixed inset-0 z-40 bg-blue-500/10 border-4 border-dashed border-blue-400 pointer-events-none flex items-center justify-center">
-			<div class="bg-white rounded-lg px-8 py-6 shadow-xl text-center">
-				<Upload size={40} class="mx-auto mb-3 text-blue-500" />
-				<p class="text-lg font-semibold text-gray-800">Drop files to upload</p>
+		<div class="fixed inset-0 z-40 pointer-events-none flex items-center justify-center" style="background: rgba(59,130,246,0.08); border: 3px dashed rgba(59,130,246,0.40);">
+			<div class="rounded-xl px-8 py-6 text-center" style="background: #1a1a1d; border: 1px solid rgba(255,255,255,0.10);">
+				<Upload size={36} class="mx-auto mb-3 text-blue-400" />
+				<p class="text-base font-semibold text-white">Drop files to upload</p>
 			</div>
 		</div>
 	{/if}
 
-	<div class="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between gap-4">
+	<!-- Header bar -->
+	<div class="px-5 py-3.5 border-b flex items-center justify-between gap-4" style="background: #111113; border-color: rgba(255,255,255,0.05);">
 		<BreadcrumbNav items={breadcrumbs} onclick={navigateToBreadcrumb} />
 		<div class="flex items-center gap-2 flex-shrink-0">
 			{#if uploading}
-				<div class="flex items-center gap-2 text-sm text-blue-600">
-					<div class="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+				<div class="flex items-center gap-2 text-sm text-blue-400">
+					<div class="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
 					Uploading…
 				</div>
 			{/if}
 			<button
 				onclick={() => fileInput.click()}
-				class="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-md px-4 py-2 transition-colors"
+				class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg px-3.5 py-2 transition-all duration-150"
 			>
-				<Upload size={16} /> Upload
+				<Upload size={14} /> Upload
 			</button>
 			<button
 				onclick={() => (showNewFolder = true)}
-				class="flex items-center gap-2 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-md px-4 py-2 transition-colors"
+				class="flex items-center gap-2 text-sm font-medium rounded-lg px-3.5 py-2 transition-all duration-150 text-white/60 hover:text-white/80"
+				style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07);"
 			>
-				<FolderPlus size={16} /> New Folder
+				<FolderPlus size={14} /> New Folder
 			</button>
 		</div>
 	</div>
 
 	<input bind:this={fileInput} type="file" multiple class="hidden" onchange={onFileInputChange} />
 
-	<div class="flex-1 overflow-auto p-6">
+	<div class="flex-1 overflow-auto p-5">
 		{#if loading}
-			<div class="flex items-center justify-center py-24">
-				<div class="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+				<table class="min-w-full">
+					<thead>
+						<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+							<th class="px-4 py-3 w-8"></th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Name</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Size</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Modified</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each [1,2,3,4,5] as _}
+							<tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+								<td class="px-4 py-3.5"><div class="skeleton h-5 rounded w-5"></div></td>
+								<td class="px-4 py-3.5"><div class="skeleton h-4 rounded w-40"></div></td>
+								<td class="px-4 py-3.5 hidden sm:table-cell"><div class="skeleton h-4 rounded w-16"></div></td>
+								<td class="px-4 py-3.5 hidden md:table-cell"><div class="skeleton h-4 rounded w-24"></div></td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
 			</div>
 		{:else if items.length === 0}
-			<div class="text-center py-24 text-gray-400">
-				<FolderOpen size={56} class="mx-auto mb-4 opacity-30" />
-				<p class="text-base font-medium">This folder is empty</p>
-				<p class="text-sm mt-1">Upload files or create a folder to get started.</p>
+			<div class="text-center py-24">
+				<FolderOpen size={48} style="color: rgba(255,255,255,0.08); margin: 0 auto 16px;" />
+				<p class="text-sm font-medium text-white/40">This folder is empty</p>
+				<p class="text-xs mt-1.5" style="color: rgba(255,255,255,0.20);">Upload files or create a folder to get started.</p>
 			</div>
 		{:else}
-			<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-				<table class="min-w-full divide-y divide-gray-200">
-					<thead class="bg-gray-50">
-						<tr>
+			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+				<table class="min-w-full">
+					<thead>
+						<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
 							<th class="px-4 py-3 w-8"></th>
-							<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-							<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Size</th>
-							<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Modified</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Name</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Size</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Modified</th>
 							<th class="px-4 py-3 w-10"></th>
 						</tr>
 					</thead>
-					<tbody class="bg-white divide-y divide-gray-200">
+					<tbody>
 						{#each items as item}
+							{@const fi = getFileIcon(item)}
 							<tr
-								class="hover:bg-gray-50 cursor-pointer transition-colors {selectedFile?.id === item.id ? 'bg-blue-50' : ''}"
+								class="file-row {selectedFile?.id === item.id ? 'selected-row' : ''}"
 								onclick={() => {
 									if (item.type === 'folder') {
 										navigateToFolder(item);
@@ -307,30 +347,29 @@
 								}}
 								oncontextmenu={(e) => openContextMenu(e, item)}
 							>
-								<td class="px-4 py-3">
-									{#if item.type === 'folder'}
-										<FolderOpen size={20} class="text-yellow-500" />
-									{:else}
-										<FileText size={20} class="text-gray-400" />
-									{/if}
+								<td class="px-4 py-3.5">
+									<svelte:component this={fi.icon} size={17} style="color: {fi.color};" />
 								</td>
-								<td class="px-4 py-3">
-									<span class="text-sm font-medium text-gray-900">{item.name}</span>
+								<td class="px-4 py-3.5">
+									<span class="text-sm font-medium text-white/75">{item.name}</span>
 								</td>
-								<td class="px-4 py-3 hidden sm:table-cell">
-									<span class="text-sm text-gray-500">
+								<td class="px-4 py-3.5 hidden sm:table-cell">
+									<span class="text-sm" style="color: rgba(255,255,255,0.40);">
 										{item.type === 'folder' ? '—' : formatBytes(item.size)}
 									</span>
 								</td>
-								<td class="px-4 py-3 hidden md:table-cell">
-									<span class="text-sm text-gray-500">{formatDate(item.updated_at)}</span>
+								<td class="px-4 py-3.5 hidden md:table-cell">
+									<span class="text-sm" style="color: rgba(255,255,255,0.40);">{formatDate(item.updated_at)}</span>
 								</td>
-								<td class="px-4 py-3">
+								<td class="px-4 py-3.5">
 									<button
 										onclick={(e) => { e.stopPropagation(); openContextMenu(e, item); }}
-										class="p-1 text-gray-400 hover:text-gray-600 rounded"
+										class="p-1 rounded transition-colors"
+										style="color: rgba(255,255,255,0.25);"
+										onmouseenter={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.60)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'; }}
+										onmouseleave={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.25)'; (e.currentTarget as HTMLElement).style.background = ''; }}
 									>
-										<MoreHorizontal size={16} />
+										<MoreHorizontal size={15} />
 									</button>
 								</td>
 							</tr>
@@ -345,24 +384,24 @@
 {#if contextMenu}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div
-		class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 w-44"
-		style="left: {contextMenu.x}px; top: {contextMenu.y}px;"
+		class="fixed z-50 rounded-xl py-1 w-44"
+		style="left: {contextMenu.x}px; top: {contextMenu.y}px; background: #1a1a1d; border: 1px solid rgba(255,255,255,0.10); box-shadow: 0 8px 32px rgba(0,0,0,0.5);"
 		onclick={(e) => e.stopPropagation()}
 	>
 		{#if contextMenu.item.type === 'file'}
-			<button onclick={() => { downloadFile(contextMenu!.item); }} class="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-				<Download size={15} /> Download
+			<button onclick={() => { downloadFile(contextMenu!.item); }} class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-white/70">
+				<Download size={14} style="color: rgba(255,255,255,0.40);" /> Download
 			</button>
 		{/if}
-		<button onclick={() => startRename(contextMenu!.item)} class="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-			<Edit2 size={15} /> Rename
+		<button onclick={() => startRename(contextMenu!.item)} class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-white/70">
+			<Edit2 size={14} style="color: rgba(255,255,255,0.40);" /> Rename
 		</button>
-		<button class="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onclick={closeContextMenu}>
-			<Move size={15} /> Move
+		<button class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-white/70" onclick={closeContextMenu}>
+			<Move size={14} style="color: rgba(255,255,255,0.40);" /> Move
 		</button>
-		<hr class="my-1 border-gray-100" />
-		<button onclick={() => confirmDelete(contextMenu!.item)} class="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50">
-			<Trash2 size={15} /> Delete
+		<div style="border-top: 1px solid rgba(255,255,255,0.07); margin: 4px 0;"></div>
+		<button onclick={() => confirmDelete(contextMenu!.item)} class="context-item-danger flex items-center gap-2 w-full px-4 py-2 text-sm text-red-400">
+			<Trash2 size={14} class="text-red-400" /> Delete
 		</button>
 	</div>
 {/if}
@@ -373,20 +412,19 @@
 	<Modal title="New Folder" onclose={() => { showNewFolder = false; newFolderName = ''; }}>
 		{#snippet children()}
 			<div>
-				<label for="folderName" class="block text-sm font-medium text-gray-700 mb-1">Folder name</label>
+				<label for="folderName" class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Folder name</label>
 				<input
 					id="folderName"
 					type="text"
 					bind:value={newFolderName}
 					placeholder="My folder"
-					class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
 					onkeydown={(e) => e.key === 'Enter' && createFolder()}
 				/>
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => { showNewFolder = false; newFolderName = ''; }} class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
-			<button onclick={createFolder} disabled={creatingFolder || !newFolderName.trim()} class="rounded-md px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white transition-colors">
+			<button onclick={() => { showNewFolder = false; newFolderName = ''; }} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);">Cancel</button>
+			<button onclick={createFolder} disabled={creatingFolder || !newFolderName.trim()} class="rounded-lg px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-all duration-150">
 				{creatingFolder ? 'Creating…' : 'Create'}
 			</button>
 		{/snippet}
@@ -397,13 +435,13 @@
 	<Modal title="Rename" onclose={() => (showRename = false)}>
 		{#snippet children()}
 			<div>
-				<label for="renameName" class="block text-sm font-medium text-gray-700 mb-1">New name</label>
-				<input id="renameName" type="text" bind:value={renameName} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" onkeydown={(e) => e.key === 'Enter' && doRename()} />
+				<label for="renameName" class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">New name</label>
+				<input id="renameName" type="text" bind:value={renameName} onkeydown={(e) => e.key === 'Enter' && doRename()} />
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showRename = false)} class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
-			<button onclick={doRename} disabled={!renameName.trim()} class="rounded-md px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white transition-colors">Rename</button>
+			<button onclick={() => (showRename = false)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);">Cancel</button>
+			<button onclick={doRename} disabled={!renameName.trim()} class="rounded-lg px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-all duration-150">Rename</button>
 		{/snippet}
 	</Modal>
 {/if}
@@ -417,3 +455,30 @@
 		oncancel={() => { showDelete = false; deleteTarget = null; }}
 	/>
 {/if}
+
+<style>
+	.file-row {
+		border-bottom: 1px solid rgba(255,255,255,0.04);
+		cursor: pointer;
+		transition: background 0.1s;
+	}
+	.file-row:last-child {
+		border-bottom: none;
+	}
+	.file-row:hover {
+		background: rgba(255,255,255,0.03);
+	}
+	.selected-row {
+		background: rgba(59,130,246,0.08);
+		border-left: 2px solid #3b82f6;
+	}
+	.selected-row:hover {
+		background: rgba(59,130,246,0.12);
+	}
+	.context-item:hover {
+		background: rgba(255,255,255,0.05);
+	}
+	.context-item-danger:hover {
+		background: rgba(239,68,68,0.08);
+	}
+</style>

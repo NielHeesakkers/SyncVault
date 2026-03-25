@@ -21,12 +21,10 @@
 	let users = $state<UserRecord[]>([]);
 	let loading = $state(true);
 
-	// Create user modal
 	let showCreate = $state(false);
 	let createForm = $state({ username: '', email: '', password: '', role: 'user' });
 	let creating = $state(false);
 
-	// Edit user modal (combined: edit, tokens, delete)
 	let showEdit = $state(false);
 	let editTarget = $state<UserRecord | null>(null);
 	let editTab = $state<'details' | 'tokens' | 'delete'>('details');
@@ -36,7 +34,6 @@
 	let deleteAction = $state<'delete' | 'transfer'>('delete');
 	let transferToUserId = $state('');
 
-	// Teams
 	interface Team { id: string; name: string; }
 	interface TeamMember { user_id: string; permission: string; }
 	let teams = $state<Team[]>([]);
@@ -199,71 +196,87 @@
 
 <svelte:head><title>Users — SyncVault Admin</title></svelte:head>
 
-<div class="p-6">
+<div class="p-6" style="background: #0a0a0b; min-height: 100%;">
 	<div class="mb-6 flex items-center justify-between">
 		<div>
-			<h1 class="text-xl font-semibold text-gray-900">Users</h1>
-			<p class="text-sm text-gray-500 mt-1">{users.length} user{users.length !== 1 ? 's' : ''} total</p>
+			<h1 class="text-base font-semibold text-white">Users</h1>
+			<p class="text-sm mt-1" style="color: rgba(255,255,255,0.35);">{users.length} user{users.length !== 1 ? 's' : ''} total</p>
 		</div>
 		<button onclick={openCreate}
-			class="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-md px-4 py-2 transition-colors">
-			<UserPlus size={16} /> Create User
+			class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg px-4 py-2 transition-all duration-150">
+			<UserPlus size={15} /> Create User
 		</button>
 	</div>
 
-	<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+	<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
 		{#if loading}
-			<div class="flex items-center justify-center py-16">
-				<div class="w-7 h-7 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+			<div class="px-4 py-3 border-b" style="border-color: rgba(255,255,255,0.05);">
+				<div class="flex gap-8">
+					{#each [1,2,3,4] as _}
+						<div class="skeleton h-3 rounded w-16"></div>
+					{/each}
+				</div>
 			</div>
+			{#each [1,2,3,4] as _}
+				<div class="px-4 py-3.5 border-b flex items-center gap-3" style="border-color: rgba(255,255,255,0.04);">
+					<div class="skeleton w-8 h-8 rounded-full flex-shrink-0"></div>
+					<div class="space-y-1.5 flex-1">
+						<div class="skeleton h-3 rounded w-32"></div>
+						<div class="skeleton h-2.5 rounded w-48"></div>
+					</div>
+					<div class="skeleton h-5 rounded-full w-12 ml-auto"></div>
+				</div>
+			{/each}
 		{:else if users.length === 0}
-			<div class="text-center py-16 text-gray-400">
-				<Users size={48} class="mx-auto mb-3 opacity-30" />
-				<p class="text-base font-medium">No users found</p>
+			<div class="flex flex-col items-center justify-center py-20">
+				<div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
+					<Users size={24} style="color: rgba(255,255,255,0.20);" />
+				</div>
+				<p class="text-base font-medium" style="color: rgba(255,255,255,0.40);">No users found</p>
 			</div>
 		{:else}
-			<table class="min-w-full divide-y divide-gray-200">
-				<thead class="bg-gray-50">
-					<tr>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Role</th>
-						<th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">Storage</th>
-						<th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+			<table class="min-w-full">
+				<thead>
+					<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">User</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Role</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden lg:table-cell" style="color: rgba(255,255,255,0.30);">Storage</th>
+						<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Actions</th>
 					</tr>
 				</thead>
-				<tbody class="bg-white divide-y divide-gray-200">
+				<tbody>
 					{#each users as user}
-						<tr class="hover:bg-gray-50 cursor-pointer" onclick={() => openEdit(user)}>
-							<td class="px-4 py-3">
+						<tr class="user-row cursor-pointer" onclick={() => openEdit(user)}>
+							<td class="px-4 py-3.5">
 								<div class="flex items-center gap-3">
-									<div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-sm font-bold flex-shrink-0">
+									<div class="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-400 text-xs font-bold flex-shrink-0">
 										{user.username[0].toUpperCase()}
 									</div>
 									<div>
-										<p class="text-sm font-medium text-gray-900">{user.username}</p>
-										<p class="text-xs text-gray-500">{user.email}</p>
+										<p class="text-sm font-medium text-white/80">{user.username}</p>
+										<p class="text-xs" style="color: rgba(255,255,255,0.35);">{user.email}</p>
 									</div>
 								</div>
 							</td>
-							<td class="px-4 py-3 hidden sm:table-cell">
-								<span class="inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-0.5
-								{user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}">
-									{#if user.role === 'admin'}<Shield size={11} />{:else}<User size={11} />{/if}
+							<td class="px-4 py-3.5 hidden sm:table-cell">
+								<span class="inline-flex items-center gap-1 text-[11px] font-medium rounded-full px-2.5 py-0.5"
+									style="{user.role === 'admin' ? 'background: rgba(168,85,247,0.12); color: #c084fc; border: 1px solid rgba(168,85,247,0.20);' : 'background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.45); border: 1px solid rgba(255,255,255,0.08);'}">
+									{#if user.role === 'admin'}<Shield size={10} />{:else}<User size={10} />{/if}
 									{user.role}
 								</span>
 							</td>
-							<td class="px-4 py-3 hidden lg:table-cell">
+							<td class="px-4 py-3.5 hidden lg:table-cell">
 								{#if user.storage_quota}
 									<div class="w-40"><StorageBar used={user.storage_used ?? 0} total={user.storage_quota} /></div>
 								{:else}
-									<span class="text-sm text-gray-400">{formatBytes(user.storage_used ?? 0)}</span>
+									<span class="text-sm" style="color: rgba(255,255,255,0.35);">{formatBytes(user.storage_used ?? 0)}</span>
 								{/if}
 							</td>
-							<td class="px-4 py-3">
+							<td class="px-4 py-3.5">
 								<div class="flex items-center justify-end gap-1">
 									<button onclick={(e) => { e.stopPropagation(); openEdit(user); }}
-										title="Edit user" class="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-gray-100 transition-colors">
-										<Edit2 size={15} />
+										title="Edit user" class="p-1.5 text-white/25 hover:text-blue-400 rounded-md hover:bg-blue-500/10 transition-all">
+										<Edit2 size={14} />
 									</button>
 								</div>
 							</td>
@@ -281,34 +294,34 @@
 		{#snippet children()}
 			<div class="space-y-3">
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
-					<input type="text" bind:value={createForm.username} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Username</label>
+					<input type="text" bind:value={createForm.username} />
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-					<input type="email" bind:value={createForm.email} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Email</label>
+					<input type="email" bind:value={createForm.email} />
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
-					<input type="password" bind:value={createForm.password} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Password</label>
+					<input type="password" bind:value={createForm.password} />
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Role</label>
-					<select bind:value={createForm.role} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Role</label>
+					<select bind:value={createForm.role}>
 						<option value="user">User</option>
 						<option value="admin">Admin</option>
 					</select>
 				</div>
 				{#if teams.length > 0}
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Team Folders</label>
-						<div class="space-y-2 border border-gray-200 rounded-md p-3">
+						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Team Folders</label>
+						<div class="space-y-2 border rounded-lg p-3" style="border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);">
 							{#each teams as team}
-								<div class="flex items-center justify-between">
-									<span class="text-sm text-gray-700">{team.name}</span>
+								<div class="flex items-center justify-between gap-3">
+									<span class="text-sm text-white/60">{team.name}</span>
 									<select value={createTeamSelections[team.id] || ''}
 										onchange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v) createTeamSelections[team.id] = v; else delete createTeamSelections[team.id]; createTeamSelections = { ...createTeamSelections }; }}
-										class="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none">
+										style="width: auto;">
 										<option value="">No access</option>
 										<option value="read">Read</option>
 										<option value="write">Write</option>
@@ -322,31 +335,34 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showCreate = false)} class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
+			<button onclick={() => (showCreate = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">Cancel</button>
 			<button onclick={createUser} disabled={creating || !createForm.username || !createForm.password}
-				class="rounded-md px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white transition-colors">
+				class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg transition-all">
 				{creating ? 'Creating…' : 'Create'}
 			</button>
 		{/snippet}
 	</Modal>
 {/if}
 
-<!-- Edit user modal (tabs: Details, Connection Token, Delete) -->
+<!-- Edit user modal -->
 {#if showEdit && editTarget}
 	<Modal title={editTarget.username} onclose={() => { showEdit = false; editTarget = null; }}>
 		{#snippet children()}
 			<!-- Tab bar -->
-			<div class="flex gap-1 border-b border-gray-200 -mx-6 px-6 mb-4">
+			<div class="flex gap-0 border-b -mx-6 px-6 mb-4" style="border-color: rgba(255,255,255,0.06);">
 				<button onclick={() => editTab = 'details'}
-					class="px-3 py-2 text-sm font-medium border-b-2 transition-colors {editTab === 'details' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">
+					class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
+					style="{editTab === 'details' ? 'border-color: #3b82f6; color: #60a5fa;' : 'border-color: transparent; color: rgba(255,255,255,0.40);'}">
 					Details
 				</button>
 				<button onclick={() => editTab = 'tokens'}
-					class="px-3 py-2 text-sm font-medium border-b-2 transition-colors {editTab === 'tokens' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">
+					class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
+					style="{editTab === 'tokens' ? 'border-color: #3b82f6; color: #60a5fa;' : 'border-color: transparent; color: rgba(255,255,255,0.40);'}">
 					Connection Token
 				</button>
 				<button onclick={() => { editTab = 'delete'; deleteConfirmText = ''; }}
-					class="px-3 py-2 text-sm font-medium border-b-2 transition-colors {editTab === 'delete' ? 'border-red-500 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">
+					class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
+					style="{editTab === 'delete' ? 'border-color: #ef4444; color: #f87171;' : 'border-color: transparent; color: rgba(255,255,255,0.40);'}">
 					Delete
 				</button>
 			</div>
@@ -354,28 +370,25 @@
 			{#if editTab === 'details'}
 				<div class="space-y-3">
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
-						<input type="text" value={editTarget.username} readonly
-							class="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500 cursor-not-allowed" />
+						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Username</label>
+						<input type="text" value={editTarget.username} readonly style="opacity: 0.5; cursor: not-allowed;" />
 					</div>
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-						<input type="email" bind:value={editForm.email} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Email</label>
+						<input type="email" bind:value={editForm.email} />
 					</div>
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Role</label>
-						<select bind:value={editForm.role} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Role</label>
+						<select bind:value={editForm.role}>
 							<option value="user">User</option>
 							<option value="admin">Admin</option>
 						</select>
 					</div>
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Storage quota (0 = unlimited)</label>
+						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Storage quota (0 = unlimited)</label>
 						<div class="flex items-center gap-2">
-							<input type="number" min="0" bind:value={editForm.storage_quota} placeholder="0"
-								class="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-							<select bind:value={editForm.storage_quota_unit}
-								class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+							<input type="number" min="0" bind:value={editForm.storage_quota} placeholder="0" style="width: 120px;" />
+							<select bind:value={editForm.storage_quota_unit} style="width: auto;">
 								<option value="MB">MB</option>
 								<option value="GB">GB</option>
 								<option value="TB">TB</option>
@@ -384,14 +397,14 @@
 					</div>
 					{#if teams.length > 0}
 						<div>
-							<label class="block text-sm font-medium text-gray-700 mb-1">Team Folders</label>
-							<div class="space-y-2 border border-gray-200 rounded-md p-3">
+							<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Team Folders</label>
+							<div class="space-y-2 border rounded-lg p-3" style="border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);">
 								{#each teams as team}
-									<div class="flex items-center justify-between">
-										<span class="text-sm text-gray-700">{team.name}</span>
+									<div class="flex items-center justify-between gap-3">
+										<span class="text-sm text-white/60">{team.name}</span>
 										<select value={editTeamSelections[team.id] || ''}
 											onchange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v) editTeamSelections[team.id] = v; else delete editTeamSelections[team.id]; editTeamSelections = { ...editTeamSelections }; }}
-											class="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none">
+											style="width: auto;">
 											<option value="">No access</option>
 											<option value="read">Read</option>
 											<option value="write">Write</option>
@@ -402,16 +415,14 @@
 							</div>
 						</div>
 					{/if}
-					<div class="border-t border-gray-100 pt-3">
-						<p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Reset Password (optional)</p>
+					<div class="border-t pt-3" style="border-color: rgba(255,255,255,0.06);">
+						<p class="text-[10px] font-semibold uppercase tracking-wider mb-2" style="color: rgba(255,255,255,0.30);">Reset Password (optional)</p>
 						<div class="space-y-2">
-							<input type="password" bind:value={editForm.newPassword} placeholder="New password"
-								class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+							<input type="password" bind:value={editForm.newPassword} placeholder="New password" />
 							<input type="password" bind:value={editForm.confirmPassword} placeholder="Confirm password"
-								class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500
-								{editForm.confirmPassword && editForm.newPassword !== editForm.confirmPassword ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : ''}" />
+								style="{editForm.confirmPassword && editForm.newPassword !== editForm.confirmPassword ? 'border-color: #ef4444;' : ''}" />
 							{#if editForm.confirmPassword && editForm.newPassword !== editForm.confirmPassword}
-								<p class="text-xs text-red-500">Passwords do not match</p>
+								<p class="text-xs text-red-400">Passwords do not match</p>
 							{/if}
 						</div>
 					</div>
@@ -419,17 +430,17 @@
 
 			{:else if editTab === 'tokens'}
 				<div class="space-y-4">
-					<p class="text-sm text-gray-600">Connection tokens allow users to connect the macOS app without manually entering server details. The token is encrypted with a 6-character PIN that is emailed to the user.</p>
+					<p class="text-sm" style="color: rgba(255,255,255,0.50);">Connection tokens allow users to connect the macOS app without manually entering server details. The token is encrypted with a 6-character PIN that is emailed to the user.</p>
 
-					<div class="flex items-center gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-						<Key size={24} class="text-gray-400 flex-shrink-0" />
+					<div class="flex items-center gap-3 p-4 rounded-lg border" style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08);">
+						<Key size={20} style="color: rgba(255,255,255,0.30); flex-shrink: 0;" />
 						<div class="flex-1">
 							{#if editTarget.has_token}
-								<p class="text-sm font-medium text-gray-900">Token available</p>
-								<p class="text-xs text-gray-500">One-time download — will be invalidated after download</p>
+								<p class="text-sm font-medium text-white/70">Token available</p>
+								<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.35);">One-time download — will be invalidated after download</p>
 							{:else}
-								<p class="text-sm font-medium text-gray-500">No active token</p>
-								<p class="text-xs text-gray-400">Generate a new token to create a .syncvault file</p>
+								<p class="text-sm font-medium" style="color: rgba(255,255,255,0.40);">No active token</p>
+								<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.25);">Generate a new token to create a .syncvault file</p>
 							{/if}
 						</div>
 					</div>
@@ -437,12 +448,12 @@
 					<div class="flex gap-2">
 						{#if editTarget.has_token}
 							<button onclick={() => downloadToken(editTarget!)}
-								class="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium bg-green-500 hover:bg-green-600 text-white transition-colors">
+								class="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all" style="background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.20);">
 								<Download size={14} /> Download .syncvault
 							</button>
 						{/if}
 						<button onclick={() => refreshToken(editTarget!)}
-							class="flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium bg-orange-500 hover:bg-orange-600 text-white transition-colors">
+							class="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all" style="background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.20);">
 							<RefreshCw size={14} /> {editTarget.has_token ? 'Regenerate Token' : 'Generate Token'}
 						</button>
 					</div>
@@ -450,35 +461,37 @@
 
 			{:else if editTab === 'delete'}
 				<div class="space-y-4">
-					<div class="flex items-start gap-3 p-3 bg-red-50 rounded-lg border border-red-100">
-						<Trash2 size={20} class="text-red-500 flex-shrink-0 mt-0.5" />
+					<div class="flex items-start gap-3 p-3 rounded-lg border" style="background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.20);">
+						<Trash2 size={18} class="text-red-400 flex-shrink-0 mt-0.5" />
 						<div>
-							<p class="text-sm font-medium text-red-800">Permanently delete this user account</p>
-							<p class="text-xs text-red-600 mt-1">This action cannot be undone. All data will be removed or transferred.</p>
+							<p class="text-sm font-medium text-red-300">Permanently delete this user account</p>
+							<p class="text-xs mt-1 text-red-400/70">This action cannot be undone. All data will be removed or transferred.</p>
 						</div>
 					</div>
 
 					<div class="space-y-2">
-						<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors {deleteAction === 'delete' ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}">
-							<input type="radio" bind:group={deleteAction} value="delete" class="text-red-500 focus:ring-red-500" />
+						<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
+							style="{deleteAction === 'delete' ? 'border-color: rgba(239,68,68,0.30); background: rgba(239,68,68,0.06);' : 'border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);'}">
+							<input type="radio" bind:group={deleteAction} value="delete" />
 							<div>
-								<span class="text-sm font-medium text-gray-900">Delete all files</span>
-								<p class="text-xs text-gray-500">All files, versions, and shared links will be permanently deleted</p>
+								<span class="text-sm font-medium text-white/70">Delete all files</span>
+								<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.35);">All files, versions, and shared links will be permanently deleted</p>
 							</div>
 						</label>
-						<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors {deleteAction === 'transfer' ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}">
-							<input type="radio" bind:group={deleteAction} value="transfer" class="text-blue-500 focus:ring-blue-500" />
+						<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
+							style="{deleteAction === 'transfer' ? 'border-color: rgba(59,130,246,0.30); background: rgba(59,130,246,0.06);' : 'border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);'}">
+							<input type="radio" bind:group={deleteAction} value="transfer" />
 							<div>
-								<span class="text-sm font-medium text-gray-900">Transfer files to another user</span>
-								<p class="text-xs text-gray-500">The user's folder will be moved to another user's home folder</p>
+								<span class="text-sm font-medium text-white/70">Transfer files to another user</span>
+								<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.35);">The user's folder will be moved to another user's home folder</p>
 							</div>
 						</label>
 					</div>
 
 					{#if deleteAction === 'transfer'}
 						<div>
-							<label class="block text-sm font-medium text-gray-700 mb-1">Transfer to</label>
-							<select bind:value={transferToUserId} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+							<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Transfer to</label>
+							<select bind:value={transferToUserId}>
 								<option value="">Select a user…</option>
 								{#each users.filter(u => u.id !== editTarget?.id) as u}
 									<option value={u.id}>{u.username}</option>
@@ -487,15 +500,14 @@
 						</div>
 					{/if}
 
-					<div class="border-t border-gray-100 pt-3">
-						<label class="block text-sm font-medium text-gray-700 mb-1">Type <span class="font-bold text-red-600">DELETE</span> to confirm</label>
-						<input type="text" bind:value={deleteConfirmText} placeholder="DELETE"
-							class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500" />
+					<div class="border-t pt-3" style="border-color: rgba(255,255,255,0.06);">
+						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Type <span class="font-bold text-red-400">DELETE</span> to confirm</label>
+						<input type="text" bind:value={deleteConfirmText} placeholder="DELETE" style="border-color: rgba(239,68,68,0.25);" />
 					</div>
 
 					<button onclick={doDelete}
 						disabled={deleteConfirmText !== 'DELETE' || (deleteAction === 'transfer' && !transferToUserId)}
-						class="w-full rounded-md px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors">
+						class="w-full px-4 py-2 text-sm font-medium rounded-lg transition-all bg-red-600/10 text-red-400 hover:bg-red-600/20 border border-red-500/20 disabled:opacity-30 disabled:cursor-not-allowed">
 						Delete User
 					</button>
 				</div>
@@ -503,17 +515,27 @@
 		{/snippet}
 		{#snippet footer()}
 			{#if editTab === 'details'}
-				<button onclick={() => { showEdit = false; editTarget = null; }}
-					class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
+				<button onclick={() => { showEdit = false; editTarget = null; }} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">Cancel</button>
 				<button onclick={saveEdit}
 					disabled={editing || !!(editForm.newPassword && editForm.newPassword !== editForm.confirmPassword)}
-					class="rounded-md px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white transition-colors">
+					class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg transition-all">
 					{editing ? 'Saving…' : 'Save'}
 				</button>
 			{:else}
-				<button onclick={() => { showEdit = false; editTarget = null; }}
-					class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Close</button>
+				<button onclick={() => { showEdit = false; editTarget = null; }} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">Close</button>
 			{/if}
 		{/snippet}
 	</Modal>
 {/if}
+
+<style>
+	.user-row {
+		border-bottom: 1px solid rgba(255,255,255,0.04);
+	}
+	.user-row:hover {
+		background: rgba(255,255,255,0.03);
+	}
+	.user-row:last-child {
+		border-bottom: none;
+	}
+</style>

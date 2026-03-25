@@ -13,14 +13,15 @@ import (
 
 // User represents a SyncVault user account.
 type User struct {
-	ID         string
-	Username   string
-	Email      string
-	Password   string
-	Role       string
-	QuotaBytes int64
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID                 string
+	Username           string
+	Email              string
+	Password           string
+	Role               string
+	QuotaBytes         int64
+	TokenInvalidatedAt *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 // ErrUserNotFound is returned when a user cannot be found.
@@ -61,7 +62,7 @@ func (d *DB) CreateUser(username, email, password, role string) (*User, error) {
 // GetUserByID returns the user with the given ID.
 func (d *DB) GetUserByID(id string) (*User, error) {
 	return d.scanUser(d.db.QueryRow(
-		`SELECT id, username, email, password, role, quota_bytes, created_at, updated_at
+		`SELECT id, username, email, password, role, quota_bytes, token_invalidated_at, created_at, updated_at
 		 FROM users WHERE id = ?`, id,
 	))
 }
@@ -69,7 +70,7 @@ func (d *DB) GetUserByID(id string) (*User, error) {
 // GetUserByUsername returns the user with the given username.
 func (d *DB) GetUserByUsername(username string) (*User, error) {
 	return d.scanUser(d.db.QueryRow(
-		`SELECT id, username, email, password, role, quota_bytes, created_at, updated_at
+		`SELECT id, username, email, password, role, quota_bytes, token_invalidated_at, created_at, updated_at
 		 FROM users WHERE username = ?`, username,
 	))
 }
@@ -77,7 +78,7 @@ func (d *DB) GetUserByUsername(username string) (*User, error) {
 // GetUserByEmail returns the user with the given email address.
 func (d *DB) GetUserByEmail(email string) (*User, error) {
 	return d.scanUser(d.db.QueryRow(
-		`SELECT id, username, email, password, role, quota_bytes, created_at, updated_at
+		`SELECT id, username, email, password, role, quota_bytes, token_invalidated_at, created_at, updated_at
 		 FROM users WHERE email = ?`, email,
 	))
 }
@@ -85,7 +86,7 @@ func (d *DB) GetUserByEmail(email string) (*User, error) {
 // ListUsers returns all users in the database.
 func (d *DB) ListUsers() ([]User, error) {
 	rows, err := d.db.Query(
-		`SELECT id, username, email, password, role, quota_bytes, created_at, updated_at
+		`SELECT id, username, email, password, role, quota_bytes, token_invalidated_at, created_at, updated_at
 		 FROM users ORDER BY username`,
 	)
 	if err != nil {
@@ -157,8 +158,9 @@ func (d *DB) DeleteUser(id string) error {
 func (d *DB) scanUser(row *sql.Row) (*User, error) {
 	var u User
 	var createdAt, updatedAt string
+	var tokenInvalidatedAt sql.NullString
 	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role,
-		&u.QuotaBytes, &createdAt, &updatedAt)
+		&u.QuotaBytes, &tokenInvalidatedAt, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
 	}
@@ -167,6 +169,10 @@ func (d *DB) scanUser(row *sql.Row) (*User, error) {
 	}
 	u.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
 	u.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+	if tokenInvalidatedAt.Valid {
+		t, _ := time.Parse(time.RFC3339Nano, tokenInvalidatedAt.String)
+		u.TokenInvalidatedAt = &t
+	}
 	return &u, nil
 }
 
@@ -174,14 +180,44 @@ func (d *DB) scanUser(row *sql.Row) (*User, error) {
 func (d *DB) scanUserRow(rows *sql.Rows) (*User, error) {
 	var u User
 	var createdAt, updatedAt string
+	var tokenInvalidatedAt sql.NullString
 	err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role,
-		&u.QuotaBytes, &createdAt, &updatedAt)
+		&u.QuotaBytes, &tokenInvalidatedAt, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("metadata: scan user row: %w", err)
 	}
 	u.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
 	u.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
+	if tokenInvalidatedAt.Valid {
+		t, _ := time.Parse(time.RFC3339Nano, tokenInvalidatedAt.String)
+		u.TokenInvalidatedAt = &t
+	}
 	return &u, nil
+}
+
+// InvalidateTokens sets token_invalidated_at to now, making all existing tokens invalid.
+func (d *DB) InvalidateTokens(userID string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := d.db.Exec(`UPDATE users SET token_invalidated_at = ? WHERE id = ?`, now, userID)
+	if err != nil {
+		return fmt.Errorf("metadata: invalidate tokens: %w", err)
+	}
+	return nil
+}
+
+// GetTokenInvalidatedAt returns the token invalidation timestamp for a user.
+// Implements auth.TokenInvalidationChecker.
+func (d *DB) GetTokenInvalidatedAt(userID string) (*time.Time, error) {
+	var ts sql.NullString
+	err := d.db.QueryRow(`SELECT token_invalidated_at FROM users WHERE id = ?`, userID).Scan(&ts)
+	if err != nil {
+		return nil, err
+	}
+	if !ts.Valid {
+		return nil, nil
+	}
+	t, _ := time.Parse(time.RFC3339Nano, ts.String)
+	return &t, nil
 }
 
 // isSQLiteConstraint returns true if the error is a SQLite constraint violation.

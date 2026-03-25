@@ -31,35 +31,46 @@
 	<title>Changelog — SyncVault</title>
 </svelte:head>
 
-<div class="p-6 max-w-2xl">
+<div class="p-6 max-w-2xl" style="background: #0a0a0b; min-height: 100%;">
 	<div class="mb-6">
-		<h1 class="text-xl font-semibold text-gray-900">Changelog</h1>
-		<p class="text-sm text-gray-500 mt-1">Current version: <span class="font-mono font-medium text-blue-600">v{currentVersion}</span></p>
+		<h1 class="text-base font-semibold text-white">Changelog</h1>
+		<p class="text-sm mt-1" style="color: rgba(255,255,255,0.35);">
+			Current version: <span class="font-mono text-blue-400">v{currentVersion}</span>
+		</p>
 	</div>
 
 	{#if loading}
-		<div class="flex items-center justify-center py-16">
-			<div class="w-7 h-7 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+		<div class="space-y-4">
+			{#each [1,2,3] as _}
+				<div class="rounded-xl border p-5" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+					<div class="skeleton h-4 rounded w-20 mb-4"></div>
+					<div class="space-y-2">
+						<div class="skeleton h-3 rounded w-full"></div>
+						<div class="skeleton h-3 rounded w-4/5"></div>
+						<div class="skeleton h-3 rounded w-3/5"></div>
+					</div>
+				</div>
+			{/each}
 		</div>
 	{:else}
-		<div class="space-y-6">
+		<div class="space-y-4">
 			{#each versions as ver}
-				<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-					<div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-						<div class="flex items-center gap-2">
-							<BookOpen size={16} class="text-blue-500" />
-							<span class="font-semibold text-gray-900">v{ver.version}</span>
+				<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+					<div class="px-5 py-4 border-b flex items-center justify-between" style="border-color: rgba(255,255,255,0.05);">
+						<div class="flex items-center gap-2.5">
+							<BookOpen size={15} class="text-blue-400" />
+							<span class="text-sm font-semibold text-white/80">v{ver.version}</span>
 							{#if ver.version === currentVersion}
-								<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">current</span>
+								<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full" style="background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.20);">current</span>
 							{/if}
 						</div>
-						<span class="text-sm text-gray-500">{ver.date}</span>
+						<span class="text-xs" style="color: rgba(255,255,255,0.30);">{ver.date}</span>
 					</div>
-					<div class="px-6 py-4">
+					<div class="px-5 py-4">
 						<ul class="space-y-2">
 							{#each ver.changes as change}
-								<li class="flex items-start gap-2 text-sm text-gray-700">
-									<span class="text-blue-400 mt-1.5 flex-shrink-0">&#8226;</span>
+								<li class="flex items-start gap-2 text-sm" style="color: rgba(255,255,255,0.60);">
+									<span class="text-blue-500 mt-1.5 flex-shrink-0 text-xs">&#8226;</span>
 									{change}
 								</li>
 							{/each}

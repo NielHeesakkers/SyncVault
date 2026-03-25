@@ -301,6 +301,9 @@ func (s *Server) handleAdminResetPassword(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Invalidate all existing tokens so the user is logged out everywhere
+	_ = s.db.InvalidateTokens(user.ID)
+
 	// Send password reset email; log but do not fail on error.
 	if s.email != nil && s.email.Enabled() {
 		if err := s.email.SendPasswordReset(user.Email, user.Username, req.Password); err != nil {
@@ -495,6 +498,95 @@ func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "New token generated and PIN emailed"})
+}
+
+// cleanupRequest is the body for POST /api/admin/cleanup.
+type cleanupRequest struct {
+	BeforeDate      string `json:"before_date"`      // RFC3339 date
+	IncludeVersions bool   `json:"include_versions"`  // also delete old versions
+	OnlyDeleted     bool   `json:"only_deleted"`      // only files already in trash
+}
+
+// handleAdminCleanup handles POST /api/admin/cleanup.
+func (s *Server) handleAdminCleanup(w http.ResponseWriter, r *http.Request) {
+	var req cleanupRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if req.BeforeDate == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "before_date is required"})
+		return
+	}
+
+	beforeDate, err := time.Parse(time.RFC3339, req.BeforeDate)
+	if err != nil {
+		// Try date-only format.
+		beforeDate, err = time.Parse("2006-01-02", req.BeforeDate)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "before_date must be RFC3339 or YYYY-MM-DD"})
+			return
+		}
+	}
+
+	fileCount, versionCount, freedBytes, err := s.db.ExecuteCleanup(beforeDate, req.IncludeVersions, req.OnlyDeleted)
+	if err != nil {
+		log.Printf("admin: cleanup error: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "cleanup failed: " + err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"deleted_files":    fileCount,
+		"deleted_versions": versionCount,
+		"freed_bytes":      freedBytes,
+	})
+}
+
+// handleCleanupPreview handles GET /api/admin/cleanup/preview.
+func (s *Server) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
+	beforeDateStr := r.URL.Query().Get("before_date")
+	if beforeDateStr == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "before_date is required"})
+		return
+	}
+
+	beforeDate, err := time.Parse(time.RFC3339, beforeDateStr)
+	if err != nil {
+		beforeDate, err = time.Parse("2006-01-02", beforeDateStr)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "before_date must be RFC3339 or YYYY-MM-DD"})
+			return
+		}
+	}
+
+	includeVersions := r.URL.Query().Get("include_versions") == "true"
+	onlyDeleted := r.URL.Query().Get("only_deleted") == "true"
+
+	fileCount, versionCount, totalBytes, err := s.db.PreviewCleanup(beforeDate, includeVersions, onlyDeleted)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "preview failed: " + err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"files_count":    fileCount,
+		"versions_count": versionCount,
+		"total_bytes":    totalBytes,
+	})
+}
+
+// handleCleanupCalendar handles GET /api/admin/cleanup/calendar.
+func (s *Server) handleCleanupCalendar(w http.ResponseWriter, r *http.Request) {
+	months, err := s.db.GetDataCalendar()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not load calendar"})
+		return
+	}
+	if months == nil {
+		months = map[string][]int{}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"months": months})
 }
 
 // handleAdminActivity handles GET /api/admin/activity.

@@ -69,7 +69,7 @@ actor SyncEngine {
         // 5. Sort: uploads small files first (large last), other actions first
         let sortedActions = actions.sorted { a, b in
             let sizeOf: (SyncAction) -> Int64 = { action in
-                if case .upload(let path, _) = action {
+                if case .upload(let path, _, _) = action {
                     return (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? 0
                 }
                 return 0
@@ -82,7 +82,7 @@ actor SyncEngine {
             return false
         }
 
-        // 6. Execute all actions (no limit), uploads in parallel (max 4 concurrent)
+        // 6. Execute all actions (no limit), uploads in parallel (max 8 concurrent)
         let total = sortedActions.count
         let bytes = ActorCounter()
         let completed = ActorCounter()
@@ -90,7 +90,7 @@ actor SyncEngine {
         let names = sortedActions.map { $0.fileName }
         var authFailed = false
 
-        let semaphore = AsyncSemaphore(limit: 4)
+        let semaphore = AsyncSemaphore(limit: 8)
 
         await withTaskGroup(of: (SyncActionResult).self) { group in
             for (i, action) in sortedActions.enumerated() {
@@ -104,15 +104,15 @@ actor SyncEngine {
 
                     do {
                         switch action {
-                        case .upload(let path, let relativePath):
+                        case .upload(let path, let relativePath, let remoteFileID):
                             let fileURL = URL(fileURLWithPath: path)
                             let attrs = try FileManager.default.attributesOfItem(atPath: path)
-                            let size = (attrs[.size] as? Int64) ?? 0
+                            let fileSize = (attrs[.size] as? Int64) ?? 0
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
 
                             onProgress(SyncProgress(
                                 currentFile: displayName, action: "Uploading",
-                                bytesTransferred: curBytes, totalBytes: size,
+                                bytesTransferred: curBytes, totalBytes: fileSize,
                                 filesCompleted: curCompleted, filesTotal: total,
                                 bytesPerSecond: Self.speed(bytes: curBytes, since: start),
                                 pendingFiles: pending
@@ -122,12 +122,30 @@ actor SyncEngine {
                             let parentRelPath = (relativePath as NSString).deletingLastPathComponent
                             let parentID = try await self.ensureRemoteDirectory(parentRelPath, rootID: task.remoteFolderID)
 
-                            // Upload first, then hash the source file (already on disk)
-                            let _ = try await self.apiClient.uploadFileFromDisk(fileURL: fileURL, filename: displayName, parentID: parentID)
-                            let hash = try Self.hashFile(at: fileURL)
-                            try self.db.updateState(taskID: taskID, fileName: relativePath, contentHash: hash)
-                            await bytes.add(size)
-                            logger.info(" Uploaded: \(relativePath) (\(size) bytes)")
+                            let CHUNK_THRESHOLD: Int64 = 64 * 1024 * 1024  // 64 MB
+                            let uploaded: ServerFile
+
+                            if let remoteID = remoteFileID {
+                                // Existing file — try delta first
+                                let usedDelta = try await self.uploadDelta(fileURL: fileURL, remoteFileID: remoteID, relativePath: relativePath)
+                                if usedDelta {
+                                    // Delta upload handled internally; re-fetch the file to get updated metadata
+                                    uploaded = try await self.apiClient.getFile(id: remoteID)
+                                } else if fileSize > CHUNK_THRESHOLD {
+                                    uploaded = try await self.uploadChunked(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize)
+                                } else {
+                                    uploaded = try await self.apiClient.uploadFileFromDisk(fileURL: fileURL, filename: displayName, parentID: parentID)
+                                }
+                            } else if fileSize > CHUNK_THRESHOLD {
+                                uploaded = try await self.uploadChunked(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize)
+                            } else {
+                                uploaded = try await self.apiClient.uploadFileFromDisk(fileURL: fileURL, filename: displayName, parentID: parentID)
+                            }
+
+                            // Use the hash from server response
+                            try self.db.updateState(taskID: taskID, fileName: relativePath, contentHash: uploaded.contentHash ?? "")
+                            await bytes.add(fileSize)
+                            logger.info(" Uploaded: \(relativePath) (\(fileSize) bytes)")
                             return .uploaded(displayName)
 
                         case .download(let fileID, let localPath, let relativePath):
@@ -431,7 +449,7 @@ actor SyncEngine {
                 if localFile.contentHash != remoteFile.contentHash {
                     let knownHash = known[relPath]?.contentHash
                     if knownHash == remoteFile.contentHash {
-                        actions.append(.upload(localFile.fullPath, relPath))
+                        actions.append(.upload(localFile.fullPath, relPath, remoteFile.id))
                     } else if knownHash == localFile.contentHash {
                         if mode == .twoWay {
                             let localPath = (basePath as NSString).appendingPathComponent(relPath)
@@ -441,12 +459,12 @@ actor SyncEngine {
                         if mode == .twoWay {
                             actions.append(.conflict(localFile.fullPath, remoteFile.id, relPath))
                         } else {
-                            actions.append(.upload(localFile.fullPath, relPath))
+                            actions.append(.upload(localFile.fullPath, relPath, remoteFile.id))
                         }
                     }
                 }
             } else {
-                actions.append(.upload(localFile.fullPath, relPath))
+                actions.append(.upload(localFile.fullPath, relPath, nil))
             }
         }
 
@@ -488,7 +506,7 @@ actor SyncEngine {
                 if localFile.contentHash != remoteFile.contentHash {
                     let knownHash = known[relPath]?.contentHash
                     if knownHash == remoteFile.contentHash {
-                        actions.append(.upload(localFile.fullPath, relPath))
+                        actions.append(.upload(localFile.fullPath, relPath, remoteFile.id))
                     } else if knownHash == localFile.contentHash {
                         if mode == .twoWay {
                             let localPath = (basePath as NSString).appendingPathComponent(relPath)
@@ -498,12 +516,12 @@ actor SyncEngine {
                         if mode == .twoWay {
                             actions.append(.conflict(localFile.fullPath, remoteFile.id, relPath))
                         } else {
-                            actions.append(.upload(localFile.fullPath, relPath))
+                            actions.append(.upload(localFile.fullPath, relPath, remoteFile.id))
                         }
                     }
                 }
             } else {
-                actions.append(.upload(localFile.fullPath, relPath))
+                actions.append(.upload(localFile.fullPath, relPath, nil))
             }
         }
 
@@ -518,6 +536,77 @@ actor SyncEngine {
         }
 
         return actions
+    }
+
+    // MARK: - Fast Upload Helpers
+
+    private func uploadChunked(fileURL: URL, filename: String, parentID: String, fileSize: Int64) async throws -> ServerFile {
+        let chunkSize = 64 * 1024 * 1024  // 64 MB
+
+        // 1. Init session
+        let session = try await apiClient.initChunkedUpload(filename: filename, parentID: parentID, totalSize: fileSize, chunkSize: chunkSize)
+
+        // 2. Check if we can resume (might have partial upload from before)
+        let status = try await apiClient.getUploadStatus(uploadID: session.uploadID)
+        let receivedSet = Set(status.receivedChunks)
+
+        // 3. Upload missing chunks
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { handle.closeFile() }
+
+        for i in 0..<session.totalChunks {
+            if receivedSet.contains(i) { continue }  // Skip already uploaded chunks
+
+            handle.seek(toFileOffset: UInt64(i) * UInt64(chunkSize))
+            let data = handle.readData(ofLength: chunkSize)
+            try await apiClient.uploadChunk(uploadID: session.uploadID, chunkIndex: i, data: data)
+        }
+
+        // 4. Complete
+        return try await apiClient.completeChunkedUpload(uploadID: session.uploadID)
+    }
+
+    private func uploadDelta(fileURL: URL, remoteFileID: String, relativePath: String) async throws -> Bool {
+        // 1. Get remote block signatures
+        let blocksResponse = try await apiClient.getFileBlocks(id: remoteFileID)
+
+        // 2. Read local file in blocks and compare
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { handle.closeFile() }
+
+        let blockSize = blocksResponse.blockSize
+        let remoteBlocks = Dictionary(uniqueKeysWithValues: blocksResponse.blocks.map { ($0.index, $0) })
+
+        var reuseBlocks: [Int] = []
+        var newBlocks: [(index: Int, data: Data)] = []
+        var blockIndex = 0
+
+        while true {
+            let data = handle.readData(ofLength: blockSize)
+            if data.isEmpty { break }
+
+            let localHash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
+
+            if let remote = remoteBlocks[blockIndex], remote.strongHash == localHash {
+                reuseBlocks.append(blockIndex)
+            } else {
+                newBlocks.append((index: blockIndex, data: data))
+            }
+            blockIndex += 1
+        }
+
+        // 3. If more than 50% changed, full upload is faster — fall back
+        let totalBlocks = blockIndex
+        if newBlocks.count > totalBlocks / 2 { return false }
+
+        // 4. Build and upload delta
+        let manifest = DeltaManifest(
+            reuseBlocks: reuseBlocks,
+            newBlocks: newBlocks.map { DeltaManifestBlock(index: $0.index, offset: 0) }
+        )
+        let newData = newBlocks.reduce(Data()) { $0 + $1.data }
+        let _ = try await apiClient.uploadDelta(fileID: remoteFileID, manifest: manifest, newBlockData: newData)
+        return true
     }
 
     // MARK: - Helpers
@@ -604,7 +693,7 @@ struct SyncResult {
 }
 
 enum SyncAction: CustomStringConvertible {
-    case upload(String, String)              // localPath, relativePath
+    case upload(String, String, String?)     // localPath, relativePath, remoteFileID (nil = new file)
     case download(String, String, String)    // remoteFileID, localPath, relativePath
     case markRemovedLocally(String, String)  // remoteFileID, relativePath
     case deleteLocal(String, String)         // localPath, relativePath
@@ -612,7 +701,7 @@ enum SyncAction: CustomStringConvertible {
 
     var fileName: String {
         switch self {
-        case .upload(_, let p): return URL(fileURLWithPath: p).lastPathComponent
+        case .upload(_, let p, _): return URL(fileURLWithPath: p).lastPathComponent
         case .download(_, _, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .markRemovedLocally(_, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .deleteLocal(_, let p): return URL(fileURLWithPath: p).lastPathComponent
@@ -622,7 +711,7 @@ enum SyncAction: CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .upload(_, let p): return "upload(\(p))"
+        case .upload(_, let p, _): return "upload(\(p))"
         case .download(_, _, let p): return "download(\(p))"
         case .markRemovedLocally(_, let p): return "markRemovedLocally(\(p))"
         case .deleteLocal(_, let p): return "deleteLocal(\(p))"

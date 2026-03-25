@@ -14,258 +14,297 @@ struct MenuBarView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // MARK: - Header: Connection status
-            sectionView {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(appState.isConnected ? Color.green : Color(white: 0.4))
-                        .frame(width: 8, height: 8)
-                    Text(appState.isConnected ? "Connected" : "Disconnected")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.primary)
-                    Spacer()
-                    if appState.unreadCount > 0 {
-                        Text("\(min(appState.unreadCount, 99))")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 16, height: 16)
-                            .background(Color.red, in: Circle())
-                    }
-                }
-                if appState.isConnected {
-                    Text(appState.serverURL.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: ""))
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-            }
+        ZStack {
+            // Glassmorphism vibrancy background
+            VisualEffectView(material: .popover, blendingMode: .behindWindow)
+                .ignoresSafeArea()
 
-            if appState.isConnected {
-                divider
-
-                // MARK: - Sync Progress
+            VStack(alignment: .leading, spacing: 0) {
+                // MARK: - Header: Connection status
                 sectionView {
-                    if let progress = appState.syncProgress {
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.system(size: 10))
-                                .foregroundColor(.blue)
-                                .rotationEffect(.degrees(appState.isSyncing ? 360 : 0))
-                                .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: appState.isSyncing)
-                            Text("\(progress.action) \(progress.currentFile)")
-                                .font(.system(size: 11))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer()
-                            Text("\(progress.filesCompleted + 1)/\(progress.filesTotal)")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.secondary)
+                    HStack(spacing: 8) {
+                        if appState.isConnected {
+                            PulsingDot(color: .green)
+                        } else {
+                            Circle()
+                                .fill(Color(white: 0.4))
+                                .frame(width: 8, height: 8)
                         }
-                        ProgressView(value: Double(progress.filesCompleted), total: Double(max(progress.filesTotal, 1)))
-                            .tint(.blue)
-                            .scaleEffect(y: 0.6)
-                        if progress.bytesPerSecond > 0 {
-                            HStack {
-                                Spacer()
-                                Text(formatSpeed(progress.bytesPerSecond))
-                                    .font(.system(size: 10, design: .monospaced))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(appState.isConnected ? "Connected" : "Disconnected")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+                            if appState.isConnected {
+                                Text(appState.serverURL
+                                    .replacingOccurrences(of: "https://", with: "")
+                                    .replacingOccurrences(of: "http://", with: ""))
+                                    .font(.system(size: 11))
                                     .foregroundColor(.secondary)
                             }
                         }
-                    } else {
-                        HStack(spacing: 6) {
-                            Image(systemName: appState.isSyncing ? "arrow.triangle.2.circlepath" : "checkmark")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(appState.isSyncing ? .blue : .green)
-                            Text(appState.isSyncing ? "Syncing..." : "Up to date")
-                                .font(.system(size: 11))
+                        Spacer()
+                        if appState.isConnected {
+                            Image(systemName: "checkmark.icloud.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(.green)
+                        } else {
+                            Image(systemName: "xmark.icloud")
+                                .font(.system(size: 14))
                                 .foregroundColor(.secondary)
                         }
-                    }
-
-                    if let error = appState.lastError {
-                        HStack(spacing: 6) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(.orange)
-                            Text(error)
-                                .font(.system(size: 10))
-                                .foregroundColor(.orange)
-                                .lineLimit(2)
-                        }
-                        .padding(.top, 2)
-                    }
-                }
-
-                // MARK: - Team Invites
-                if !pendingInvites.isEmpty {
-                    divider
-                    sectionView {
-                        ForEach(pendingInvites) { invite in
-                            TeamInviteRow(invite: invite, appState: appState)
+                        if appState.unreadCount > 0 {
+                            Text("\(min(appState.unreadCount, 99))")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 16, height: 16)
+                                .background(Color.red, in: Circle())
                         }
                     }
                 }
 
-                // MARK: - Sync Queue
-                if let progress = appState.syncProgress, progress.filesTotal > 0 {
-                    divider
+                if appState.isConnected {
+                    subtleDivider
+
+                    // MARK: - Sync Progress
                     sectionView {
-                        HStack {
-                            sectionHeader("Sync Queue")
-                            Spacer()
-                            Text("\(progress.filesCompleted)/\(progress.filesTotal)")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.secondary)
-                        }
-                        ForEach(appState.syncQueue.prefix(5), id: \.self) { filename in
-                            HStack(spacing: 8) {
-                                Image(systemName: "arrow.up")
+                        if let progress = appState.syncProgress {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
                                     .font(.system(size: 10))
                                     .foregroundColor(.blue)
-                                    .frame(width: 14)
-                                Text(filename)
+                                    .rotationEffect(.degrees(appState.isSyncing ? 360 : 0))
+                                    .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: appState.isSyncing)
+                                Text("\(progress.action) \(progress.currentFile)")
                                     .font(.system(size: 11))
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                                 Spacer()
-                                Text("pending")
+                                Text("\(progress.filesCompleted + 1)/\(progress.filesTotal)")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                            ProgressView(value: Double(progress.filesCompleted), total: Double(max(progress.filesTotal, 1)))
+                                .tint(.blue)
+                                .scaleEffect(y: 0.6)
+                            if progress.bytesPerSecond > 0 {
+                                HStack {
+                                    Spacer()
+                                    Text(formatSpeed(progress.bytesPerSecond))
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        } else {
+                            HStack(spacing: 6) {
+                                if appState.isSyncing {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(.blue)
+                                        .rotationEffect(.degrees(appState.isSyncing ? 360 : 0))
+                                        .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: appState.isSyncing)
+                                } else {
+                                    Image(systemName: "checkmark.icloud.fill")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(.green)
+                                }
+                                Text(appState.isSyncing ? "Syncing..." : "Up to date")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        if let error = appState.lastError {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
                                     .font(.system(size: 10))
-                                    .foregroundColor(Color(white: 0.4))
+                                    .foregroundColor(.orange)
+                                Text(error)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.orange)
+                                    .lineLimit(2)
+                            }
+                            .padding(.top, 2)
+                        }
+                    }
+
+                    // MARK: - Team Invites
+                    if !pendingInvites.isEmpty {
+                        subtleDivider
+                        sectionView {
+                            ForEach(pendingInvites) { invite in
+                                TeamInviteRow(invite: invite, appState: appState)
+                            }
+                        }
+                    }
+
+                    // MARK: - Sync Queue
+                    if let progress = appState.syncProgress, progress.filesTotal > 0 {
+                        subtleDivider
+                        sectionView {
+                            HStack {
+                                menuSectionHeader("Sync Queue")
+                                Spacer()
+                                Text("\(progress.filesCompleted)/\(progress.filesTotal)")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                            ForEach(Array(appState.syncQueue.prefix(5).enumerated()), id: \.offset) { index, filename in
+                                HStack(spacing: 8) {
+                                    Image(systemName: "arrow.up")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.blue)
+                                        .frame(width: 14)
+                                    Text(filename)
+                                        .font(.system(size: 11))
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                    Spacer()
+                                    Text("pending")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(Color(white: 0.4))
+                                }
+                                .padding(.vertical, 1)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                            }
+                        }
+                    }
+
+                    subtleDivider
+
+                    // MARK: - Sync Tasks + Storage
+                    sectionView {
+                        HStack {
+                            menuSectionHeader("Sync Tasks")
+                            Spacer()
+                            Text("\(activeTasks) / \(appState.syncTasks.count)")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                        ForEach(appState.syncTasks) { task in
+                            HStack(spacing: 8) {
+                                Image(systemName: "folder.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.yellow)
+                                Text(task.remoteFolderName)
+                                    .font(.system(size: 11))
+                                    .lineLimit(1)
+                                Spacer()
+                                if task.isEnabled && appState.isSyncing {
+                                    PulsingDot(color: taskStatusColor(task))
+                                } else {
+                                    Circle()
+                                        .fill(taskStatusColor(task))
+                                        .frame(width: 6, height: 6)
+                                }
+                                Text(taskStatusLabel(task))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 55, alignment: .trailing)
+                            }
+                            .padding(.vertical, 1)
+                        }
+
+                        if appState.storageTotal > 0 {
+                            Spacer().frame(height: 8)
+                            menuSectionHeader("Storage")
+                            GeometryReader { geo in
+                                let fraction = min(Double(appState.storageUsed) / Double(max(appState.storageTotal, 1)), 1.0)
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Color(white: 0.2))
+                                        .frame(height: 6)
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(fraction > 0.9 ? Color.red : fraction > 0.7 ? Color.orange : Color.blue)
+                                        .frame(width: geo.size.width * fraction, height: 6)
+                                }
+                            }
+                            .frame(height: 6)
+                            HStack {
+                                Spacer()
+                                Text("\(formatBytes(appState.storageUsed)) / \(formatBytes(appState.storageTotal))")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                subtleDivider
+
+                // MARK: - Actions
+                sectionView {
+                    // Update notification
+                    if let version = updaterService.availableVersion {
+                        actionRow(icon: "arrow.down.circle.fill", label: "Update to v\(version)", color: .orange) {
+                            updaterService.downloadAndInstallUpdate(version: version)
+                        }
+                        .disabled(updaterService.isDownloading)
+
+                        if updaterService.isDownloading {
+                            HStack(spacing: 6) {
+                                ProgressView()
+                                    .scaleEffect(0.5)
+                                    .frame(width: 14, height: 14)
+                                Text("Downloading...")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
                             }
                             .padding(.vertical, 1)
                         }
                     }
-                }
 
-                divider
-
-                // MARK: - Sync Tasks + Storage
-                sectionView {
-                    HStack {
-                        sectionHeader("Sync Tasks")
-                        Spacer()
-                        Text("\(activeTasks) / \(appState.syncTasks.count)")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(.secondary)
+                    actionRow(icon: "arrow.triangle.2.circlepath", label: "Sync Now") {
+                        Task { await appState.runSync() }
                     }
-                    ForEach(appState.syncTasks) { task in
+                    .opacity(appState.isConnected && !appState.isSyncing ? 1 : 0.4)
+
+                    actionRow(icon: "globe", label: "Open Files on Server", color: .blue) {
+                        let baseURL = appState.serverURL.isEmpty ? "https://sync.heesakkers.com" : appState.serverURL
+                        if let token = KeychainHelper.load(key: "access_token"),
+                           let url = URL(string: "\(baseURL)/api/auth/auto-login?token=\(token)") {
+                            NSWorkspace.shared.open(url)
+                        } else if let url = URL(string: "\(baseURL)/files") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+
+                    if updaterService.availableVersion == nil {
+                        actionRow(icon: "arrow.clockwise", label: "Check for Updates") {
+                            updaterService.checkForUpdates()
+                        }
+                    }
+
+                    SettingsLink {
                         HStack(spacing: 8) {
-                            Text(task.remoteFolderName)
+                            Image(systemName: "gear")
                                 .font(.system(size: 11))
-                                .lineLimit(1)
-                            Spacer()
-                            Circle()
-                                .fill(taskStatusColor(task))
-                                .frame(width: 6, height: 6)
-                            Text(taskStatusLabel(task))
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                                .frame(width: 55, alignment: .trailing)
+                                .frame(width: 14)
+                            Text("Settings...")
+                                .font(.system(size: 12))
                         }
-                        .padding(.vertical, 1)
+                        .foregroundColor(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .padding(.vertical, 3)
                     }
+                    .buttonStyle(.plain)
 
-                    if appState.storageTotal > 0 {
-                        Spacer().frame(height: 8)
-                        sectionHeader("Storage")
-                        GeometryReader { geo in
-                            let fraction = min(Double(appState.storageUsed) / Double(max(appState.storageTotal, 1)), 1.0)
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Color(white: 0.2))
-                                    .frame(height: 6)
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(fraction > 0.9 ? Color.red : fraction > 0.7 ? Color.orange : Color.blue)
-                                    .frame(width: geo.size.width * fraction, height: 6)
-                            }
-                        }
-                        .frame(height: 6)
-                        HStack {
-                            Spacer()
-                            Text("\(formatBytes(appState.storageUsed)) / \(formatBytes(appState.storageTotal))")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.secondary)
-                        }
+                    actionRow(icon: "power", label: "Quit", color: Color(white: 0.5)) {
+                        NSApplication.shared.terminate(nil)
                     }
                 }
+
+                // Version footer
+                HStack {
+                    Spacer()
+                    Text("v\(appVersion)")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundColor(Color(white: 0.35).opacity(0.7))
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
+                .padding(.top, 2)
             }
-
-            divider
-
-            // MARK: - Actions
-            sectionView {
-                // Update notification
-                if let version = updaterService.availableVersion {
-                    actionRow(icon: "arrow.down.circle.fill", label: "Update to v\(version)", color: .orange) {
-                        updaterService.downloadAndInstallUpdate(version: version)
-                    }
-                    .disabled(updaterService.isDownloading)
-
-                    if updaterService.isDownloading {
-                        HStack(spacing: 6) {
-                            ProgressView()
-                                .scaleEffect(0.5)
-                                .frame(width: 14, height: 14)
-                            Text("Downloading...")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 1)
-                    }
-                }
-
-                actionRow(icon: "arrow.triangle.2.circlepath", label: "Sync Now") {
-                    Task { await appState.runSync() }
-                }
-                .opacity(appState.isConnected && !appState.isSyncing ? 1 : 0.4)
-
-                actionRow(icon: "globe", label: "Open Files on Server") {
-                    let baseURL = appState.serverURL.isEmpty ? "https://sync.heesakkers.com" : appState.serverURL
-                    if let token = KeychainHelper.load(key: "access_token"),
-                       let url = URL(string: "\(baseURL)/api/auth/auto-login?token=\(token)") {
-                        NSWorkspace.shared.open(url)
-                    } else if let url = URL(string: "\(baseURL)/files") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-
-                if updaterService.availableVersion == nil {
-                    actionRow(icon: "arrow.clockwise", label: "Check for Updates") {
-                        updaterService.checkForUpdates()
-                    }
-                }
-
-                SettingsLink {
-                    HStack(spacing: 8) {
-                        Image(systemName: "gear")
-                            .font(.system(size: 11))
-                            .frame(width: 14)
-                        Text("Settings...")
-                            .font(.system(size: 12))
-                    }
-                    .foregroundColor(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .padding(.vertical, 3)
-                }
-                .buttonStyle(.plain)
-
-                actionRow(icon: "power", label: "Quit", color: Color(white: 0.5)) {
-                    NSApplication.shared.terminate(nil)
-                }
-            }
-
-            // Version footer
-            HStack {
-                Spacer()
-                Text("v\(appVersion)")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundColor(Color(white: 0.35))
-            }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 8)
-            .padding(.top, 2)
         }
         .frame(width: 300)
     }
@@ -280,13 +319,12 @@ struct MenuBarView: View {
         .padding(.vertical, 10)
     }
 
-    private var divider: some View {
-        Rectangle()
-            .fill(Color(white: 0.2))
-            .frame(height: 0.5)
+    private var subtleDivider: some View {
+        Divider()
+            .opacity(0.3)
     }
 
-    private func sectionHeader(_ title: String) -> some View {
+    private func menuSectionHeader(_ title: String) -> some View {
         Text(title.uppercased())
             .font(.system(size: 10, weight: .medium))
             .foregroundColor(Color(white: 0.45))
@@ -389,6 +427,7 @@ struct TeamInviteRow: View {
         }
         .padding(8)
         .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.blue.opacity(0.15), lineWidth: 0.5))
     }
 
     private func handleAccept() {

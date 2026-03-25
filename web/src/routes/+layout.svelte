@@ -16,9 +16,8 @@
 		Settings,
 		Shield,
 		KeyRound,
-		BookOpen,
-		Clock,
-		Bell
+		Bell,
+		LayoutDashboard
 	} from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { currentUser, showToast } from '$lib/stores';
@@ -39,6 +38,8 @@
 	let unreadCount = $state(0);
 	let notifications = $state<any[]>([]);
 	let showNotifications = $state(false);
+	let prevUnreadCount = $state(0);
+	let badgeBounce = $state(false);
 
 	async function loadNotifications() {
 		try {
@@ -46,7 +47,13 @@
 			if (res.ok) {
 				const data = await res.json();
 				notifications = data.notifications || [];
-				unreadCount = data.unread_count || 0;
+				const newCount = data.unread_count || 0;
+				if (newCount > prevUnreadCount && prevUnreadCount >= 0) {
+					badgeBounce = true;
+					setTimeout(() => (badgeBounce = false), 700);
+				}
+				prevUnreadCount = newCount;
+				unreadCount = newCount;
 			}
 		} catch { /* non-fatal */ }
 	}
@@ -77,7 +84,6 @@
 	let changingPwd = $state(false);
 
 	onMount(async () => {
-		// Fetch server version
 		try {
 			const res = await fetch('/api/health');
 			if (res.ok) {
@@ -93,8 +99,8 @@
 			}
 			const storedUser = api.getUser();
 			if (storedUser) currentUser.set(storedUser);
+			prevUnreadCount = -1;
 			loadNotifications();
-			// Poll every 30s
 			const interval = setInterval(loadNotifications, 30000);
 			return () => clearInterval(interval);
 		}
@@ -136,6 +142,7 @@
 	}
 
 	const navItems = [
+		{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
 		{ href: '/files', label: 'Files', icon: FolderOpen },
 		{ href: '/shared', label: 'Shared', icon: Link },
 		{ href: '/trash', label: 'Trash', icon: Trash2 }
@@ -152,36 +159,45 @@
 	function isActive(href: string): boolean {
 		return $page.url.pathname === href || $page.url.pathname.startsWith(href + '/');
 	}
+
+	function getUserInitials(username: string | undefined): string {
+		if (!username) return '?';
+		return username.slice(0, 2).toUpperCase();
+	}
 </script>
 
 {#if isPublic}
 	{@render children()}
 {:else}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-	<div class="flex h-screen bg-gray-50 overflow-hidden" onclick={closeUserMenu}>
+	<div class="flex h-screen overflow-hidden" style="background: #0a0a0b;" onclick={closeUserMenu}>
 		<!-- Sidebar -->
-		<aside class="w-60 flex-shrink-0 bg-[#1e1e2e] text-white flex flex-col">
+		<aside class="w-56 flex-shrink-0 flex flex-col border-r" style="background: #0a0a0b; border-color: rgba(255,255,255,0.06);">
 			<!-- Logo -->
-			<div class="px-5 py-5 border-b border-white/10">
-				<div class="flex items-center gap-2">
-					<Shield size={22} class="text-blue-400" />
-					<span class="text-lg font-bold tracking-tight">SyncVault</span>
+			<div class="px-4 py-5 flex items-center gap-2.5">
+				<div class="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
+					<Shield size={14} class="text-white" />
 				</div>
+				<span class="text-sm font-semibold tracking-tight text-white">SyncVault</span>
 			</div>
 
 			<!-- Navigation -->
-			<nav class="flex-1 px-3 py-4 overflow-y-auto">
-				<ul class="space-y-1">
+			<nav class="flex-1 px-2 pb-4 overflow-y-auto">
+				<ul class="space-y-0.5">
 					{#each navItems as item}
 						<li>
 							<a
 								href={item.href}
-								class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors
+								class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 relative
 								{isActive(item.href)
-									? 'bg-white/15 text-white'
-									: 'text-white/70 hover:bg-white/10 hover:text-white'}"
+									? 'text-white'
+									: 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'}"
+								style={isActive(item.href) ? 'background: rgba(255,255,255,0.08);' : ''}
 							>
-								<item.icon size={18} />
+								{#if isActive(item.href)}
+									<span class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full"></span>
+								{/if}
+								<item.icon size={16} />
 								{item.label}
 							</a>
 						</li>
@@ -189,21 +205,25 @@
 				</ul>
 
 				{#if user?.role === 'admin'}
-					<div class="mt-6">
-						<p class="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+					<div class="mt-5">
+						<p class="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest" style="color: rgba(255,255,255,0.25);">
 							Admin
 						</p>
-						<ul class="space-y-1">
+						<ul class="space-y-0.5">
 							{#each adminItems as item}
 								<li>
 									<a
 										href={item.href}
-										class="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors
+										class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 relative
 										{isActive(item.href)
-											? 'bg-white/15 text-white'
-											: 'text-white/70 hover:bg-white/10 hover:text-white'}"
+											? 'text-white'
+											: 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'}"
+										style={isActive(item.href) ? 'background: rgba(255,255,255,0.08);' : ''}
 									>
-										<item.icon size={18} />
+										{#if isActive(item.href)}
+											<span class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full"></span>
+										{/if}
+										<item.icon size={16} />
 										{item.label}
 									</a>
 								</li>
@@ -214,112 +234,101 @@
 			</nav>
 
 			<!-- User section at bottom -->
-			<div class="px-3 py-3 border-t border-white/10">
-				<div class="px-3 py-2 text-xs text-white/40 truncate">
-					{user?.username || ''}
-				</div>
-				<div class="px-3 py-1 text-xs text-white/20">
-					{serverVersion ? `v${serverVersion}` : ''}
-				</div>
-			</div>
-		</aside>
-
-		<!-- Main content area -->
-		<div class="flex-1 flex flex-col min-w-0">
-			<!-- Top bar -->
-			<header class="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 flex-shrink-0">
-				<div class="flex-1">
-					<!-- breadcrumb slot filled by child pages via store -->
-				</div>
-
-				<!-- Notifications bell -->
-				<div class="relative">
-					<button
-						onclick={(e) => { e.stopPropagation(); showNotifications = !showNotifications; if (showNotifications) { markAllRead(); } }}
-						class="relative p-2 text-gray-500 hover:text-gray-700 rounded-md hover:bg-gray-100 transition-colors"
-					>
-						<Bell size={18} />
-						{#if unreadCount > 0}
-							<span class="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{unreadCount}</span>
-						{/if}
-					</button>
-
-					{#if showNotifications}
-						<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-						<div class="absolute right-0 top-full mt-1 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-96 overflow-y-auto"
-							onclick={(e) => e.stopPropagation()}>
-							<div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-								<span class="text-sm font-semibold text-gray-900">Notifications</span>
-								<button onclick={() => (showNotifications = false)} class="text-xs text-gray-400 hover:text-gray-600">Close</button>
-							</div>
-							{#if notifications.length === 0}
-								<div class="px-4 py-6 text-center text-sm text-gray-400">No notifications</div>
-							{:else}
-								{#each notifications as notif}
-									<div class="px-4 py-3 border-b border-gray-50 {notif.read ? '' : 'bg-blue-50'}">
-										<p class="text-sm font-medium text-gray-900">{notif.title}</p>
-										<p class="text-xs text-gray-500 mt-0.5">{notif.message}</p>
-										{#if notif.type === 'team_invite' && !notif.acted}
-											<div class="flex gap-2 mt-2">
-												<button onclick={() => acceptNotification(notif.id)}
-													class="px-3 py-1 text-xs font-medium text-white bg-blue-500 rounded hover:bg-blue-600">Accept</button>
-												<button onclick={() => declineNotification(notif.id)}
-													class="px-3 py-1 text-xs font-medium text-gray-600 border border-gray-300 rounded hover:bg-gray-50">Decline</button>
-											</div>
-										{:else if notif.acted}
-											<span class="text-xs text-green-600 mt-1 inline-block">Accepted</span>
-										{/if}
-									</div>
-								{/each}
+			<div class="px-2 py-3 border-t" style="border-color: rgba(255,255,255,0.06);">
+				<!-- Notification bell row -->
+				<div class="px-1 mb-1">
+					<div class="relative inline-block">
+						<button
+							onclick={(e) => { e.stopPropagation(); showNotifications = !showNotifications; if (showNotifications) { markAllRead(); } }}
+							class="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-all duration-150 text-white/40 hover:text-white/70 hover:bg-white/[0.04]"
+						>
+							<Bell size={15} />
+							<span class="text-xs">Notifications</span>
+							{#if unreadCount > 0}
+								<span class="ml-auto w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center {badgeBounce ? 'badge-bounce' : ''}">{unreadCount}</span>
 							{/if}
-						</div>
-					{/if}
+						</button>
+
+						{#if showNotifications}
+							<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+							<div class="absolute bottom-full left-0 mb-2 w-80 rounded-xl shadow-2xl border z-50 max-h-96 overflow-y-auto"
+								style="background: #1a1a1d; border-color: rgba(255,255,255,0.10);"
+								onclick={(e) => e.stopPropagation()}>
+								<div class="px-4 py-3 border-b flex items-center justify-between" style="border-color: rgba(255,255,255,0.06);">
+									<span class="text-sm font-semibold text-white">Notifications</span>
+									<button onclick={() => (showNotifications = false)} class="text-xs text-white/30 hover:text-white/60 transition-colors">Close</button>
+								</div>
+								{#if notifications.length === 0}
+									<div class="px-4 py-6 text-center text-sm" style="color: rgba(255,255,255,0.30);">No notifications</div>
+								{:else}
+									{#each notifications as notif}
+										<div class="px-4 py-3 border-b {notif.read ? '' : 'bg-blue-500/5'}" style="border-color: rgba(255,255,255,0.04);">
+											<p class="text-sm font-medium text-white/80">{notif.title}</p>
+											<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.40);">{notif.message}</p>
+											{#if notif.type === 'team_invite' && !notif.acted}
+												<div class="flex gap-2 mt-2">
+													<button onclick={() => acceptNotification(notif.id)}
+														class="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-500 transition-colors">Accept</button>
+													<button onclick={() => declineNotification(notif.id)}
+														class="px-3 py-1 text-xs font-medium text-white/60 border rounded-md hover:bg-white/5 transition-colors" style="border-color: rgba(255,255,255,0.10);">Decline</button>
+												</div>
+											{:else if notif.acted}
+												<span class="text-xs text-green-500 mt-1 inline-block">Accepted</span>
+											{/if}
+										</div>
+									{/each}
+								{/if}
+							</div>
+						{/if}
+					</div>
 				</div>
 
-				<!-- User menu -->
+				<!-- User row -->
 				<div class="relative">
 					<button
 						onclick={(e) => { e.stopPropagation(); userMenuOpen = !userMenuOpen; }}
-						class="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md hover:bg-gray-100 transition-colors"
+						class="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg transition-all duration-150 hover:bg-white/[0.04] group"
 					>
-						<div class="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold">
-							{(user?.username ?? '?')[0].toUpperCase()}
+						<div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
+							{getUserInitials(user?.username)}
 						</div>
-						<span class="hidden sm:inline">{user?.username ?? ''}</span>
-						<ChevronDown size={14} />
+						<div class="flex-1 min-w-0 text-left">
+							<p class="text-xs font-medium text-white/80 truncate">{user?.username ?? ''}</p>
+							{#if serverVersion}
+								<p class="text-[10px] text-white/25">v{serverVersion}</p>
+							{/if}
+						</div>
+						<ChevronDown size={12} class="text-white/30 group-hover:text-white/50 transition-colors flex-shrink-0" />
 					</button>
 
 					{#if userMenuOpen}
 						<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 						<div
-							class="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-40"
+							class="absolute bottom-full left-0 mb-1 w-48 rounded-xl shadow-2xl border py-1 z-40"
+							style="background: #1a1a1d; border-color: rgba(255,255,255,0.10);"
 							onclick={(e) => e.stopPropagation()}
 						>
-							<a
-								href="/settings"
-								class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-								onclick={closeUserMenu}
-							>
-								<Settings size={15} /> Settings
-							</a>
 							<button
 								onclick={openChangePwd}
-								class="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+								class="flex items-center gap-2 w-full px-3 py-2 text-sm text-white/60 hover:text-white hover:bg-white/[0.05] transition-colors"
 							>
-								<KeyRound size={15} /> Change Password
+								<KeyRound size={14} /> Change Password
 							</button>
-							<hr class="my-1 border-gray-100" />
+							<div class="my-1 border-t" style="border-color: rgba(255,255,255,0.06);"></div>
 							<button
 								onclick={() => api.logout()}
-								class="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+								class="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
 							>
-								<LogOut size={15} /> Logout
+								<LogOut size={14} /> Logout
 							</button>
 						</div>
 					{/if}
 				</div>
-			</header>
+			</div>
+		</aside>
 
+		<!-- Main content area -->
+		<div class="flex-1 flex flex-col min-w-0" style="background: #0a0a0b;">
 			<!-- Page content -->
 			<main class="flex-1 overflow-auto">
 				{@render children()}
@@ -336,29 +345,29 @@
 		{#snippet children()}
 			<div class="space-y-3">
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Current password</label>
-					<input type="password" bind:value={changePwdForm.current_password} placeholder="Enter current password" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Current password</label>
+					<input type="password" bind:value={changePwdForm.current_password} placeholder="Enter current password" />
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">New password</label>
-					<input type="password" bind:value={changePwdForm.new_password} placeholder="Enter new password" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">New password</label>
+					<input type="password" bind:value={changePwdForm.new_password} placeholder="Enter new password" />
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Confirm new password</label>
-					<input type="password" bind:value={changePwdForm.confirm_password} placeholder="Confirm new password" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500
-						{changePwdForm.confirm_password && changePwdForm.new_password !== changePwdForm.confirm_password ? 'border-red-400 focus:border-red-400 focus:ring-red-400' : ''}" />
+					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Confirm new password</label>
+					<input type="password" bind:value={changePwdForm.confirm_password} placeholder="Confirm new password"
+						style={changePwdForm.confirm_password && changePwdForm.new_password !== changePwdForm.confirm_password ? 'border-color: #ef4444;' : ''} />
 					{#if changePwdForm.confirm_password && changePwdForm.new_password !== changePwdForm.confirm_password}
-						<p class="text-xs text-red-500 mt-1">Passwords do not match</p>
+						<p class="text-xs text-red-400 mt-1">Passwords do not match</p>
 					{/if}
 				</div>
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showChangePwd = false)} class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
+			<button onclick={() => (showChangePwd = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all duration-150" style="border-color: rgba(255,255,255,0.10);">Cancel</button>
 			<button
 				onclick={doChangePassword}
 				disabled={changingPwd || !changePwdForm.current_password || !changePwdForm.new_password || changePwdForm.new_password !== changePwdForm.confirm_password}
-				class="rounded-md px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white transition-colors"
+				class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg transition-all duration-150"
 			>
 				{changingPwd ? 'Changing…' : 'Change Password'}
 			</button>

@@ -1,3 +1,26 @@
+## [2.4.0] — 2026-03-25
+
+Backend/Web:
+- Dark theme redesign: professional dark UI with colored file type icons
+- Dashboard homepage with storage widget and recent activity
+- Loading skeletons and empty states throughout
+- Chunked resumable uploads: files >64MB uploaded in 64MB chunks, resume on failure
+- Delta sync: only upload changed blocks of modified files (256KB block signatures)
+- Server-side hashing: client no longer needs to hash before upload
+- Storage cleanup: calendar date picker, preview what gets deleted, type DELETE to confirm
+- Token invalidation on password change: user logged out everywhere
+- Cleanup tab in Settings with visual data calendar
+
+macOS App:
+- Glassmorphism menu bar popover with vibrancy
+- Pulsing status dots, colored mode badges, card-style task list
+- System Settings-style grouped forms
+- 8 parallel uploads (was 4)
+- Chunked upload for large files (>64MB)
+- Delta sync: only changed blocks uploaded
+- No upload timeout (infinite)
+- Skip client-side hashing (server does it)
+
 ## [2.3.0] — 2026-03-25
 
 Backend/Web:

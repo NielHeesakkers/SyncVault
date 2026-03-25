@@ -4,7 +4,6 @@
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores';
 	import Modal from '$lib/components/Modal.svelte';
-	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
 	interface Member {
 		user_id: string;
@@ -209,7 +208,6 @@
 		deleteAction = 'delete';
 		transferUserId = '';
 		showDeleteTeam = true;
-		// Load users for transfer option
 		if (allUsers.length === 0) {
 			api.get('/api/admin/users').then(async (res) => {
 				if (res.ok) {
@@ -226,7 +224,6 @@
 	async function deleteTeam() {
 		if (!deleteTeamTarget) return;
 
-		// If transferring, move the team folder to the selected user first
 		if (deleteAction === 'transfer' && transferUserId) {
 			const res = await api.post(`/api/teams/${deleteTeamTarget.id}/transfer`, { user_id: transferUserId });
 			if (!res.ok) {
@@ -251,118 +248,135 @@
 	<title>Teams — SyncVault Admin</title>
 </svelte:head>
 
-<div class="p-6">
-	<div class="mb-6 flex items-center justify-between">
+<div class="p-6 space-y-5" style="background: #0a0a0b; min-height: 100%;">
+	<div class="flex items-center justify-between">
 		<div>
-			<h1 class="text-xl font-semibold text-gray-900">Teams</h1>
-			<p class="text-sm text-gray-500 mt-1">Manage team access and permissions.</p>
+			<h1 class="text-base font-semibold text-white">Teams</h1>
+			<p class="text-sm mt-1" style="color: rgba(255,255,255,0.35);">Manage team access and permissions.</p>
 		</div>
 		<button
 			onclick={() => (showCreate = true)}
-			class="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-md px-4 py-2 transition-colors"
+			class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg px-4 py-2 transition-all duration-150"
 		>
-			<Plus size={16} /> Create Team
+			<Plus size={15} /> Create Team
 		</button>
 	</div>
 
-	<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+	<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
 		{#if loading}
-			<div class="flex items-center justify-center py-16">
-				<div class="w-7 h-7 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+			<div class="space-y-0">
+				{#each [1,2,3] as _}
+					<div class="flex items-center gap-3 px-4 py-3.5 border-b" style="border-color: rgba(255,255,255,0.04);">
+						<div class="skeleton h-4 rounded w-4"></div>
+						<div class="skeleton h-4 rounded w-4"></div>
+						<div class="skeleton h-4 rounded w-32"></div>
+						<div class="skeleton h-4 rounded w-16 ml-2"></div>
+					</div>
+				{/each}
 			</div>
 		{:else if teams.length === 0}
-			<div class="text-center py-16 text-gray-400">
-				<FolderTree size={48} class="mx-auto mb-3 opacity-30" />
-				<p class="text-base font-medium">No teams yet</p>
-				<p class="text-sm mt-1">Create a team to manage group access.</p>
+			<div class="text-center py-16">
+				<FolderTree size={40} style="color: rgba(255,255,255,0.10); margin: 0 auto 12px;" />
+				<p class="text-sm font-medium text-white/40">No teams yet</p>
+				<p class="text-xs mt-1" style="color: rgba(255,255,255,0.20);">Create a team to manage group access.</p>
 			</div>
 		{:else}
-			<div class="divide-y divide-gray-200">
-				{#each teams as team}
-					<div>
+			<div>
+				{#each teams as team, i}
+					<div class="team-group" class:border-b={i < teams.length - 1}>
 						<!-- Team row -->
-						<div class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
+						<div class="flex items-center gap-2 px-4 py-3.5 team-row">
 							<button
 								onclick={() => toggleTeam(team.id)}
-								class="flex items-center gap-3 flex-1 text-left"
+								class="flex items-center gap-2.5 flex-1 text-left min-w-0"
 							>
 								{#if expandedTeam === team.id}
-									<ChevronDown size={16} class="text-gray-400 flex-shrink-0" />
+									<ChevronDown size={14} style="color: rgba(255,255,255,0.30); flex-shrink: 0;" />
 								{:else}
-									<ChevronRight size={16} class="text-gray-400 flex-shrink-0" />
+									<ChevronRight size={14} style="color: rgba(255,255,255,0.30); flex-shrink: 0;" />
 								{/if}
-								<FolderTree size={18} class="text-blue-500 flex-shrink-0" />
-								<span class="text-sm font-medium text-gray-900">{team.name}</span>
-								<span class="text-xs text-gray-500 ml-1">
-									({team.member_count ?? teamMembers[team.id]?.length ?? 0} members)
+								<FolderTree size={16} class="text-blue-400 flex-shrink-0" />
+								<span class="text-sm font-medium text-white/80 truncate">{team.name}</span>
+								<span class="text-xs flex-shrink-0" style="color: rgba(255,255,255,0.30);">
+									{team.member_count ?? teamMembers[team.id]?.length ?? 0} members
 								</span>
 							</button>
-							<div class="flex items-center gap-1">
+							<div class="flex items-center gap-0.5 flex-shrink-0">
 								<button
 									onclick={() => openEditTeam(team)}
 									title="Edit team"
-									class="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-gray-100 transition-colors"
+									class="p-1.5 rounded-md transition-colors"
+									style="color: rgba(255,255,255,0.30);"
+									onmouseenter={(e) => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'}
+									onmouseleave={(e) => (e.currentTarget as HTMLElement).style.background = ''}
 								>
-									<Edit2 size={15} />
+									<Edit2 size={14} />
 								</button>
 								<button
 									onclick={() => openAddMember(team.id)}
 									title="Add member"
-									class="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-gray-100 transition-colors"
+									class="p-1.5 rounded-md text-blue-400 transition-colors"
+									onmouseenter={(e) => (e.currentTarget as HTMLElement).style.background = 'rgba(59,130,246,0.10)'}
+									onmouseleave={(e) => (e.currentTarget as HTMLElement).style.background = ''}
 								>
-									<UserPlus size={15} />
+									<UserPlus size={14} />
 								</button>
 								<button
 									onclick={() => openDeleteTeam(team)}
 									title="Delete team"
-									class="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-gray-100 transition-colors"
+									class="p-1.5 rounded-md text-red-400 transition-colors"
+									onmouseenter={(e) => (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.10)'}
+									onmouseleave={(e) => (e.currentTarget as HTMLElement).style.background = ''}
 								>
-									<Trash2 size={15} />
+									<Trash2 size={14} />
 								</button>
 							</div>
 						</div>
 
 						<!-- Members list (expanded) -->
 						{#if expandedTeam === team.id}
-							<div class="bg-gray-50 border-t border-gray-100">
+							<div style="background: rgba(255,255,255,0.02); border-top: 1px solid rgba(255,255,255,0.04);">
 								{#if loadingMembers[team.id]}
 									<div class="flex items-center justify-center py-6">
-										<div class="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+										<div class="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
 									</div>
 								{:else if !teamMembers[team.id] || teamMembers[team.id].length === 0}
-									<p class="px-10 py-4 text-sm text-gray-400">No members yet. Add one using the button above.</p>
+									<p class="px-10 py-4 text-sm" style="color: rgba(255,255,255,0.30);">No members yet. Add one using the button above.</p>
 								{:else}
 									<table class="min-w-full">
 										<thead>
-											<tr class="text-xs text-gray-400 uppercase tracking-wider">
-												<th class="px-10 py-2 text-left">Member</th>
-												<th class="px-4 py-2 text-left">Permission</th>
+											<tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+												<th class="px-10 py-2 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Member</th>
+												<th class="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Permission</th>
 												<th class="px-4 py-2 w-10"></th>
 											</tr>
 										</thead>
-										<tbody class="divide-y divide-gray-100">
+										<tbody>
 											{#each teamMembers[team.id] as member}
-												<tr class="hover:bg-gray-100/50">
-													<td class="px-10 py-2">
-														<span class="text-sm text-gray-800">{member.username}</span>
+												<tr class="member-row">
+													<td class="px-10 py-2.5">
+														<span class="text-sm text-white/60">{member.username}</span>
 													</td>
-													<td class="px-4 py-2">
+													<td class="px-4 py-2.5">
 														<select
 															value={member.permission}
 															onchange={(e) => updatePermission(team.id, member.user_id, (e.target as HTMLSelectElement).value)}
-															class="text-sm border border-gray-300 rounded-md px-2 py-1 focus:border-blue-500 focus:outline-none"
+															class="text-sm rounded-lg px-2 py-1"
+															style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); color: rgba(255,255,255,0.70);"
 														>
 															<option value="read">Read</option>
 															<option value="write">Write</option>
 															<option value="readwrite">Read & Write</option>
 														</select>
 													</td>
-													<td class="px-4 py-2">
+													<td class="px-4 py-2.5">
 														<button
 															onclick={() => removeMember(team.id, member.user_id)}
-															class="p-1 text-gray-400 hover:text-red-500 transition-colors"
+															class="p-1 rounded transition-colors text-red-400"
+															onmouseenter={(e) => (e.currentTarget as HTMLElement).style.background = 'rgba(239,68,68,0.10)'}
+															onmouseleave={(e) => (e.currentTarget as HTMLElement).style.background = ''}
 														>
-															<X size={14} />
+															<X size={13} />
 														</button>
 													</td>
 												</tr>
@@ -384,13 +398,13 @@
 	<Modal title="Create Team" onclose={() => (showCreate = false)}>
 		{#snippet children()}
 			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">Team name</label>
-				<input type="text" bind:value={newTeamName} placeholder="Engineering, Design, etc." class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" onkeydown={(e) => e.key === 'Enter' && createTeam()} />
+				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Team name</label>
+				<input type="text" bind:value={newTeamName} placeholder="Engineering, Design, etc." onkeydown={(e) => e.key === 'Enter' && createTeam()} />
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showCreate = false)} class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
-			<button onclick={createTeam} disabled={creating || !newTeamName.trim()} class="rounded-md px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white transition-colors">
+			<button onclick={() => (showCreate = false)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);">Cancel</button>
+			<button onclick={createTeam} disabled={creating || !newTeamName.trim()} class="rounded-lg px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-all duration-150">
 				{creating ? 'Creating…' : 'Create'}
 			</button>
 		{/snippet}
@@ -403,8 +417,8 @@
 		{#snippet children()}
 			<div class="space-y-3">
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">User</label>
-					<select bind:value={addMemberUserId} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">User</label>
+					<select bind:value={addMemberUserId}>
 						<option value="">Select a user…</option>
 						{#each allUsers as u}
 							<option value={u.id}>{u.username}</option>
@@ -412,8 +426,8 @@
 					</select>
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Permission</label>
-					<select bind:value={addMemberPermission} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Permission</label>
+					<select bind:value={addMemberPermission}>
 						<option value="read">Read</option>
 						<option value="write">Write</option>
 						<option value="readwrite">Read & Write</option>
@@ -422,8 +436,8 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showAddMember = null)} class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
-			<button onclick={addMember} disabled={addingMember || !addMemberUserId} class="rounded-md px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white transition-colors">
+			<button onclick={() => (showAddMember = null)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);">Cancel</button>
+			<button onclick={addMember} disabled={addingMember || !addMemberUserId} class="rounded-lg px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-all duration-150">
 				{addingMember ? 'Adding…' : 'Add Member'}
 			</button>
 		{/snippet}
@@ -436,16 +450,14 @@
 		{#snippet children()}
 			<div class="space-y-3">
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Team name</label>
-					<input type="text" bind:value={editTeamName} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Team name</label>
+					<input type="text" bind:value={editTeamName} />
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-gray-700 mb-1">Storage quota (0 = unlimited)</label>
+					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Storage quota (0 = unlimited)</label>
 					<div class="flex items-center gap-2">
-						<input type="number" min="0" bind:value={editTeamQuota} placeholder="0"
-							class="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-						<select bind:value={editTeamQuotaUnit}
-							class="rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+						<input type="number" min="0" bind:value={editTeamQuota} placeholder="0" class="w-32" />
+						<select bind:value={editTeamQuotaUnit} class="w-24">
 							<option value="MB">MB</option>
 							<option value="GB">GB</option>
 							<option value="TB">TB</option>
@@ -455,8 +467,8 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showEditTeam = false)} class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
-			<button onclick={saveEditTeam} disabled={editingTeam || !editTeamName.trim()} class="rounded-md px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white transition-colors">
+			<button onclick={() => (showEditTeam = false)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);">Cancel</button>
+			<button onclick={saveEditTeam} disabled={editingTeam || !editTeamName.trim()} class="rounded-lg px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-all duration-150">
 				{editingTeam ? 'Saving…' : 'Save'}
 			</button>
 		{/snippet}
@@ -468,36 +480,42 @@
 	<Modal title="Delete Team: {deleteTeamTarget.name}" onclose={() => { showDeleteTeam = false; deleteTeamTarget = null; }}>
 		{#snippet children()}
 			<div class="space-y-4">
-				<div class="flex items-start gap-3 p-3 bg-red-50 rounded-lg border border-red-100">
-					<AlertTriangle size={20} class="text-red-500 flex-shrink-0 mt-0.5" />
+				<div class="flex items-start gap-3 p-3 rounded-lg border" style="background: rgba(239,68,68,0.07); border-color: rgba(239,68,68,0.20);">
+					<AlertTriangle size={18} class="text-red-400 flex-shrink-0 mt-0.5" />
 					<div>
-						<p class="text-sm font-medium text-red-800">This will permanently delete the team</p>
-						<p class="text-xs text-red-600 mt-1">All members will lose access. The team folder "Team-{deleteTeamTarget.name}" and its contents will also be affected.</p>
+						<p class="text-sm font-medium text-red-400">This will permanently delete the team</p>
+						<p class="text-xs mt-1 text-red-400/70">All members will lose access. The team folder "Team-{deleteTeamTarget.name}" and its contents will also be affected.</p>
 					</div>
 				</div>
 
 				<div class="space-y-2">
-					<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors {deleteAction === 'delete' ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}">
-						<input type="radio" bind:group={deleteAction} value="delete" class="text-red-500 focus:ring-red-500" />
+					<label
+						class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
+						style="{deleteAction === 'delete' ? 'border-color: rgba(239,68,68,0.30); background: rgba(239,68,68,0.07);' : 'border-color: rgba(255,255,255,0.07);'}"
+					>
+						<input type="radio" bind:group={deleteAction} value="delete" />
 						<div>
-							<span class="text-sm font-medium text-gray-900">Delete folder and all files</span>
-							<p class="text-xs text-gray-500">Everything in Team-{deleteTeamTarget.name} will be permanently deleted</p>
+							<span class="text-sm font-medium text-white/70">Delete folder and all files</span>
+							<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.30);">Everything in Team-{deleteTeamTarget.name} will be permanently deleted</p>
 						</div>
 					</label>
 
-					<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors {deleteAction === 'transfer' ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}">
-						<input type="radio" bind:group={deleteAction} value="transfer" class="text-blue-500 focus:ring-blue-500" />
+					<label
+						class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
+						style="{deleteAction === 'transfer' ? 'border-color: rgba(59,130,246,0.30); background: rgba(59,130,246,0.07);' : 'border-color: rgba(255,255,255,0.07);'}"
+					>
+						<input type="radio" bind:group={deleteAction} value="transfer" />
 						<div>
-							<span class="text-sm font-medium text-gray-900">Transfer folder to a user</span>
-							<p class="text-xs text-gray-500">The folder becomes a personal folder of the selected user</p>
+							<span class="text-sm font-medium text-white/70">Transfer folder to a user</span>
+							<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.30);">The folder becomes a personal folder of the selected user</p>
 						</div>
 					</label>
 				</div>
 
 				{#if deleteAction === 'transfer'}
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Transfer to</label>
-						<select bind:value={transferUserId} class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Transfer to</label>
+						<select bind:value={transferUserId}>
 							<option value="">Select a user…</option>
 							{#each allUsers as u}
 								<option value={u.id}>{u.username}</option>
@@ -509,13 +527,35 @@
 		{/snippet}
 		{#snippet footer()}
 			<button onclick={() => { showDeleteTeam = false; deleteTeamTarget = null; }}
-				class="rounded-md px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">Cancel</button>
+				class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80"
+				style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);">Cancel</button>
 			<button onclick={deleteTeam}
 				disabled={deleteAction === 'transfer' && !transferUserId}
-				class="rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50
-				{deleteAction === 'delete' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'}">
+				class="rounded-lg px-4 py-2 text-sm font-medium text-white transition-all duration-150 disabled:opacity-50"
+				style="{deleteAction === 'delete' ? 'background: rgba(239,68,68,0.80);' : 'background: #2563eb;'}">
 				{deleteAction === 'delete' ? 'Delete Team & Files' : 'Transfer & Delete Team'}
 			</button>
 		{/snippet}
 	</Modal>
 {/if}
+
+<style>
+	.team-group {
+		border-bottom: 1px solid rgba(255,255,255,0.04);
+	}
+	.team-group:last-child {
+		border-bottom: none;
+	}
+	.team-row:hover {
+		background: rgba(255,255,255,0.02);
+	}
+	.member-row {
+		border-bottom: 1px solid rgba(255,255,255,0.03);
+	}
+	.member-row:last-child {
+		border-bottom: none;
+	}
+	.member-row:hover {
+		background: rgba(255,255,255,0.02);
+	}
+</style>

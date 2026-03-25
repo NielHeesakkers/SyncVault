@@ -642,6 +642,141 @@ func (d *DB) UnmarkRemovedLocally(fileID string) error {
 	return nil
 }
 
+// PreviewCleanup returns the count of files, versions, and total bytes that would
+// be deleted by ExecuteCleanup with the same parameters, without making any changes.
+func (d *DB) PreviewCleanup(beforeDate time.Time, includeVersions, onlyDeleted bool) (fileCount, versionCount int, totalBytes int64, err error) {
+	beforeStr := beforeDate.UTC().Format(time.RFC3339Nano)
+
+	// Count matching files.
+	fileQuery := `SELECT COUNT(*), COALESCE(SUM(size), 0) FROM files WHERE created_at < ? AND is_dir = 0`
+	if onlyDeleted {
+		fileQuery += ` AND deleted_at IS NOT NULL`
+	}
+	if err = d.db.QueryRow(fileQuery, beforeStr).Scan(&fileCount, &totalBytes); err != nil {
+		return 0, 0, 0, fmt.Errorf("metadata: preview cleanup files: %w", err)
+	}
+
+	// Count matching versions.
+	if includeVersions {
+		versionQuery := `SELECT COUNT(*), COALESCE(SUM(v.size), 0)
+			FROM versions v
+			JOIN files f ON f.id = v.file_id
+			WHERE v.created_at < ?`
+		if onlyDeleted {
+			versionQuery += ` AND f.deleted_at IS NOT NULL`
+		}
+		var versionBytes int64
+		if err = d.db.QueryRow(versionQuery, beforeStr).Scan(&versionCount, &versionBytes); err != nil {
+			return 0, 0, 0, fmt.Errorf("metadata: preview cleanup versions: %w", err)
+		}
+		totalBytes += versionBytes
+	}
+
+	return fileCount, versionCount, totalBytes, nil
+}
+
+// ExecuteCleanup permanently deletes files (and optionally versions) created before
+// beforeDate. If onlyDeleted is true, only soft-deleted files are targeted.
+// Returns the counts of deleted files and versions and the total bytes freed.
+// Callers must also delete the corresponding storage chunks using the returned hashes.
+func (d *DB) ExecuteCleanup(beforeDate time.Time, includeVersions, onlyDeleted bool) (fileCount, versionCount int, totalBytes int64, err error) {
+	beforeStr := beforeDate.UTC().Format(time.RFC3339Nano)
+
+	// Collect content hashes of files to delete so the caller can remove chunks.
+	fileQuery := `SELECT id, content_hash, size FROM files WHERE created_at < ? AND is_dir = 0`
+	if onlyDeleted {
+		fileQuery += ` AND deleted_at IS NOT NULL`
+	}
+	rows, err := d.db.Query(fileQuery, beforeStr)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("metadata: execute cleanup list files: %w", err)
+	}
+
+	type fileRow struct {
+		id          string
+		contentHash sql.NullString
+		size        int64
+	}
+	var filesToDelete []fileRow
+	for rows.Next() {
+		var fr fileRow
+		if err = rows.Scan(&fr.id, &fr.contentHash, &fr.size); err != nil {
+			rows.Close()
+			return 0, 0, 0, fmt.Errorf("metadata: execute cleanup scan file: %w", err)
+		}
+		filesToDelete = append(filesToDelete, fr)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return 0, 0, 0, fmt.Errorf("metadata: execute cleanup rows: %w", err)
+	}
+
+	for _, fr := range filesToDelete {
+		totalBytes += fr.size
+
+		// Delete versions for this file first.
+		if includeVersions {
+			var vRows *sql.Rows
+			vRows, err = d.db.Query(`SELECT id, size FROM versions WHERE file_id = ?`, fr.id)
+			if err != nil {
+				return fileCount, versionCount, totalBytes, fmt.Errorf("metadata: execute cleanup list versions: %w", err)
+			}
+			for vRows.Next() {
+				var vid string
+				var vsz int64
+				if err = vRows.Scan(&vid, &vsz); err != nil {
+					vRows.Close()
+					return fileCount, versionCount, totalBytes, fmt.Errorf("metadata: execute cleanup scan version: %w", err)
+				}
+				if _, err = d.db.Exec(`DELETE FROM versions WHERE id = ?`, vid); err != nil {
+					vRows.Close()
+					return fileCount, versionCount, totalBytes, fmt.Errorf("metadata: execute cleanup delete version: %w", err)
+				}
+				versionCount++
+			}
+			vRows.Close()
+		}
+
+		if _, err = d.db.Exec(`DELETE FROM files WHERE id = ?`, fr.id); err != nil {
+			return fileCount, versionCount, totalBytes, fmt.Errorf("metadata: execute cleanup delete file: %w", err)
+		}
+		fileCount++
+	}
+
+	return fileCount, versionCount, totalBytes, nil
+}
+
+// GetDataCalendar returns a map of "YYYY-MM" -> sorted list of day numbers (1-31)
+// on which file or version activity occurred.
+func (d *DB) GetDataCalendar() (map[string][]int, error) {
+	rows, err := d.db.Query(`
+		SELECT DISTINCT strftime('%Y-%m', created_at) as month,
+		       CAST(strftime('%d', created_at) AS INTEGER) as day
+		FROM files
+		WHERE owner_id IN (SELECT id FROM users)
+		UNION
+		SELECT DISTINCT strftime('%Y-%m', created_at) as month,
+		       CAST(strftime('%d', created_at) AS INTEGER) as day
+		FROM versions
+		ORDER BY month, day
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("metadata: get data calendar: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string][]int)
+	for rows.Next() {
+		var month string
+		var day int
+		if err = rows.Scan(&month, &day); err != nil {
+			return nil, fmt.Errorf("metadata: get data calendar scan: %w", err)
+		}
+		result[month] = append(result[month], day)
+	}
+	return result, rows.Err()
+}
+
 // nullStringVal returns nil if ns is not valid, else the string value.
 func nullStringVal(ns sql.NullString) interface{} {
 	if ns.Valid {

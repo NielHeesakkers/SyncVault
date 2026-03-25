@@ -197,6 +197,65 @@ actor APIClient {
         let _: [String: String] = try await put("/api/files/\(id)", body: body)
     }
 
+    // MARK: - Chunked Upload
+
+    func initChunkedUpload(filename: String, parentID: String?, totalSize: Int64, chunkSize: Int = 64 * 1024 * 1024) async throws -> UploadSession {
+        var body: [String: Any] = ["filename": filename, "total_size": totalSize, "chunk_size": chunkSize]
+        if let parentID = parentID { body["parent_id"] = parentID }
+        return try await post("/api/files/upload/chunked/init", body: body)
+    }
+
+    func uploadChunk(uploadID: String, chunkIndex: Int, data: Data) async throws {
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/upload/chunked/\(uploadID)/chunk/\(chunkIndex)")!)
+        request.httpMethod = "PUT"
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 0
+        addAuth(&request)
+        let (_, response) = try await URLSession.shared.upload(for: request, from: data)
+        try checkResponse(response)
+    }
+
+    func getUploadStatus(uploadID: String) async throws -> UploadStatus {
+        return try await get("/api/files/upload/chunked/\(uploadID)/status")
+    }
+
+    func completeChunkedUpload(uploadID: String) async throws -> ServerFile {
+        return try await post("/api/files/upload/chunked/\(uploadID)/complete", body: [:])
+    }
+
+    // MARK: - Delta Sync
+
+    func getFileBlocks(id: String) async throws -> BlocksResponse {
+        return try await get("/api/files/\(id)/blocks")
+    }
+
+    func uploadDelta(fileID: String, manifest: DeltaManifest, newBlockData: Data) async throws -> ServerFile {
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/\(fileID)/delta")!)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 0
+        addAuth(&request)
+
+        var body = Data()
+        let manifestData = try JSONEncoder().encode(manifest)
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"manifest\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: application/json\r\n\r\n".data(using: .utf8)!)
+        body.append(manifestData)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"blocks\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+        body.append(newBlockData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response)
+        return try JSONDecoder().decode(ServerFile.self, from: responseData)
+    }
+
     // MARK: - Private HTTP methods
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
@@ -278,6 +337,7 @@ actor APIClient {
         let boundary = UUID().uuidString
         var request = URLRequest(url: URL(string: "\(baseURL)/api/files/upload")!)
         request.httpMethod = "POST"
+        request.timeoutInterval = 0  // No timeout — large files can take hours
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         addAuth(&request)
 
@@ -411,6 +471,75 @@ struct ShareLink: Codable, Identifiable {
     let name: String?
     let notify_on_download: Bool
     let created_at: String
+}
+
+// MARK: - Chunked upload models
+
+struct UploadSession: Codable {
+    let uploadID: String
+    let chunkSize: Int
+    let totalChunks: Int
+
+    enum CodingKeys: String, CodingKey {
+        case uploadID = "upload_id"
+        case chunkSize = "chunk_size"
+        case totalChunks = "total_chunks"
+    }
+}
+
+struct UploadStatus: Codable {
+    let uploadID: String
+    let totalChunks: Int
+    let receivedChunks: [Int]
+    let complete: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case uploadID = "upload_id"
+        case totalChunks = "total_chunks"
+        case receivedChunks = "received_chunks"
+        case complete
+    }
+}
+
+// MARK: - Delta sync models
+
+struct BlockSignature: Codable {
+    let index: Int
+    let weakHash: UInt32
+    let strongHash: String
+
+    enum CodingKeys: String, CodingKey {
+        case index
+        case weakHash = "weak_hash"
+        case strongHash = "strong_hash"
+    }
+}
+
+struct BlocksResponse: Codable {
+    let fileID: String
+    let blockSize: Int
+    let blocks: [BlockSignature]
+
+    enum CodingKeys: String, CodingKey {
+        case fileID = "file_id"
+        case blockSize = "block_size"
+        case blocks
+    }
+}
+
+struct DeltaManifestBlock: Codable {
+    let index: Int
+    let offset: Int
+}
+
+struct DeltaManifest: Codable {
+    let reuseBlocks: [Int]
+    let newBlocks: [DeltaManifestBlock]
+
+    enum CodingKeys: String, CodingKey {
+        case reuseBlocks = "reuse_blocks"
+        case newBlocks = "new_blocks"
+    }
 }
 
 // Used for POST endpoints that return an empty or minimal body

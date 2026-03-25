@@ -38,7 +38,7 @@ func newTestEnv(t *testing.T) *testEnv {
 
 	jwtManager := auth.NewJWT("test-secret-for-testing")
 	emailSvc := email.NewService("", 587, "", "", "", false)
-	srv := NewServer(db, store, jwtManager, emailSvc)
+	srv := NewServer(db, store, jwtManager, emailSvc, filepath.Join(dir, "uploads"))
 
 	return &testEnv{
 		db:     db,
