@@ -474,7 +474,7 @@
 		if (!deleteFolderTarget) return;
 		deletingFolder = true;
 		try {
-			const res = await api.del(`/api/files/${deleteFolderTarget.id}`);
+			const res = await api.delete(`/api/files/${deleteFolderTarget.id}`);
 			if (res.ok) {
 				showToast(`"${deleteFolderTarget.name}" deleted`, 'success');
 				showDeleteFolder = false;
@@ -633,13 +633,15 @@
 											>
 												<RotateCcw size={13} /> Restore
 											</button>
-											<button
-												onclick={(e) => { e.stopPropagation(); openDeleteFolder(file); }}
-												title="Delete folder"
-												class="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors"
-											>
-												<Trash2 size={13} /> Delete
-											</button>
+											{#if currentFolderId}
+												<button
+													onclick={(e) => { e.stopPropagation(); openDeleteFolder(file); }}
+													title="Delete folder"
+													class="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors"
+												>
+													<Trash2 size={13} /> Delete
+												</button>
+											{/if}
 										{:else}
 											<button
 												onclick={(e) => { e.stopPropagation(); openShare(file); }}

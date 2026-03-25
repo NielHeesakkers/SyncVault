@@ -2,6 +2,7 @@ package email
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -276,16 +277,33 @@ func (s *Service) send(to, subject, body string) error {
 			body,
 	)
 
-	// Use a dialer with timeout so we don't hang forever on unreachable SMTP servers.
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
-	if err != nil {
-		return fmt.Errorf("SMTP connection failed: %w", err)
-	}
-
-	client, err := smtp.NewClient(conn, s.host)
-	if err != nil {
-		conn.Close()
-		return fmt.Errorf("SMTP client error: %w", err)
+	// Connect with TLS for port 465 (implicit TLS), STARTTLS for others
+	var client *smtp.Client
+	if s.port == 465 {
+		tlsConn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", addr, &tls.Config{ServerName: s.host})
+		if err != nil {
+			return fmt.Errorf("SMTP TLS connection failed: %w", err)
+		}
+		client, err = smtp.NewClient(tlsConn, s.host)
+		if err != nil {
+			tlsConn.Close()
+			return fmt.Errorf("SMTP client error: %w", err)
+		}
+	} else {
+		conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+		if err != nil {
+			return fmt.Errorf("SMTP connection failed: %w", err)
+		}
+		client, err = smtp.NewClient(conn, s.host)
+		if err != nil {
+			conn.Close()
+			return fmt.Errorf("SMTP client error: %w", err)
+		}
+		// STARTTLS for port 587
+		if err := client.StartTLS(&tls.Config{ServerName: s.host}); err != nil {
+			client.Close()
+			return fmt.Errorf("SMTP STARTTLS failed: %w", err)
+		}
 	}
 	defer client.Close()
 
