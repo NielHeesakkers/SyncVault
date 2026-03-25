@@ -1,3 +1,12 @@
+## [2.1.7] — 2026-03-25
+
+Backend/Web:
+- Fix delete user: clean up connection_tokens, password_resets, retention_policies
+
+macOS App:
+- Fix auto-update: use /tmp/ for update script (works outside sandbox)
+- Identical update mechanism as AutoConvert (proven reliable)
+
 ## [2.1.6] — 2026-03-25
 
 Backend/Web:

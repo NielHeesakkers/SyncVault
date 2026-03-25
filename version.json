@@ -1,9 +1,17 @@
 {
-  "version": "2.1.6",
+  "version": "2.1.7",
   "min_version": "1.0",
   "release_date": "2026-03-25",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1.6/SyncVault-2.1.6.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1.7/SyncVault-2.1.7.dmg",
   "history": [
+    {
+      "version": "2.1.7",
+      "date": "2026-03-25",
+      "changes": [
+        "Fix auto-update (reliable /tmp script)",
+        "Fix delete user (foreign key cleanup)"
+      ]
+    },
     {
       "version": "2.1.6",
       "date": "2026-03-25",

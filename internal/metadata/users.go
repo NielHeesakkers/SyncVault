@@ -130,6 +130,9 @@ func (d *DB) UpdateUser(user *User) error {
 // DeleteUser removes the user and all related data.
 func (d *DB) DeleteUser(id string) error {
 	// Remove all related data first
+	d.db.Exec(`DELETE FROM connection_tokens WHERE user_id=?`, id)
+	d.db.Exec(`DELETE FROM password_resets WHERE user_id=?`, id)
+	d.db.Exec(`DELETE FROM retention_policies WHERE sync_task_id IN (SELECT id FROM sync_tasks WHERE user_id=?)`, id)
 	d.db.Exec(`DELETE FROM notifications WHERE user_id=?`, id)
 	d.db.Exec(`DELETE FROM team_permissions WHERE user_id=?`, id)
 	d.db.Exec(`DELETE FROM share_links WHERE created_by=?`, id)
