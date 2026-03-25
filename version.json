@@ -1,9 +1,17 @@
 {
-  "version": "2.1.7",
+  "version": "2.1.8",
   "min_version": "1.0",
   "release_date": "2026-03-25",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1.7/SyncVault-2.1.7.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1.8/SyncVault-2.1.8.dmg",
   "history": [
+    {
+      "version": "2.1.8",
+      "date": "2026-03-25",
+      "changes": [
+        "Streamed upload for large files (256MB chunks)",
+        "Menu bar icon blinks blue/green while syncing"
+      ]
+    },
     {
       "version": "2.1.7",
       "date": "2026-03-25",

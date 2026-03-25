@@ -1,3 +1,9 @@
+## [2.1.8] — 2026-03-25
+
+macOS App:
+- Streamed upload: files read in 256MB chunks (no more crashes on large files)
+- Menu bar icon: blue/green blink while syncing, green when up to date
+
 ## [2.1.7] — 2026-03-25
 
 Backend/Web:

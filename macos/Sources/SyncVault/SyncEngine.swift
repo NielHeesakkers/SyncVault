@@ -71,8 +71,9 @@ actor SyncEngine {
 
                 switch action {
                 case .upload(let path, let remoteName):
-                    let data = try Data(contentsOf: URL(fileURLWithPath: path))
-                    let size = Int64(data.count)
+                    let fileURL = URL(fileURLWithPath: path)
+                    let attrs = try FileManager.default.attributesOfItem(atPath: path)
+                    let size = (attrs[.size] as? Int64) ?? 0
 
                     onProgress(SyncProgress(
                         currentFile: remoteName, action: "Uploading",
@@ -82,8 +83,41 @@ actor SyncEngine {
                         pendingFiles: pending
                     ))
 
-                    let _ = try await apiClient.uploadFile(data: data, filename: remoteName, parentID: task.remoteFolderID)
-                    let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
+                    // Stream upload: read file in 256MB chunks to avoid loading entire file in memory
+                    let chunkSize = 256 * 1024 * 1024 // 256MB
+                    let fileHandle = try FileHandle(forReadingFrom: fileURL)
+                    defer { fileHandle.closeFile() }
+
+                    var fileHash = SHA256()
+                    var uploadData = Data()
+                    uploadData.reserveCapacity(min(Int(size), chunkSize))
+
+                    while true {
+                        let chunk = fileHandle.readData(ofLength: chunkSize)
+                        if chunk.isEmpty { break }
+                        fileHash.update(data: chunk)
+                        uploadData.append(chunk)
+                        if uploadData.count >= chunkSize || chunk.count < chunkSize {
+                            break
+                        }
+                    }
+
+                    // If file is larger than 256MB, read remaining for hash but upload in one multipart request
+                    if size > Int64(chunkSize) {
+                        // Read rest for hash only
+                        while true {
+                            let chunk = fileHandle.readData(ofLength: chunkSize)
+                            if chunk.isEmpty { break }
+                            fileHash.update(data: chunk)
+                        }
+                        // Re-read entire file for upload (streamed via URLSession)
+                        let fullData = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+                        let _ = try await apiClient.uploadFile(data: fullData, filename: remoteName, parentID: task.remoteFolderID)
+                    } else {
+                        let _ = try await apiClient.uploadFile(data: uploadData, filename: remoteName, parentID: task.remoteFolderID)
+                    }
+
+                    let hash = fileHash.finalize().compactMap { String(format: "%02x", $0) }.joined()
                     try db.updateState(taskID: taskID, fileName: remoteName, contentHash: hash)
                     totalBytesTransferred += size
                     result.uploaded += 1

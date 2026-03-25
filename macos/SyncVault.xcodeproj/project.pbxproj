@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0FFD8C8FA4507AFAD81A2887 /* MenuBarIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32C695CE88C91D36E0FBB28 /* MenuBarIcon.swift */; };
 		1B4100C50A43336FD88467C9 /* SyncTasksTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F5B9CC449B3A42443B1E69 /* SyncTasksTab.swift */; };
 		1DAD634F2B3829A9536687C1 /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1101721817B68D9FDCC83C38 /* SyncEngine.swift */; };
 		21C13CD1E7883379B8147945 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34330AC2DE1AF95341AE2396 /* KeychainHelper.swift */; };
@@ -78,6 +79,7 @@
 		9CBA689C79C75E0DDD8D66D8 /* SyncVaultFileProvider.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SyncVaultFileProvider.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A0C61DE67A8E8BD551AF0FE4 /* ConnectionTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionTab.swift; sourceTree = "<group>"; };
 		A21276B1C44E0B61C8955956 /* SyncTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncTask.swift; sourceTree = "<group>"; };
+		A32C695CE88C91D36E0FBB28 /* MenuBarIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIcon.swift; sourceTree = "<group>"; };
 		AA193C4380A489B50BA1C54F /* FileProviderItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderItem.swift; sourceTree = "<group>"; };
 		B56E34977DB1CFE5D9017DCA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		C1B85466CBD1CE7C10EBE1FB /* FileProvider.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FileProvider.entitlements; sourceTree = "<group>"; };
@@ -146,6 +148,7 @@
 				8187B14E43A7916AFBAC1406 /* Info.plist */,
 				E28CF52AF24FAC1F1B5D8570 /* InfoTab.swift */,
 				34330AC2DE1AF95341AE2396 /* KeychainHelper.swift */,
+				A32C695CE88C91D36E0FBB28 /* MenuBarIcon.swift */,
 				92068AE2AC3CF43472FD2719 /* MenuBarView.swift */,
 				999BDA0F83E9BC06BCEB72F5 /* ServerFile.swift */,
 				EF107C55783154AA71C89068 /* SettingsView.swift */,
@@ -282,6 +285,7 @@
 				6C28CEC8AE32102FA34F3DE0 /* GeneralTab.swift in Sources */,
 				4BF3C5D5D1ED893E1663C578 /* InfoTab.swift in Sources */,
 				21C13CD1E7883379B8147945 /* KeychainHelper.swift in Sources */,
+				0FFD8C8FA4507AFAD81A2887 /* MenuBarIcon.swift in Sources */,
 				5A4A5121BFCF8D803956A78E /* MenuBarView.swift in Sources */,
 				E25FCB868D5E5BA687464B22 /* ServerFile.swift in Sources */,
 				EB4A8CA6F3D18A60B7E394FC /* SettingsView.swift in Sources */,
