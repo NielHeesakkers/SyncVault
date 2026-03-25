@@ -59,9 +59,14 @@ func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, 
 	}
 
 	// If a file/folder with the same name exists (including soft-deleted), rename the old one to trash
-	trashSuffix := "_DELETED_" + f.CreatedAt.Format("2006-01-02")
-	d.db.Exec(`UPDATE files SET name = name || ?, deleted_at = ? WHERE parent_id IS ? AND owner_id = ? AND name = ?`,
-		trashSuffix, f.CreatedAt.Format(time.RFC3339Nano), nullStringVal(f.ParentID), ownerID, name)
+	trashSuffix := "_DELETED_" + f.CreatedAt.Format("2006-01-02_150405")
+	if parentID != "" {
+		d.db.Exec(`UPDATE files SET name = name || ?, deleted_at = COALESCE(deleted_at, ?) WHERE parent_id = ? AND owner_id = ? AND name = ?`,
+			trashSuffix, f.CreatedAt.Format(time.RFC3339Nano), parentID, ownerID, name)
+	} else {
+		d.db.Exec(`UPDATE files SET name = name || ?, deleted_at = COALESCE(deleted_at, ?) WHERE parent_id IS NULL AND owner_id = ? AND name = ?`,
+			trashSuffix, f.CreatedAt.Format(time.RFC3339Nano), ownerID, name)
+	}
 
 	_, err := d.db.Exec(
 		`INSERT INTO files (id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at)

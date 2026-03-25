@@ -56,6 +56,7 @@ func (s *Server) setupRoutes() {
 	r.Post("/api/auth/refresh", s.handleRefresh)
 	r.Post("/api/auth/forgot-password", s.handleForgotPassword)
 	r.Post("/api/auth/reset-password", s.handleResetPassword)
+	r.Get("/api/auth/auto-login", s.handleAutoLogin)
 
 	// Public share routes (no auth required).
 	r.Get("/s/{token}", s.handlePublicShare)
@@ -154,7 +155,7 @@ func (s *Server) setupRoutes() {
 	r.NotFound(ServeSPA().ServeHTTP)
 }
 
-const AppVersion = "2.1.3"
+const AppVersion = "2.1.4"
 
 // handleHealth returns a simple health check response.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

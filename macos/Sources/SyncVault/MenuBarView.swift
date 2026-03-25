@@ -220,9 +220,12 @@ struct MenuBarView: View {
                 }
                 .opacity(appState.isConnected && !appState.isSyncing ? 1 : 0.4)
 
-                actionRow(icon: "globe", label: "Open Files") {
+                actionRow(icon: "globe", label: "Open Files on Server") {
                     let baseURL = appState.serverURL.isEmpty ? "https://sync.heesakkers.com" : appState.serverURL
-                    if let url = URL(string: "\(baseURL)/files") {
+                    if let token = KeychainHelper.load(key: "access_token"),
+                       let url = URL(string: "\(baseURL)/api/auth/auto-login?token=\(token)") {
+                        NSWorkspace.shared.open(url)
+                    } else if let url = URL(string: "\(baseURL)/files") {
                         NSWorkspace.shared.open(url)
                     }
                 }

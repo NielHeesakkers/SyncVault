@@ -32,6 +32,40 @@ type userInfo struct {
 	Role     string `json:"role"`
 }
 
+// handleAutoLogin validates a JWT token from query param and redirects to /files with auth set.
+// Used by the macOS app to open the web UI without requiring manual login.
+func (s *Server) handleAutoLogin(w http.ResponseWriter, r *http.Request) {
+	tokenStr := r.URL.Query().Get("token")
+	if tokenStr == "" {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	claims, err := s.jwt.ValidateAccessToken(tokenStr)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	// Generate fresh tokens for the session
+	accessToken, refreshToken, err := s.jwt.GenerateTokens(claims.UserID, claims.Username, claims.Role)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	// Return an HTML page that stores the tokens in localStorage and redirects to /files
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html><html><head><script>
+localStorage.setItem('access_token','%s');
+localStorage.setItem('refresh_token','%s');
+localStorage.setItem('user','%s');
+window.location.href='/files';
+</script></head><body>Redirecting...</body></html>`,
+		accessToken, refreshToken,
+		`{"id":"`+claims.UserID+`","username":"`+claims.Username+`","role":"`+claims.Role+`"}`)
+}
+
 // handleLogin authenticates a user and returns a token pair.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest

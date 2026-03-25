@@ -6,7 +6,27 @@ struct ConnectionTab: View {
     @State private var username = ""
     @State private var password = ""
     @State private var isConnecting = false
-    @State private var testResult: String?
+    @State private var isTesting = false
+    @State private var testResult: TestResult?
+    @State private var hasStoredPassword = false
+
+    enum TestResult {
+        case success(String)
+        case error(String)
+
+        var message: String {
+            switch self {
+            case .success(let msg): return msg
+            case .error(let msg): return msg
+            }
+        }
+        var color: Color {
+            switch self {
+            case .success: return .green
+            case .error: return .red
+            }
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -30,18 +50,20 @@ struct ConnectionTab: View {
                 }
 
                 LabeledField("Password") {
-                    SecureField("Password", text: $password)
+                    SecureField(hasStoredPassword && password.isEmpty ? "••••••••" : "Password", text: $password)
                         .textFieldStyle(.roundedBorder)
                         .disabled(appState.isConnected)
                 }
             }
 
-            // Connect / Disconnect
+            // Buttons
             HStack(spacing: 12) {
                 if appState.isConnected {
                     Button("Disconnect") {
                         appState.disconnect()
                         testResult = nil
+                        password = ""
+                        hasStoredPassword = false
                     }
                 } else {
                     Button("Connect") {
@@ -50,25 +72,31 @@ struct ConnectionTab: View {
                         Task {
                             do {
                                 try await appState.connect(url: serverURL, username: username, password: password)
-                                testResult = "Connected"
+                                testResult = .success("Connected")
+                                hasStoredPassword = true
                             } catch {
-                                testResult = error.localizedDescription
+                                testResult = .error(error.localizedDescription)
                             }
                             isConnecting = false
                         }
                     }
-                    .disabled(serverURL.isEmpty || username.isEmpty || password.isEmpty || isConnecting)
+                    .disabled(serverURL.isEmpty || username.isEmpty || (password.isEmpty && !hasStoredPassword) || isConnecting)
                 }
 
-                if isConnecting {
+                Button("Test Server") {
+                    testServer()
+                }
+                .disabled(serverURL.isEmpty || isTesting)
+
+                if isConnecting || isTesting {
                     ProgressView()
                         .scaleEffect(0.6)
                 }
 
                 if let result = testResult {
-                    Text(result)
+                    Text(result.message)
                         .font(.system(size: 11))
-                        .foregroundColor(appState.isConnected ? .green : .red)
+                        .foregroundColor(result.color)
                         .lineLimit(1)
                 }
             }
@@ -101,6 +129,44 @@ struct ConnectionTab: View {
         .onAppear {
             serverURL = appState.serverURL
             username = appState.username
+            hasStoredPassword = KeychainHelper.load(key: "server_password") != nil
+        }
+    }
+
+    private func testServer() {
+        isTesting = true
+        testResult = nil
+        let urlStr = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: "\(urlStr)/api/health") else {
+            testResult = .error("Invalid URL")
+            isTesting = false
+            return
+        }
+
+        Task {
+            do {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 5
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse else {
+                    testResult = .error("Invalid response")
+                    isTesting = false
+                    return
+                }
+                if http.statusCode == 200 {
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let version = json["version"] as? String {
+                        testResult = .success("Server OK — v\(version)")
+                    } else {
+                        testResult = .success("Server reachable")
+                    }
+                } else {
+                    testResult = .error("HTTP \(http.statusCode)")
+                }
+            } catch {
+                testResult = .error("Cannot reach server")
+            }
+            isTesting = false
         }
     }
 }

@@ -9,12 +9,16 @@ struct SettingsView: View {
         case connection = "Connection"
         case syncTasks = "Sync Tasks"
         case general = "General"
+        case changelog = "Changelog"
+        case info = "Info"
 
         var icon: String {
             switch self {
             case .connection: return "network"
             case .syncTasks: return "arrow.triangle.2.circlepath"
             case .general: return "gear"
+            case .changelog: return "doc.text"
+            case .info: return "info.circle"
             }
         }
     }
@@ -73,6 +77,10 @@ struct SettingsView: View {
                     SyncTasksTab(appState: appState)
                 case .general:
                     GeneralTab(updaterService: updaterService)
+                case .changelog:
+                    ChangelogTab()
+                case .info:
+                    InfoTab()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

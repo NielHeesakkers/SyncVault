@@ -1,3 +1,16 @@
+## [2.1.4] — 2026-03-25
+
+Backend/Web:
+- Auto-login: macOS app opens web UI without manual login
+- 409 duplicate folder fix improved (parent_id matching)
+
+macOS App:
+- "Open Files on Server" with auto-login via JWT token
+- "Test Server" button always visible in Connection tab
+- Password field shows dots when saved in Keychain
+- Changelog tab loads release notes from server
+- Info tab with contact email and GitHub link
+
 ## [2.1.3] — 2026-03-25
 
 Backend/Web:
