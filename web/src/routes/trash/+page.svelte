@@ -128,11 +128,11 @@
 	<title>Trash — SyncVault</title>
 </svelte:head>
 
-<div class="p-6" style="background: #0a0a0b; min-height: 100%;">
+<div class="p-6" style="background: var(--bg-base); min-height: 100%;">
 	<div class="mb-6 flex items-center justify-between">
 		<div>
 			<h1 class="text-base font-semibold text-white">Trash</h1>
-			<p class="text-sm mt-1" style="color: rgba(255,255,255,0.35);">Files here will be permanently deleted after 30 days.</p>
+			<p class="text-sm mt-1" style="color: var(--text-tertiary);">Files here will be permanently deleted after 30 days.</p>
 		</div>
 		{#if items.length > 0}
 			{#if selected.size > 0}
@@ -153,10 +153,10 @@
 		{/if}
 	</div>
 
-	<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+	<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 		{#if loading}
 			<!-- Skeleton -->
-			<div class="px-4 py-3 border-b" style="border-color: rgba(255,255,255,0.05);">
+			<div class="px-4 py-3 border-b" style="border-color: var(--border);">
 				<div class="flex gap-4">
 					<div class="skeleton h-3 rounded w-3"></div>
 					<div class="skeleton h-3 rounded w-3"></div>
@@ -164,7 +164,7 @@
 				</div>
 			</div>
 			{#each [1,2,3,4] as _}
-				<div class="px-4 py-3.5 border-b flex items-center gap-3" style="border-color: rgba(255,255,255,0.04);">
+				<div class="px-4 py-3.5 border-b flex items-center gap-3" style="border-color: var(--border);">
 					<div class="skeleton w-4 h-4 rounded"></div>
 					<div class="skeleton w-5 h-5 rounded"></div>
 					<div class="skeleton h-3 rounded w-48"></div>
@@ -173,24 +173,24 @@
 			{/each}
 		{:else if items.length === 0}
 			<div class="flex flex-col items-center justify-center py-20">
-				<div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
-					<Sparkles size={24} style="color: rgba(255,255,255,0.20);" />
+				<div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style="background: var(--bg-active);">
+					<Sparkles size={24} style="color: var(--text-tertiary);" />
 				</div>
-				<p class="text-base font-medium" style="color: rgba(255,255,255,0.40);">Trash is empty</p>
-				<p class="text-sm mt-1.5" style="color: rgba(255,255,255,0.25);">Deleted files will appear here.</p>
+				<p class="text-base font-medium" style="color: var(--text-tertiary);">Trash is empty</p>
+				<p class="text-sm mt-1.5" style="color: var(--text-tertiary);">Deleted files will appear here.</p>
 			</div>
 		{:else}
 			<table class="min-w-full">
 				<thead>
-					<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+					<tr style="border-bottom: 1px solid var(--border);">
 						<th class="px-4 py-3 w-8">
 							<input type="checkbox" checked={selected.size === items.length && items.length > 0} onchange={selectAll} />
 						</th>
 						<th class="px-4 py-3 w-8"></th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Name</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Size</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Deleted</th>
-						<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Actions</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Name</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: var(--text-tertiary);">Size</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">Deleted</th>
+						<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -207,24 +207,24 @@
 								{#if isDir(item)}
 									<FolderOpen size={18} style="color: #f59e0b; opacity: 0.7;" />
 								{:else}
-									<FileText size={18} style="color: rgba(255,255,255,0.25);" />
+									<FileText size={18} style="color: var(--text-tertiary);" />
 								{/if}
 							</td>
 							<td class="px-4 py-3.5">
 								<div>
 									<p class="text-sm font-medium text-white/70">{item.name}</p>
 									{#if item.original_path}
-										<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.25);">{item.original_path}</p>
+										<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">{item.original_path}</p>
 									{/if}
 								</div>
 							</td>
 							<td class="px-4 py-3.5 hidden sm:table-cell">
-								<span class="text-sm" style="color: rgba(255,255,255,0.35);">
+								<span class="text-sm" style="color: var(--text-tertiary);">
 									{isDir(item) ? '—' : formatBytes(item.size)}
 								</span>
 							</td>
 							<td class="px-4 py-3.5 hidden md:table-cell">
-								<span class="text-sm" style="color: rgba(255,255,255,0.35);">{formatDate(item.deleted_at)}</span>
+								<span class="text-sm" style="color: var(--text-tertiary);">{formatDate(item.deleted_at)}</span>
 							</td>
 							<td class="px-4 py-3.5">
 								<div class="flex items-center justify-end gap-1">
@@ -282,10 +282,10 @@
 
 <style>
 	.trash-row {
-		border-bottom: 1px solid rgba(255,255,255,0.04);
+		border-bottom: 1px solid var(--border);
 	}
 	.trash-row:hover {
-		background: rgba(255,255,255,0.03);
+		background: var(--bg-hover);
 	}
 	.trash-row:last-child {
 		border-bottom: none;

@@ -101,7 +101,7 @@
 		if (action.includes('create') || action.includes('upload')) return 'background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.20);';
 		if (action.includes('login') || action.includes('logout')) return 'background: rgba(59,130,246,0.12); color: #60a5fa; border: 1px solid rgba(59,130,246,0.20);';
 		if (action.includes('share')) return 'background: rgba(168,85,247,0.12); color: #c084fc; border: 1px solid rgba(168,85,247,0.20);';
-		return 'background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.50); border: 1px solid rgba(255,255,255,0.08);';
+		return 'background: var(--bg-hover); color: var(--text-secondary); border: 1px solid var(--border);';
 	}
 </script>
 
@@ -109,17 +109,17 @@
 	<title>Activity — SyncVault Admin</title>
 </svelte:head>
 
-<div class="p-6" style="background: #0a0a0b; min-height: 100%;">
+<div class="p-6" style="background: var(--bg-base); min-height: 100%;">
 	<div class="mb-6">
 		<h1 class="text-base font-semibold text-white">Activity Log</h1>
-		<p class="text-sm mt-1" style="color: rgba(255,255,255,0.35);">Audit trail of all user actions.</p>
+		<p class="text-sm mt-1" style="color: var(--text-tertiary);">Audit trail of all user actions.</p>
 	</div>
 
 	<!-- Filters -->
-	<div class="rounded-xl border p-4 mb-5" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+	<div class="rounded-xl border p-4 mb-5" style="background: var(--bg-elevated); border-color: var(--border);">
 		<div class="flex flex-wrap gap-3 items-end">
 			<div class="flex-1 min-w-32">
-				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.40);">User</label>
+				<label class="block text-xs font-medium mb-1.5" style="color: var(--text-tertiary);">User</label>
 				<select bind:value={filterUser}>
 					<option value="">All users</option>
 					{#each allUsers as u}
@@ -128,7 +128,7 @@
 				</select>
 			</div>
 			<div class="flex-1 min-w-32">
-				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.40);">Action</label>
+				<label class="block text-xs font-medium mb-1.5" style="color: var(--text-tertiary);">Action</label>
 				<select bind:value={filterAction}>
 					<option value="">All actions</option>
 					{#each actionTypes as a}
@@ -137,18 +137,18 @@
 				</select>
 			</div>
 			<div class="flex-1 min-w-36">
-				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.40);">From</label>
+				<label class="block text-xs font-medium mb-1.5" style="color: var(--text-tertiary);">From</label>
 				<input type="datetime-local" bind:value={filterDateFrom} />
 			</div>
 			<div class="flex-1 min-w-36">
-				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.40);">To</label>
+				<label class="block text-xs font-medium mb-1.5" style="color: var(--text-tertiary);">To</label>
 				<input type="datetime-local" bind:value={filterDateTo} />
 			</div>
 			<div class="flex gap-2 flex-shrink-0">
 				<button onclick={applyFilters} class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg px-3 py-2 transition-all duration-150">
 					<Filter size={13} /> Apply
 				</button>
-				<button onclick={clearFilters} class="text-sm text-white/50 hover:text-white/80 border rounded-lg px-3 py-2 hover:bg-white/5 transition-all duration-150" style="border-color: rgba(255,255,255,0.10);">
+				<button onclick={clearFilters} class="text-sm text-white/50 hover:text-white/80 border rounded-lg px-3 py-2 hover:bg-white/5 transition-all duration-150" style="border-color: var(--border);">
 					Clear
 				</button>
 			</div>
@@ -156,9 +156,9 @@
 	</div>
 
 	<!-- Log table -->
-	<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+	<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 		{#if loading}
-			<div class="px-4 py-3 border-b" style="border-color: rgba(255,255,255,0.05);">
+			<div class="px-4 py-3 border-b" style="border-color: var(--border);">
 				<div class="flex gap-8">
 					{#each [1,2,3,4] as _}
 						<div class="skeleton h-3 rounded w-20"></div>
@@ -166,7 +166,7 @@
 				</div>
 			</div>
 			{#each [1,2,3,4,5,6] as _}
-				<div class="px-4 py-3.5 border-b flex items-center gap-4" style="border-color: rgba(255,255,255,0.04);">
+				<div class="px-4 py-3.5 border-b flex items-center gap-4" style="border-color: var(--border);">
 					<div class="skeleton h-3 rounded w-28"></div>
 					<div class="skeleton h-3 rounded w-20"></div>
 					<div class="skeleton h-5 rounded-full w-16"></div>
@@ -175,28 +175,28 @@
 			{/each}
 		{:else if logs.length === 0}
 			<div class="flex flex-col items-center justify-center py-20">
-				<div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
-					<Activity size={24} style="color: rgba(255,255,255,0.20);" />
+				<div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style="background: var(--bg-hover);">
+					<Activity size={24} style="color: var(--text-tertiary);" />
 				</div>
-				<p class="text-base font-medium" style="color: rgba(255,255,255,0.40);">No activity yet</p>
-				<p class="text-sm mt-1.5" style="color: rgba(255,255,255,0.25);">Try adjusting your filters.</p>
+				<p class="text-base font-medium" style="color: var(--text-tertiary);">No activity yet</p>
+				<p class="text-sm mt-1.5" style="color: var(--text-tertiary);">Try adjusting your filters.</p>
 			</div>
 		{:else}
 			<table class="min-w-full">
 				<thead>
-					<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Date / Time</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">User</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Action</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Resource</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden lg:table-cell" style="color: rgba(255,255,255,0.30);">Details</th>
+					<tr style="border-bottom: 1px solid var(--border);">
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Date / Time</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">User</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Action</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: var(--text-tertiary);">Resource</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden lg:table-cell" style="color: var(--text-tertiary);">Details</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each logs as log}
 						<tr class="activity-row">
 							<td class="px-4 py-3.5 whitespace-nowrap">
-								<span class="text-xs font-mono" style="color: rgba(255,255,255,0.35);">{formatDateAbsolute(log.created_at)}</span>
+								<span class="text-xs font-mono" style="color: var(--text-tertiary);">{formatDateAbsolute(log.created_at)}</span>
 							</td>
 							<td class="px-4 py-3.5">
 								<div class="flex items-center gap-2">
@@ -216,15 +216,15 @@
 									<div>
 										<p class="text-sm text-white/60 truncate max-w-48">{log.resource_name}</p>
 										{#if log.resource_type}
-											<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.30);">{log.resource_type}</p>
+											<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">{log.resource_type}</p>
 										{/if}
 									</div>
 								{:else}
-									<span style="color: rgba(255,255,255,0.20);">—</span>
+									<span style="color: var(--text-tertiary);">—</span>
 								{/if}
 							</td>
 							<td class="px-4 py-3.5 hidden lg:table-cell">
-								<span class="text-xs truncate max-w-48 block" style="color: rgba(255,255,255,0.35);">{log.details ?? '—'}</span>
+								<span class="text-xs truncate max-w-48 block" style="color: var(--text-tertiary);">{log.details ?? '—'}</span>
 							</td>
 						</tr>
 					{/each}
@@ -232,7 +232,7 @@
 			</table>
 
 			{#if hasMore}
-				<div class="px-4 py-4 border-t text-center" style="border-color: rgba(255,255,255,0.05);">
+				<div class="px-4 py-4 border-t text-center" style="border-color: var(--border);">
 					<button
 						onclick={() => loadLogs(false)}
 						disabled={loadingMore}
@@ -253,10 +253,10 @@
 
 <style>
 	.activity-row {
-		border-bottom: 1px solid rgba(255,255,255,0.04);
+		border-bottom: 1px solid var(--border);
 	}
 	.activity-row:hover {
-		background: rgba(255,255,255,0.02);
+		background: var(--bg-hover);
 	}
 	.activity-row:last-child {
 		border-bottom: none;

@@ -153,7 +153,7 @@
 		</h1>
 		<div class="flex items-center gap-2 mt-1.5">
 			<span class="w-1.5 h-1.5 rounded-full {serverOnline ? 'bg-green-500' : 'bg-red-500'}"></span>
-			<span class="text-sm" style="color: rgba(255,255,255,0.40);">
+			<span class="text-sm" style="color: var(--text-tertiary);">
 				{serverOnline ? `Server online${serverVersion ? ' · v' + serverVersion : ''}` : 'Server offline'}
 			</span>
 		</div>
@@ -162,10 +162,10 @@
 	<!-- Top row: Storage + Quick Actions -->
 	<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
 		<!-- Storage Card -->
-		<div class="rounded-xl border p-5" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+		<div class="rounded-xl border p-5" style="background: var(--bg-elevated); border-color: var(--border);">
 			<div class="flex items-center justify-between mb-4">
-				<span class="text-xs font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.35);">Storage</span>
-				<HardDrive size={14} style="color: rgba(255,255,255,0.25);" />
+				<span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Storage</span>
+				<HardDrive size={14} style="color: var(--text-tertiary);" />
 			</div>
 			{#if loading}
 				<div class="flex justify-center py-4">
@@ -176,7 +176,7 @@
 					<div class="relative w-24 h-24">
 						<svg viewBox="0 0 100 100" class="w-full h-full -rotate-90">
 							<!-- Background circle -->
-							<circle cx="50" cy="50" r={circleR} fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="10" />
+							<circle cx="50" cy="50" r={circleR} fill="none" stroke="var(--border-strong)" stroke-width="10" />
 							<!-- Progress circle -->
 							<circle
 								cx="50" cy="50" r={circleR}
@@ -194,9 +194,9 @@
 					<div class="mt-3 text-center">
 						<p class="text-sm font-medium text-white/80">{formatBytes(storageUsed)}</p>
 						{#if storageQuota > 0}
-							<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.35);">of {formatBytes(storageQuota)}</p>
+							<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">of {formatBytes(storageQuota)}</p>
 						{:else}
-							<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.35);">no quota set</p>
+							<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">no quota set</p>
 						{/if}
 					</div>
 				</div>
@@ -204,22 +204,22 @@
 		</div>
 
 		<!-- Quick Actions -->
-		<div class="md:col-span-2 rounded-xl border p-5" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+		<div class="md:col-span-2 rounded-xl border p-5" style="background: var(--bg-elevated); border-color: var(--border);">
 			<div class="mb-4">
-				<span class="text-xs font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.35);">Quick Actions</span>
+				<span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Quick Actions</span>
 			</div>
 			<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
 				<button
 					onclick={() => goto('/files')}
 					class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-white/10 hover:bg-white/[0.04] text-left group"
-					style="border-color: rgba(255,255,255,0.06);"
+					style="border-color: var(--border-strong);"
 				>
 					<div class="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center flex-shrink-0">
 						<FolderOpen size={16} class="text-blue-400" />
 					</div>
 					<div>
 						<p class="text-sm font-medium text-white/80 group-hover:text-white transition-colors">Open Files</p>
-						<p class="text-xs" style="color: rgba(255,255,255,0.30);">Browse your files</p>
+						<p class="text-xs" style="color: var(--text-tertiary);">Browse your files</p>
 					</div>
 				</button>
 
@@ -227,56 +227,56 @@
 					<button
 						onclick={() => goto('/admin/users')}
 						class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-white/10 hover:bg-white/[0.04] text-left group"
-						style="border-color: rgba(255,255,255,0.06);"
+						style="border-color: var(--border-strong);"
 					>
 						<div class="w-8 h-8 rounded-lg bg-purple-500/15 flex items-center justify-center flex-shrink-0">
 							<Users size={16} class="text-purple-400" />
 						</div>
 						<div>
 							<p class="text-sm font-medium text-white/80 group-hover:text-white transition-colors">Manage Users</p>
-							<p class="text-xs" style="color: rgba(255,255,255,0.30);">Add and manage users</p>
+							<p class="text-xs" style="color: var(--text-tertiary);">Add and manage users</p>
 						</div>
 					</button>
 
 					<button
 						onclick={() => goto('/admin/settings')}
 						class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-white/10 hover:bg-white/[0.04] text-left group"
-						style="border-color: rgba(255,255,255,0.06);"
+						style="border-color: var(--border-strong);"
 					>
 						<div class="w-8 h-8 rounded-lg bg-green-500/15 flex items-center justify-center flex-shrink-0">
 							<Settings size={16} class="text-green-400" />
 						</div>
 						<div>
 							<p class="text-sm font-medium text-white/80 group-hover:text-white transition-colors">Settings</p>
-							<p class="text-xs" style="color: rgba(255,255,255,0.30);">Configure server</p>
+							<p class="text-xs" style="color: var(--text-tertiary);">Configure server</p>
 						</div>
 					</button>
 				{:else}
 					<button
 						onclick={() => goto('/shared')}
 						class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-white/10 hover:bg-white/[0.04] text-left group"
-						style="border-color: rgba(255,255,255,0.06);"
+						style="border-color: var(--border-strong);"
 					>
 						<div class="w-8 h-8 rounded-lg bg-yellow-500/15 flex items-center justify-center flex-shrink-0">
 							<Activity size={16} class="text-yellow-400" />
 						</div>
 						<div>
 							<p class="text-sm font-medium text-white/80 group-hover:text-white transition-colors">Shared Links</p>
-							<p class="text-xs" style="color: rgba(255,255,255,0.30);">Manage shared files</p>
+							<p class="text-xs" style="color: var(--text-tertiary);">Manage shared files</p>
 						</div>
 					</button>
 
 					<button
 						onclick={() => goto('/trash')}
 						class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-white/10 hover:bg-white/[0.04] text-left group"
-						style="border-color: rgba(255,255,255,0.06);"
+						style="border-color: var(--border-strong);"
 					>
 						<div class="w-8 h-8 rounded-lg bg-red-500/15 flex items-center justify-center flex-shrink-0">
 							<HardDrive size={16} class="text-red-400" />
 						</div>
 						<div>
 							<p class="text-sm font-medium text-white/80 group-hover:text-white transition-colors">Trash</p>
-							<p class="text-xs" style="color: rgba(255,255,255,0.30);">Deleted files</p>
+							<p class="text-xs" style="color: var(--text-tertiary);">Deleted files</p>
 						</div>
 					</button>
 				{/if}
@@ -287,10 +287,10 @@
 	<!-- Bottom row: Activity + Sync Tasks -->
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 		<!-- Recent Activity -->
-		<div class="rounded-xl border" style="background: #111113; border-color: rgba(255,255,255,0.05);">
-			<div class="flex items-center justify-between px-5 py-4 border-b" style="border-color: rgba(255,255,255,0.05);">
-				<span class="text-xs font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.35);">Recent Activity</span>
-				<Activity size={14} style="color: rgba(255,255,255,0.25);" />
+		<div class="rounded-xl border" style="background: var(--bg-elevated); border-color: var(--border);">
+			<div class="flex items-center justify-between px-5 py-4 border-b" style="border-color: var(--border);">
+				<span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Recent Activity</span>
+				<Activity size={14} style="color: var(--text-tertiary);" />
 			</div>
 			<div class="p-4">
 				{#if activityLoading}
@@ -307,22 +307,22 @@
 					</div>
 				{:else if activity.length === 0}
 					<div class="flex flex-col items-center justify-center py-10">
-						<div class="w-10 h-10 rounded-full flex items-center justify-center mb-3" style="background: rgba(255,255,255,0.04);">
-							<Activity size={18} style="color: rgba(255,255,255,0.20);" />
+						<div class="w-10 h-10 rounded-full flex items-center justify-center mb-3" style="background: var(--bg-active);">
+							<Activity size={18} style="color: var(--text-tertiary);" />
 						</div>
-						<p class="text-sm font-medium" style="color: rgba(255,255,255,0.40);">No activity yet</p>
-						<p class="text-xs mt-1" style="color: rgba(255,255,255,0.25);">Activity will appear here as files sync</p>
+						<p class="text-sm font-medium" style="color: var(--text-tertiary);">No activity yet</p>
+						<p class="text-xs mt-1" style="color: var(--text-tertiary);">Activity will appear here as files sync</p>
 					</div>
 				{:else}
 					<div class="space-y-0">
 						{#each activity.slice(0, 10) as event, i}
 							{@const atype = getActivityIcon(event)}
 							{@const acolor = getActivityColor(atype)}
-							<div class="flex items-start gap-3 py-2.5 {i < activity.length - 1 ? 'border-b' : ''}" style="border-color: rgba(255,255,255,0.04);">
+							<div class="flex items-start gap-3 py-2.5 {i < activity.length - 1 ? 'border-b' : ''}" style="border-color: var(--border);">
 								<div class="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style="background: {acolor};"></div>
 								<div class="flex-1 min-w-0">
 									<p class="text-xs text-white/70 truncate">{getActivityLabel(event)}</p>
-									<p class="text-[10px] mt-0.5" style="color: rgba(255,255,255,0.30);">{formatActivityTime(event.created_at || event.timestamp)}</p>
+									<p class="text-[10px] mt-0.5" style="color: var(--text-tertiary);">{formatActivityTime(event.created_at || event.timestamp)}</p>
 								</div>
 							</div>
 						{/each}
@@ -332,16 +332,16 @@
 		</div>
 
 		<!-- Sync Tasks -->
-		<div class="rounded-xl border" style="background: #111113; border-color: rgba(255,255,255,0.05);">
-			<div class="flex items-center justify-between px-5 py-4 border-b" style="border-color: rgba(255,255,255,0.05);">
-				<span class="text-xs font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.35);">Sync Tasks</span>
-				<RefreshCw size={14} style="color: rgba(255,255,255,0.25);" />
+		<div class="rounded-xl border" style="background: var(--bg-elevated); border-color: var(--border);">
+			<div class="flex items-center justify-between px-5 py-4 border-b" style="border-color: var(--border);">
+				<span class="text-xs font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Sync Tasks</span>
+				<RefreshCw size={14} style="color: var(--text-tertiary);" />
 			</div>
 			<div class="p-4">
 				{#if tasksLoading}
 					<div class="space-y-3">
 						{#each [1,2,3] as _}
-							<div class="rounded-lg p-3 border" style="background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.04);">
+							<div class="rounded-lg p-3 border" style="background: var(--bg-hover); border-color: var(--border);">
 								<div class="skeleton h-3 rounded w-2/5 mb-2"></div>
 								<div class="skeleton h-2.5 rounded w-1/4"></div>
 							</div>
@@ -349,18 +349,18 @@
 					</div>
 				{:else if tasks.length === 0}
 					<div class="flex flex-col items-center justify-center py-10">
-						<div class="w-10 h-10 rounded-full flex items-center justify-center mb-3" style="background: rgba(255,255,255,0.04);">
-							<RefreshCw size={18} style="color: rgba(255,255,255,0.20);" />
+						<div class="w-10 h-10 rounded-full flex items-center justify-center mb-3" style="background: var(--bg-active);">
+							<RefreshCw size={18} style="color: var(--text-tertiary);" />
 						</div>
-						<p class="text-sm font-medium" style="color: rgba(255,255,255,0.40);">No sync tasks</p>
-						<p class="text-xs mt-1" style="color: rgba(255,255,255,0.25);">Configure sync in the macOS app</p>
+						<p class="text-sm font-medium" style="color: var(--text-tertiary);">No sync tasks</p>
+						<p class="text-xs mt-1" style="color: var(--text-tertiary);">Configure sync in the macOS app</p>
 					</div>
 				{:else}
 					<div class="space-y-2">
 						{#each tasks as task}
 							{@const statusColor = getTaskStatusColor(task.status || task.state || '')}
 							{@const statusLabel = getTaskStatusLabel(task.status || task.state || '')}
-							<div class="rounded-lg p-3 border" style="background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.05);">
+							<div class="rounded-lg p-3 border" style="background: var(--bg-hover); border-color: var(--border);">
 								<div class="flex items-center justify-between mb-1">
 									<p class="text-sm font-medium text-white/80 truncate max-w-[180px]">{task.name || task.folder_name || 'Sync task'}</p>
 									<div class="flex items-center gap-1.5 flex-shrink-0">
@@ -369,7 +369,7 @@
 									</div>
 								</div>
 								{#if task.last_sync || task.last_run}
-									<p class="text-[10px]" style="color: rgba(255,255,255,0.30);">
+									<p class="text-[10px]" style="color: var(--text-tertiary);">
 										Last sync: {formatActivityTime(task.last_sync || task.last_run)}
 									</p>
 								{/if}

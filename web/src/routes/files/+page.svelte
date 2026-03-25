@@ -495,22 +495,22 @@
 	<title>Files — SyncVault</title>
 </svelte:head>
 
-<div class="h-full flex flex-col" style="background: #0a0a0b;">
+<div class="h-full flex flex-col" style="background: var(--bg-base);">
 	<!-- Top bar -->
-	<div class="px-6 py-4 border-b flex-shrink-0" style="border-color: rgba(255,255,255,0.06);">
+	<div class="px-6 py-4 border-b flex-shrink-0" style="border-color: var(--border);">
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-3">
 				<FolderOpen size={20} class="text-blue-400 flex-shrink-0" />
 				<h1 class="text-base font-semibold text-white">Files</h1>
 				{#if selectedDate}
-					<span class="text-sm" style="color: rgba(255,255,255,0.35);">— {formatSelectedDate(selectedDate)}</span>
+					<span class="text-sm" style="color: var(--text-tertiary);">— {formatSelectedDate(selectedDate)}</span>
 				{/if}
 			</div>
 		</div>
 	</div>
 
 	<!-- Breadcrumb bar -->
-	<div class="px-6 py-2.5 border-b flex-shrink-0" style="background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.04);">
+	<div class="px-6 py-2.5 border-b flex-shrink-0" style="background: var(--bg-hover); border-color: var(--border);">
 		<BreadcrumbNav items={breadcrumbs} onclick={navigateToBreadcrumb} />
 	</div>
 
@@ -518,24 +518,24 @@
 	<div class="flex-1 overflow-auto p-6">
 		{#if !selectedDate && changeDates.length === 0}
 			<div class="flex flex-col items-center justify-center py-24">
-				<div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
-					<Clock size={28} style="color: rgba(255,255,255,0.20);" />
+				<div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style="background: var(--bg-active);">
+					<Clock size={28} style="color: var(--text-tertiary);" />
 				</div>
 				<p class="text-base font-medium text-white/40">No version history found</p>
-				<p class="text-sm mt-1.5" style="color: rgba(255,255,255,0.25);">Upload and modify files to start building version history.</p>
+				<p class="text-sm mt-1.5" style="color: var(--text-tertiary);">Upload and modify files to start building version history.</p>
 			</div>
 		{:else if !selectedDate}
 			<div class="flex flex-col items-center justify-center py-24">
-				<div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
-					<Clock size={28} style="color: rgba(255,255,255,0.20);" />
+				<div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style="background: var(--bg-active);">
+					<Clock size={28} style="color: var(--text-tertiary);" />
 				</div>
 				<p class="text-base font-medium text-white/40">Select a point on the timeline below</p>
-				<p class="text-sm mt-1.5" style="color: rgba(255,255,255,0.25);">Click a dot to see files as they were on that date.</p>
+				<p class="text-sm mt-1.5" style="color: var(--text-tertiary);">Click a dot to see files as they were on that date.</p>
 			</div>
 		{:else if loading}
 			<!-- Skeleton loading -->
-			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
-				<div class="px-4 py-3 border-b" style="border-color: rgba(255,255,255,0.04);">
+			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
+				<div class="px-4 py-3 border-b" style="border-color: var(--border);">
 					<div class="flex gap-4">
 						<div class="skeleton h-3 rounded w-8"></div>
 						<div class="skeleton h-3 rounded w-40"></div>
@@ -543,7 +543,7 @@
 					</div>
 				</div>
 				{#each [1,2,3,4,5] as _}
-					<div class="px-4 py-3.5 border-b flex items-center gap-3" style="border-color: rgba(255,255,255,0.04);">
+					<div class="px-4 py-3.5 border-b flex items-center gap-3" style="border-color: var(--border);">
 						<div class="skeleton w-5 h-5 rounded flex-shrink-0"></div>
 						<div class="skeleton h-3 rounded flex-1 max-w-[200px]"></div>
 						<div class="skeleton h-3 rounded w-16 ml-auto hidden sm:block"></div>
@@ -552,31 +552,31 @@
 			</div>
 		{:else if files.length === 0}
 			<div class="flex flex-col items-center justify-center py-24">
-				<div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
-					<FolderOpen size={28} style="color: rgba(255,255,255,0.20);" />
+				<div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style="background: var(--bg-active);">
+					<FolderOpen size={28} style="color: var(--text-tertiary);" />
 				</div>
 				<p class="text-base font-medium text-white/40">No files yet</p>
-				<p class="text-sm mt-1.5" style="color: rgba(255,255,255,0.25);">Upload or sync to get started.</p>
+				<p class="text-sm mt-1.5" style="color: var(--text-tertiary);">Upload or sync to get started.</p>
 			</div>
 		{:else}
 			{@const userFiles = breadcrumbs.length <= 1 ? files.filter(f => !f._isTeam) : files}
 			{@const teamFiles = breadcrumbs.length <= 1 ? files.filter(f => f._isTeam) : []}
 
 			{#if breadcrumbs.length <= 1 && userFiles.length > 0}
-				<p class="px-1 mb-2 text-[10px] font-semibold uppercase tracking-widest" style="color: rgba(255,255,255,0.25);">My Files</p>
+				<p class="px-1 mb-2 text-[10px] font-semibold uppercase tracking-widest" style="color: var(--text-tertiary);">My Files</p>
 			{/if}
 
 			{#if userFiles.length > 0}
-			<div class="rounded-xl border overflow-hidden mb-6" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+			<div class="rounded-xl border overflow-hidden mb-6" style="background: var(--bg-elevated); border-color: var(--border);">
 				<table class="min-w-full">
 					<thead>
-						<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider w-8" style="color: rgba(255,255,255,0.30);"></th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Name</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Size</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Version</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Date</th>
-							<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Actions</th>
+						<tr style="border-bottom: 1px solid var(--border);">
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider w-8" style="color: var(--text-tertiary);"></th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Name</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: var(--text-tertiary);">Size</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">Version</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">Date</th>
+							<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Actions</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -595,12 +595,12 @@
 									<div class="flex items-center gap-2">
 										<span class="text-sm font-medium text-white/80">{file.name}</span>
 										{#if file.removed_locally}
-											<span class="text-[10px] text-white/30 border rounded px-1.5 py-0.5" style="border-color: rgba(255,255,255,0.10);">Removed locally</span>
+											<span class="text-[10px] text-white/30 border rounded px-1.5 py-0.5" style="border-color: var(--border);">Removed locally</span>
 										{/if}
 									</div>
 								</td>
 								<td class="px-4 py-3.5 hidden sm:table-cell">
-									<span class="text-sm" style="color: rgba(255,255,255,0.40);">{formatBytes(file.size)}</span>
+									<span class="text-sm" style="color: var(--text-tertiary);">{formatBytes(file.size)}</span>
 								</td>
 								<td class="px-4 py-3.5 hidden md:table-cell">
 									{#if !file.is_dir}
@@ -608,11 +608,11 @@
 											v{file.version_num}
 										</span>
 									{:else}
-										<span style="color: rgba(255,255,255,0.20);">—</span>
+										<span style="color: var(--text-tertiary);">—</span>
 									{/if}
 								</td>
 								<td class="px-4 py-3.5 hidden md:table-cell">
-									<span class="text-sm" style="color: rgba(255,255,255,0.40);">{formatDate(file.updated_at)}</span>
+									<span class="text-sm" style="color: var(--text-tertiary);">{formatDate(file.updated_at)}</span>
 								</td>
 								<td class="px-4 py-3.5">
 									<div class="flex items-center gap-1 justify-end">
@@ -661,17 +661,17 @@
 			{/if}
 
 			{#if teamFiles.length > 0}
-				<p class="px-1 mt-2 mb-2 text-[10px] font-semibold uppercase tracking-widest" style="color: rgba(255,255,255,0.25);">Team Folders</p>
-				<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+				<p class="px-1 mt-2 mb-2 text-[10px] font-semibold uppercase tracking-widest" style="color: var(--text-tertiary);">Team Folders</p>
+				<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 					<table class="min-w-full">
 						<thead>
-							<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider w-8" style="color: rgba(255,255,255,0.30);"></th>
-								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Name</th>
-								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Size</th>
-								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Version</th>
-								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Date</th>
-								<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Actions</th>
+							<tr style="border-bottom: 1px solid var(--border);">
+								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider w-8" style="color: var(--text-tertiary);"></th>
+								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Name</th>
+								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: var(--text-tertiary);">Size</th>
+								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">Version</th>
+								<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">Date</th>
+								<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Actions</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -689,13 +689,13 @@
 										<span class="text-sm font-medium text-white/80">{file.name.replace('Team-', '')}</span>
 									</td>
 									<td class="px-4 py-3.5 hidden sm:table-cell">
-										<span class="text-sm" style="color: rgba(255,255,255,0.40);">{file.size ? formatBytes(file.size) : '—'}</span>
+										<span class="text-sm" style="color: var(--text-tertiary);">{file.size ? formatBytes(file.size) : '—'}</span>
 									</td>
 									<td class="px-4 py-3.5 hidden md:table-cell">
-										<span style="color: rgba(255,255,255,0.20);">—</span>
+										<span style="color: var(--text-tertiary);">—</span>
 									</td>
 									<td class="px-4 py-3.5 hidden md:table-cell">
-										<span class="text-sm" style="color: rgba(255,255,255,0.40);">{formatDate(file.updated_at)}</span>
+										<span class="text-sm" style="color: var(--text-tertiary);">{formatDate(file.updated_at)}</span>
 									</td>
 									<td class="px-4 py-3.5">
 										<div class="flex items-center gap-1 justify-end">
@@ -717,7 +717,7 @@
 	</div>
 
 	<!-- Timeline -->
-	<div class="border-t flex-shrink-0 px-4 py-2" style="background: #0d0d0f; border-color: rgba(255,255,255,0.06);" bind:this={timelineContainer}>
+	<div class="border-t flex-shrink-0 px-4 py-2" style="background: var(--bg-base); border-color: var(--border);" bind:this={timelineContainer}>
 		<svg width="100%" height={TIMELINE_HEIGHT} class="select-none">
 			<!-- Base line -->
 			<line
@@ -725,7 +725,7 @@
 				y1={TIMELINE_HEIGHT - 16}
 				x2={timelineWidth - TIMELINE_PADDING}
 				y2={TIMELINE_HEIGHT - 16}
-				stroke="rgba(255,255,255,0.08)"
+				stroke="var(--border-strong)"
 				stroke-width="1"
 			/>
 
@@ -735,24 +735,24 @@
 					<line
 						x1={tick.x} y1={TIMELINE_HEIGHT - 16}
 						x2={tick.x} y2={TIMELINE_HEIGHT - 48}
-						stroke="rgba(255,255,255,0.15)" stroke-width="1"
+						stroke="var(--border)" stroke-width="1"
 					/>
 					<text
 						x={tick.x} y={TIMELINE_HEIGHT - 52}
 						text-anchor="middle"
-						style="font-size: 9px; fill: rgba(255,255,255,0.35); font-weight: 500;"
+						style="font-size: 9px; fill: var(--text-tertiary); font-weight: 500;"
 					>{tick.label}</text>
 				{:else if tick.isWeek}
 					<line
 						x1={tick.x} y1={TIMELINE_HEIGHT - 16}
 						x2={tick.x} y2={TIMELINE_HEIGHT - 30}
-						stroke="rgba(255,255,255,0.06)" stroke-width="0.5"
+						stroke="var(--border)" stroke-width="0.5"
 					/>
 				{:else}
 					<line
 						x1={tick.x} y1={TIMELINE_HEIGHT - 16}
 						x2={tick.x} y2={TIMELINE_HEIGHT - 22}
-						stroke="rgba(255,255,255,0.04)" stroke-width="0.5"
+						stroke="var(--border)" stroke-width="0.5"
 					/>
 				{/if}
 			{/each}
@@ -791,7 +791,7 @@
 <Modal title="Retention Policy — {retentionFolder?.name}" onclose={() => (showRetention = false)}>
 	{#snippet children()}
 		<div class="space-y-3">
-			<p class="text-sm" style="color: rgba(255,255,255,0.45);">Set how long versions are kept. Use 0 for unlimited.</p>
+			<p class="text-sm" style="color: var(--text-secondary);">Set how long versions are kept. Use 0 for unlimited.</p>
 			{#each [
 				{ label: 'Hourly', unit: 'hours', key: 'hourly_hours', desc: 'Keep one version per hour' },
 				{ label: 'Daily', unit: 'days', key: 'daily_days', desc: 'Keep one version per day' },
@@ -803,12 +803,12 @@
 				<div class="flex items-center justify-between gap-4">
 					<div class="flex-1">
 						<span class="text-sm font-medium text-white/70">{field.label}</span>
-						<span class="text-xs ml-1" style="color: rgba(255,255,255,0.30);">— {field.desc}</span>
+						<span class="text-xs ml-1" style="color: var(--text-tertiary);">— {field.desc}</span>
 					</div>
 					<div class="flex items-center gap-2 w-28">
 						<input type="number" min="0" bind:value={retention[field.key]} style="width: 80px; text-align: right;" />
 						{#if field.unit}
-							<span class="text-xs w-12" style="color: rgba(255,255,255,0.30);">{field.unit}</span>
+							<span class="text-xs w-12" style="color: var(--text-tertiary);">{field.unit}</span>
 						{/if}
 					</div>
 				</div>
@@ -816,7 +816,7 @@
 		</div>
 	{/snippet}
 	{#snippet footer()}
-		<button onclick={() => (showRetention = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">Cancel</button>
+		<button onclick={() => (showRetention = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Cancel</button>
 		<button onclick={saveRetention} disabled={retentionSaving} class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-lg transition-all">
 			{retentionSaving ? 'Saving…' : 'Save'}
 		</button>
@@ -829,17 +829,17 @@
 	{#snippet children()}
 		<div class="space-y-3">
 			<div>
-				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Name</label>
+				<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Name</label>
 				<input type="text" bind:value={shareName} />
 			</div>
 			{#if shareUrl}
 				<div>
-					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Share URL</label>
+					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Share URL</label>
 					<div class="flex items-center gap-2">
 						<input type="text" readonly value={shareUrl} style="font-size: 12px;" />
 						<button onclick={copyShareUrl}
 							class="flex items-center gap-1 px-3 py-2 text-xs font-medium rounded-lg transition-all flex-shrink-0"
-							style="{shareCopied ? 'background: rgba(34,197,94,0.12); color: #4ade80;' : 'background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.60);'}">
+							style="{shareCopied ? 'background: rgba(34,197,94,0.12); color: #4ade80;' : 'background: var(--bg-active); color: var(--text-secondary);'}">
 							{#if shareCopied}
 								<Check size={12} /> Copied
 							{:else}
@@ -850,25 +850,25 @@
 				</div>
 			{/if}
 			<div>
-				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Password <span style="color: rgba(255,255,255,0.25);">— optional</span></label>
+				<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Password <span style="color: var(--text-tertiary);">— optional</span></label>
 				<input type="text" bind:value={sharePassword} placeholder="Leave empty for no password" />
 			</div>
 			<div>
-				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Expiry date <span style="color: rgba(255,255,255,0.25);">— optional</span></label>
+				<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Expiry date <span style="color: var(--text-tertiary);">— optional</span></label>
 				<input type="datetime-local" bind:value={shareExpiry} />
 			</div>
 			<div>
-				<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Max downloads <span style="color: rgba(255,255,255,0.25);">— 0 = unlimited</span></label>
+				<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Max downloads <span style="color: var(--text-tertiary);">— 0 = unlimited</span></label>
 				<input type="number" min="0" bind:value={shareMaxDownloads} />
 			</div>
 			<div class="flex items-center gap-3">
 				<input type="checkbox" id="notify-download" bind:checked={shareNotifyOnDownload} />
-				<label for="notify-download" class="text-sm" style="color: rgba(255,255,255,0.60);">Email me when someone downloads</label>
+				<label for="notify-download" class="text-sm" style="color: var(--text-secondary);">Email me when someone downloads</label>
 			</div>
 		</div>
 	{/snippet}
 	{#snippet footer()}
-		<button onclick={() => (showShare = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">{shareUrl ? 'Close' : 'Cancel'}</button>
+		<button onclick={() => (showShare = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">{shareUrl ? 'Close' : 'Cancel'}</button>
 		{#if !shareUrl}
 			<button onclick={createShare} disabled={shareCreating} class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-lg transition-all">
 				{shareCreating ? 'Creating…' : 'Create Share Link'}
@@ -891,12 +891,12 @@
 					</div>
 				</div>
 			{/if}
-			<p class="text-sm" style="color: rgba(255,255,255,0.60);">Are you sure you want to delete <span class="font-semibold text-white/80">"{deleteFolderTarget.name}"</span> and all its contents?</p>
-			<p class="text-xs" style="color: rgba(255,255,255,0.35);">This will move the folder and all files inside to the trash.</p>
+			<p class="text-sm" style="color: var(--text-secondary);">Are you sure you want to delete <span class="font-semibold text-white/80">"{deleteFolderTarget.name}"</span> and all its contents?</p>
+			<p class="text-xs" style="color: var(--text-tertiary);">This will move the folder and all files inside to the trash.</p>
 		</div>
 	{/snippet}
 	{#snippet footer()}
-		<button onclick={() => (showDeleteFolder = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">Cancel</button>
+		<button onclick={() => (showDeleteFolder = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Cancel</button>
 		<button onclick={confirmDeleteFolder} disabled={deletingFolder} class="px-4 py-2 text-sm font-medium rounded-lg transition-all bg-red-600/10 text-red-400 hover:bg-red-600/20 border border-red-500/20">
 			{deletingFolder ? 'Deleting…' : 'Delete'}
 		</button>
@@ -906,10 +906,10 @@
 
 <style>
 	.file-row {
-		border-bottom: 1px solid rgba(255,255,255,0.04);
+		border-bottom: 1px solid var(--border);
 	}
 	.file-row:hover {
-		background: rgba(255,255,255,0.03);
+		background: var(--bg-hover);
 	}
 	.file-row:last-child {
 		border-bottom: none;
@@ -928,11 +928,11 @@
 		padding: 4px 8px;
 		border-radius: 6px;
 		transition: all 0.15s;
-		color: rgba(255,255,255,0.45);
+		color: var(--text-secondary);
 	}
 	.action-btn:hover {
-		background: rgba(255,255,255,0.06);
-		color: rgba(255,255,255,0.75);
+		background: var(--bg-active);
+		color: var(--text-primary);
 	}
 	.action-btn-blue {
 		color: #60a5fa;

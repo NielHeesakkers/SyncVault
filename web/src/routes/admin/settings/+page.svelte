@@ -414,19 +414,19 @@
 	<title>Settings — SyncVault Admin</title>
 </svelte:head>
 
-<div class="p-6 max-w-3xl" style="background: #0a0a0b; min-height: 100%;">
+<div class="p-6 max-w-3xl" style="background: var(--bg-base); min-height: 100%;">
 	<div class="mb-6">
 		<h1 class="text-base font-semibold text-white">Settings</h1>
-		<p class="text-sm mt-1" style="color: rgba(255,255,255,0.35);">Server configuration and system info.</p>
+		<p class="text-sm mt-1" style="color: var(--text-tertiary);">Server configuration and system info.</p>
 	</div>
 
 	<!-- Tabs -->
-	<div class="flex gap-0 border-b mb-6" style="border-color: rgba(255,255,255,0.06);">
+	<div class="flex gap-0 border-b mb-6" style="border-color: var(--border);">
 		{#each tabs as tab}
 			<button
 				onclick={() => (activeTab = tab.id)}
 				class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
-				style="{activeTab === tab.id ? 'border-color: #3b82f6; color: #60a5fa;' : 'border-color: transparent; color: rgba(255,255,255,0.40);'}"
+				style="{activeTab === tab.id ? 'border-color: #3b82f6; color: #60a5fa;' : 'border-color: transparent; color: var(--text-tertiary);'}"
 			>
 				<tab.icon size={14} />
 				{tab.label}
@@ -437,7 +437,7 @@
 	{#if loading}
 		<div class="space-y-4">
 			{#each [1,2] as _}
-				<div class="rounded-xl border p-6" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+				<div class="rounded-xl border p-6" style="background: var(--bg-elevated); border-color: var(--border);">
 					<div class="skeleton h-4 rounded w-24 mb-4"></div>
 					<div class="skeleton h-9 rounded w-full"></div>
 				</div>
@@ -447,25 +447,25 @@
 	<!-- GENERAL -->
 	{:else if activeTab === 'general'}
 		<div class="space-y-4">
-			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
-				<div class="px-5 py-4 border-b" style="border-color: rgba(255,255,255,0.05);">
+			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
+				<div class="px-5 py-4 border-b" style="border-color: var(--border);">
 					<h3 class="text-sm font-semibold text-white/70">Server</h3>
 				</div>
 				<div class="px-5 py-4">
-					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);" for="base-url">Base URL</label>
+					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);" for="base-url">Base URL</label>
 					<input id="base-url" type="url" bind:value={baseUrl} placeholder="https://sync.example.com" />
-					<p class="text-xs mt-1.5" style="color: rgba(255,255,255,0.30);">Used for share links. Leave empty to use the current browser URL.</p>
+					<p class="text-xs mt-1.5" style="color: var(--text-tertiary);">Used for share links. Leave empty to use the current browser URL.</p>
 				</div>
 			</div>
 
-			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
-				<div class="px-5 py-4 border-b" style="border-color: rgba(255,255,255,0.05);">
+			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
+				<div class="px-5 py-4 border-b" style="border-color: var(--border);">
 					<h3 class="text-sm font-semibold text-white/70">Trash</h3>
 				</div>
 				<div class="px-5 py-4">
-					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);" for="trash-days">Retention period (days)</label>
+					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);" for="trash-days">Retention period (days)</label>
 					<input id="trash-days" type="number" min="1" bind:value={trashDays} style="width: 120px;" />
-					<p class="text-xs mt-1.5" style="color: rgba(255,255,255,0.30);">Files in trash are permanently deleted after this many days.</p>
+					<p class="text-xs mt-1.5" style="color: var(--text-tertiary);">Files in trash are permanently deleted after this many days.</p>
 				</div>
 			</div>
 
@@ -479,21 +479,21 @@
 
 	<!-- NOTIFICATIONS -->
 	{:else if activeTab === 'notifications'}
-		<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+		<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 			<div class="px-5 py-5 space-y-5">
 				<div class="flex items-center justify-between">
 					<div>
 						<p class="text-sm font-medium text-white/70">Enable SMTP</p>
-						<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.35);">Send emails for welcome, password reset, quota warnings</p>
+						<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Send emails for welcome, password reset, quota warnings</p>
 					</div>
 					<button role="switch" aria-checked={smtpEnabled}
 						onclick={() => (smtpEnabled = !smtpEnabled)}
 						class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0"
-						style="{smtpEnabled ? 'background: #3b82f6;' : 'background: rgba(255,255,255,0.12);'}">
+						style="{smtpEnabled ? 'background: #3b82f6;' : 'background: var(--bg-active);'}">
 						<span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform {smtpEnabled ? 'translate-x-4' : 'translate-x-0.5'}"></span>
 					</button>
 				</div>
-				<div class="border-t pt-5 space-y-3" style="border-color: rgba(255,255,255,0.06);">
+				<div class="border-t pt-5 space-y-3" style="border-color: var(--border);">
 					{#each [
 						{ id: 'smtp-host', label: 'SMTP Host', value: smtpHost, placeholder: 'smtp.gmail.com', type: 'text' },
 						{ id: 'smtp-port', label: 'SMTP Port', value: smtpPort, placeholder: '587', type: 'number' },
@@ -502,7 +502,7 @@
 						{ id: 'smtp-from', label: 'From Address', value: smtpFrom, placeholder: 'SyncVault <noreply@example.com>', type: 'text' }
 					] as field}
 						<div>
-							<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);" for={field.id}>{field.label}</label>
+							<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);" for={field.id}>{field.label}</label>
 							<input id={field.id} type={field.type} value={field.value} placeholder={field.placeholder}
 								oninput={(e) => {
 									const v = (e.target as HTMLInputElement).value;
@@ -516,20 +516,20 @@
 					{/each}
 				</div>
 			</div>
-			<div class="px-5 py-4 border-t flex items-center justify-between" style="border-color: rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
+			<div class="px-5 py-4 border-t flex items-center justify-between" style="border-color: var(--border); background: var(--bg-hover);">
 				<div class="flex gap-2">
 					<button onclick={testSmtpConnection} disabled={!smtpEnabled || testingConnection}
 						class="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium border transition-all duration-200 disabled:opacity-40"
 						style="{connectionResult === 'success' ? 'border-color: rgba(34,197,94,0.30); background: rgba(34,197,94,0.12); color: #4ade80;' :
 						 connectionResult === 'error' ? 'border-color: rgba(239,68,68,0.30); background: rgba(239,68,68,0.12); color: #f87171;' :
-						 'border-color: rgba(255,255,255,0.10); color: rgba(255,255,255,0.60);'}">
+						 'border-color: var(--border); color: var(--text-secondary);'}">
 						<PlugZap size={13} /> {testingConnection ? 'Testing…' : connectionResult === 'success' ? 'Connected!' : connectionResult === 'error' ? 'Failed' : 'Test Connection'}
 					</button>
 					<button onclick={openTestEmail} disabled={!smtpEnabled}
 						class="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium border transition-all duration-200 disabled:opacity-40"
 						style="{emailResult === 'success' ? 'border-color: rgba(34,197,94,0.30); background: rgba(34,197,94,0.12); color: #4ade80;' :
 						 emailResult === 'error' ? 'border-color: rgba(239,68,68,0.30); background: rgba(239,68,68,0.12); color: #f87171;' :
-						 'border-color: rgba(255,255,255,0.10); color: rgba(255,255,255,0.60);'}">
+						 'border-color: var(--border); color: var(--text-secondary);'}">
 						<Send size={13} /> {emailResult === 'success' ? 'Sent!' : emailResult === 'error' ? 'Failed' : 'Send Test Email'}
 					</button>
 				</div>
@@ -544,14 +544,14 @@
 		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 		<div class="fixed inset-0 z-50 flex items-center justify-center" style="background: rgba(0,0,0,0.70); backdrop-filter: blur(4px);" onclick={() => (showTestEmail = false)}>
 			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-			<div class="rounded-xl shadow-2xl border p-6 w-96 space-y-4" style="background: #1a1a1d; border-color: rgba(255,255,255,0.10);" onclick={(e) => e.stopPropagation()}>
+			<div class="rounded-xl shadow-2xl border p-6 w-96 space-y-4" style="background: var(--bg-overlay); border-color: var(--border);" onclick={(e) => e.stopPropagation()}>
 				<h3 class="text-base font-semibold text-white">Send Test Email</h3>
 				<div>
-					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);" for="test-email">Email address</label>
+					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);" for="test-email">Email address</label>
 					<input id="test-email" type="email" bind:value={testEmailAddress} placeholder="you@example.com" />
 				</div>
 				<div class="flex justify-end gap-2.5">
-					<button onclick={() => (showTestEmail = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">Cancel</button>
+					<button onclick={() => (showTestEmail = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Cancel</button>
 					<button onclick={sendTestEmail} disabled={testing || !testEmailAddress}
 						class="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-all duration-200"
 						style="{emailResult === 'success' ? 'background: #22c55e;' : emailResult === 'error' ? 'background: #ef4444;' : 'background: #2563eb;'}">
@@ -565,23 +565,23 @@
 	<!-- BACKUP -->
 	{:else if activeTab === 'backup'}
 		<div class="space-y-4">
-			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 				<div class="px-5 py-5">
 					<div class="flex items-center justify-between mb-4">
 						<div>
 							<p class="text-sm font-medium text-white/70">Automatic backup</p>
-							<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.35);">Creates a backup of all settings, users, teams, and metadata</p>
+							<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Creates a backup of all settings, users, teams, and metadata</p>
 						</div>
 						<button role="switch" aria-checked={backupAutoEnabled}
 							onclick={() => { backupAutoEnabled = !backupAutoEnabled; saveSettings(); }}
 							class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0"
-							style="{backupAutoEnabled ? 'background: #3b82f6;' : 'background: rgba(255,255,255,0.12);'}">
+							style="{backupAutoEnabled ? 'background: #3b82f6;' : 'background: var(--bg-active);'}">
 							<span class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform {backupAutoEnabled ? 'translate-x-4' : 'translate-x-0.5'}"></span>
 						</button>
 					</div>
 					{#if backupAutoEnabled}
 						<div class="flex items-center gap-2 mb-3">
-							<label class="text-sm" style="color: rgba(255,255,255,0.50);">Every</label>
+							<label class="text-sm" style="color: var(--text-secondary);">Every</label>
 							<input type="number" min="1" bind:value={backupInterval} onchange={saveSettings} style="width: 80px;" />
 							<select bind:value={backupIntervalUnit} onchange={saveSettings} style="width: auto;">
 								<option value="hours">hours</option>
@@ -590,14 +590,14 @@
 							</select>
 						</div>
 					{/if}
-					<p class="text-xs" style="color: rgba(255,255,255,0.30);">Backups are stored in the Docker volume at <code class="font-mono px-1 rounded" style="background: rgba(255,255,255,0.06);">/data/backups/</code></p>
+					<p class="text-xs" style="color: var(--text-tertiary);">Backups are stored in the Docker volume at <code class="font-mono px-1 rounded" style="background: var(--bg-active);">/data/backups/</code></p>
 				</div>
-				<div class="px-5 py-3 border-t flex justify-between items-center" style="border-color: rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
-					<span class="text-xs" style="color: rgba(255,255,255,0.35);">{backups.length} backup{backups.length !== 1 ? 's' : ''} available</span>
+				<div class="px-5 py-3 border-t flex justify-between items-center" style="border-color: var(--border); background: var(--bg-hover);">
+					<span class="text-xs" style="color: var(--text-tertiary);">{backups.length} backup{backups.length !== 1 ? 's' : ''} available</span>
 					<div class="flex items-center gap-2">
 						<input type="file" accept=".zip" bind:this={fileInput} onchange={uploadRestore} class="hidden" />
 						<button onclick={() => fileInput.click()}
-							class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">
+							class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">
 							<Upload size={13} /> Restore from file
 						</button>
 						<button onclick={createBackup} disabled={backupCreating}
@@ -609,14 +609,14 @@
 			</div>
 
 			{#if backups.length > 0}
-			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 				<table class="min-w-full">
 					<thead>
-						<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Backup</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Size</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Date</th>
-							<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Actions</th>
+						<tr style="border-bottom: 1px solid var(--border);">
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Backup</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Size</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Date</th>
+							<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Actions</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -626,10 +626,10 @@
 									<span class="text-sm font-medium text-white/70">{backup.name}</span>
 								</td>
 								<td class="px-4 py-3.5">
-									<span class="text-sm" style="color: rgba(255,255,255,0.40);">{formatBytes(backup.size)}</span>
+									<span class="text-sm" style="color: var(--text-tertiary);">{formatBytes(backup.size)}</span>
 								</td>
 								<td class="px-4 py-3.5">
-									<span class="text-sm" style="color: rgba(255,255,255,0.40);">{formatDate(backup.created_at)}</span>
+									<span class="text-sm" style="color: var(--text-tertiary);">{formatDate(backup.created_at)}</span>
 								</td>
 								<td class="px-4 py-3.5">
 									<div class="flex items-center justify-end gap-1">
@@ -659,19 +659,19 @@
 	{:else if activeTab === 'cleanup'}
 		<div class="space-y-4">
 			<!-- Calendar -->
-			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
-				<div class="px-5 py-4 border-b" style="border-color: rgba(255,255,255,0.05);">
+			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
+				<div class="px-5 py-4 border-b" style="border-color: var(--border);">
 					<h3 class="text-sm font-semibold text-white/70">Select cutoff date</h3>
-					<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.35);">Files and versions created <strong class="text-white/50">before</strong> the selected date will be deleted.</p>
+					<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Files and versions created <strong class="text-white/50">before</strong> the selected date will be deleted.</p>
 				</div>
 				<div class="px-5 py-4">
 					<!-- Month navigation -->
 					<div class="flex items-center justify-between mb-3">
-						<button onclick={prevMonth} class="p-1 rounded hover:bg-white/5 transition-colors" style="color: rgba(255,255,255,0.50);">
+						<button onclick={prevMonth} class="p-1 rounded hover:bg-white/5 transition-colors" style="color: var(--text-secondary);">
 							<ChevronLeft size={16} />
 						</button>
 						<span class="text-sm font-medium text-white/70">{MONTH_NAMES[calendarViewMonth]} {calendarViewYear}</span>
-						<button onclick={nextMonth} class="p-1 rounded hover:bg-white/5 transition-colors" style="color: rgba(255,255,255,0.50);">
+						<button onclick={nextMonth} class="p-1 rounded hover:bg-white/5 transition-colors" style="color: var(--text-secondary);">
 							<ChevronRight size={16} />
 						</button>
 					</div>
@@ -679,7 +679,7 @@
 					<!-- Day-of-week headers -->
 					<div class="grid grid-cols-7 gap-1 mb-1">
 						{#each DAY_LABELS as lbl}
-							<div class="text-center text-[10px] font-semibold py-1" style="color: rgba(255,255,255,0.25);">{lbl}</div>
+							<div class="text-center text-[10px] font-semibold py-1" style="color: var(--text-tertiary);">{lbl}</div>
 						{/each}
 					</div>
 
@@ -702,14 +702,14 @@
 									? 'outline: 2px solid #3b82f6; outline-offset: -2px; background: rgba(59,130,246,0.20); color: #93c5fd;'
 									: active
 										? 'background: rgba(59,130,246,0.12); color: #93c5fd;'
-										: 'color: rgba(255,255,255,0.25);'}"
+										: 'color: var(--text-tertiary);'}"
 							>{day}</button>
 						{/each}
 					</div>
 					{/key}
 
 					{#if cleanupSelectedDate}
-						<p class="mt-3 text-xs" style="color: rgba(255,255,255,0.40);">
+						<p class="mt-3 text-xs" style="color: var(--text-tertiary);">
 							Selected: <span class="font-semibold text-white/60">{cleanupSelectedDate}</span>
 						</p>
 					{/if}
@@ -717,20 +717,20 @@
 			</div>
 
 			<!-- Options -->
-			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 				<div class="px-5 py-4 space-y-3">
 					<label class="flex items-center gap-3 cursor-pointer">
 						<input type="checkbox" bind:checked={cleanupIncludeVersions} class="w-4 h-4 rounded accent-blue-500" />
 						<div>
 							<p class="text-sm font-medium text-white/70">Include old versions</p>
-							<p class="text-xs" style="color: rgba(255,255,255,0.35);">Also delete stored file versions created before the cutoff date</p>
+							<p class="text-xs" style="color: var(--text-tertiary);">Also delete stored file versions created before the cutoff date</p>
 						</div>
 					</label>
 					<label class="flex items-center gap-3 cursor-pointer">
 						<input type="checkbox" bind:checked={cleanupOnlyDeleted} class="w-4 h-4 rounded accent-blue-500" />
 						<div>
 							<p class="text-sm font-medium text-white/70">Only deleted files (trash)</p>
-							<p class="text-xs" style="color: rgba(255,255,255,0.35);">Only target files that are already in the trash</p>
+							<p class="text-xs" style="color: var(--text-tertiary);">Only target files that are already in the trash</p>
 						</div>
 					</label>
 				</div>
@@ -738,32 +738,32 @@
 
 			<!-- Preview -->
 			{#if cleanupSelectedDate}
-			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 				<div class="px-5 py-4">
 					<h3 class="text-sm font-semibold text-white/70 mb-2">Preview</h3>
 					{#if cleanupPreviewLoading}
-						<div class="flex items-center gap-2 text-sm" style="color: rgba(255,255,255,0.35);">
+						<div class="flex items-center gap-2 text-sm" style="color: var(--text-tertiary);">
 							<span class="animate-spin inline-block w-3 h-3 border-2 border-white/20 border-t-white/60 rounded-full"></span>
 							Calculating…
 						</div>
 					{:else if cleanupPreview}
-						<p class="text-sm" style="color: rgba(255,255,255,0.55);">
+						<p class="text-sm" style="color: var(--text-secondary);">
 							<span class="font-semibold text-white/75">{cleanupPreview.files_count.toLocaleString()}</span> files,
 							<span class="font-semibold text-white/75">{cleanupPreview.versions_count.toLocaleString()}</span> versions,
 							<span class="font-semibold text-white/75">{formatBytes(cleanupPreview.total_bytes)}</span> will be deleted.
 						</p>
 					{:else}
-						<p class="text-sm" style="color: rgba(255,255,255,0.35);">No data.</p>
+						<p class="text-sm" style="color: var(--text-tertiary);">No data.</p>
 					{/if}
 				</div>
 			</div>
 
 			<!-- Confirmation -->
-			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(239,68,68,0.20);">
+			<div class="rounded-xl border overflow-hidden" style="background: #111927; border-color: rgba(239,68,68,0.20);">
 				<div class="px-5 py-4 space-y-3">
 					<p class="text-sm font-semibold" style="color: #f87171;">Warning: Dangerous — data will be permanently wiped.</p>
 					<div>
-						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);" for="cleanup-confirm">Type DELETE to confirm</label>
+						<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);" for="cleanup-confirm">Type DELETE to confirm</label>
 						<input id="cleanup-confirm" type="text" bind:value={cleanupConfirmText} placeholder="DELETE" autocomplete="off" />
 					</div>
 					<button
@@ -781,23 +781,23 @@
 
 	<!-- CHANGELOG -->
 	{:else if activeTab === 'changelog'}
-		<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
-			<div class="px-5 py-4 border-b" style="border-color: rgba(255,255,255,0.05);">
-				<p class="text-sm" style="color: rgba(255,255,255,0.40);">Current version: <span class="font-semibold text-white/80">{currentVersion || 'unknown'}</span></p>
+		<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
+			<div class="px-5 py-4 border-b" style="border-color: var(--border);">
+				<p class="text-sm" style="color: var(--text-tertiary);">Current version: <span class="font-semibold text-white/80">{currentVersion || 'unknown'}</span></p>
 			</div>
 			<div>
 				{#if changelogVersions.length === 0}
-					<div class="px-5 py-10 text-center text-sm" style="color: rgba(255,255,255,0.30);">No changelog available.</div>
+					<div class="px-5 py-10 text-center text-sm" style="color: var(--text-tertiary);">No changelog available.</div>
 				{:else}
 					{#each changelogVersions as ver, i}
-						<div class="px-5 py-4 {i < changelogVersions.length - 1 ? 'border-b' : ''}" style="border-color: rgba(255,255,255,0.05);">
+						<div class="px-5 py-4 {i < changelogVersions.length - 1 ? 'border-b' : ''}" style="border-color: var(--border);">
 							<div class="flex items-center gap-3 mb-2">
 								<span class="text-sm font-bold text-white/80">v{ver.version}</span>
-								<span class="text-xs" style="color: rgba(255,255,255,0.35);">{ver.date}</span>
+								<span class="text-xs" style="color: var(--text-tertiary);">{ver.date}</span>
 							</div>
 							<ul class="space-y-1">
 								{#each ver.changes as change}
-									<li class="text-sm flex items-start gap-2" style="color: rgba(255,255,255,0.55);">
+									<li class="text-sm flex items-start gap-2" style="color: var(--text-secondary);">
 										<span class="text-blue-400 mt-1 flex-shrink-0">•</span>
 										{change}
 									</li>
@@ -811,39 +811,39 @@
 
 	<!-- OPEN SOURCE -->
 	{:else if activeTab === 'opensource'}
-		<div class="rounded-xl border overflow-hidden mb-4" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+		<div class="rounded-xl border overflow-hidden mb-4" style="background: var(--bg-elevated); border-color: var(--border);">
 			<div class="px-5 py-5">
 				<h3 class="text-sm font-semibold text-white/80 mb-2">About SyncVault</h3>
-				<p class="text-sm" style="color: rgba(255,255,255,0.55);">SyncVault is an open-source file sync and backup solution, built as an alternative to Synology Drive.</p>
-				<p class="text-sm mt-2" style="color: rgba(255,255,255,0.55);">Created by <span class="font-medium text-white/70">Niel Heesakkers</span> — vibe-coded with <a href="https://claude.ai" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 transition-colors">Claude</a> by Anthropic.</p>
-				<p class="text-sm mt-3" style="color: rgba(255,255,255,0.40);">Version {currentVersion || 'unknown'}</p>
-				<p class="text-sm mt-2" style="color: rgba(255,255,255,0.40);">Contact: <a href="mailto:development@heesakkers.com" class="text-blue-400 hover:text-blue-300 transition-colors">development@heesakkers.com</a></p>
+				<p class="text-sm" style="color: var(--text-secondary);">SyncVault is an open-source file sync and backup solution, built as an alternative to Synology Drive.</p>
+				<p class="text-sm mt-2" style="color: var(--text-secondary);">Created by <span class="font-medium text-white/70">Niel Heesakkers</span> — vibe-coded with <a href="https://claude.ai" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 transition-colors">Claude</a> by Anthropic.</p>
+				<p class="text-sm mt-3" style="color: var(--text-tertiary);">Version {currentVersion || 'unknown'}</p>
+				<p class="text-sm mt-2" style="color: var(--text-tertiary);">Contact: <a href="mailto:development@heesakkers.com" class="text-blue-400 hover:text-blue-300 transition-colors">development@heesakkers.com</a></p>
 			</div>
 		</div>
 
-		<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
-			<div class="px-5 py-4 border-b" style="border-color: rgba(255,255,255,0.05);">
+		<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
+			<div class="px-5 py-4 border-b" style="border-color: var(--border);">
 				<h3 class="text-sm font-semibold text-white/70">Open Source Libraries</h3>
 			</div>
 			<table class="min-w-full">
 				<thead>
-					<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Library</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">License</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Used for</th>
+					<tr style="border-bottom: 1px solid var(--border);">
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Library</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">License</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: var(--text-tertiary);">Used for</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each openSourceLibs as lib, i}
-						<tr class="{i < openSourceLibs.length - 1 ? 'border-b' : ''}" style="border-color: rgba(255,255,255,0.04);">
+						<tr class="{i < openSourceLibs.length - 1 ? 'border-b' : ''}" style="border-color: var(--border);">
 							<td class="px-4 py-3.5">
 								<a href={lib.url} target="_blank" rel="noopener" class="text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors">{lib.name}</a>
 							</td>
 							<td class="px-4 py-3.5">
-								<span class="text-[11px] font-mono px-2 py-0.5 rounded" style="background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.45);">{lib.license}</span>
+								<span class="text-[11px] font-mono px-2 py-0.5 rounded" style="background: var(--bg-active); color: var(--text-secondary);">{lib.license}</span>
 							</td>
 							<td class="px-4 py-3.5 hidden sm:table-cell">
-								<span class="text-sm" style="color: rgba(255,255,255,0.40);">{lib.desc}</span>
+								<span class="text-sm" style="color: var(--text-tertiary);">{lib.desc}</span>
 							</td>
 						</tr>
 					{/each}
@@ -855,10 +855,10 @@
 
 <style>
 	.backup-row {
-		border-bottom: 1px solid rgba(255,255,255,0.04);
+		border-bottom: 1px solid var(--border);
 	}
 	.backup-row:hover {
-		background: rgba(255,255,255,0.02);
+		background: var(--bg-hover);
 	}
 	.backup-row:last-child {
 		border-bottom: none;
@@ -867,7 +867,7 @@
 		text-align: center;
 	}
 	.calendar-day:hover {
-		background: rgba(255,255,255,0.06);
-		color: rgba(255,255,255,0.70);
+		background: var(--bg-active);
+		color: var(--text-primary);
 	}
 </style>

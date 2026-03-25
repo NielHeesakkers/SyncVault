@@ -5,28 +5,22 @@ struct MenuBarIcon: View {
     let isConnected: Bool
     var syncProgress: SyncProgress? = nil
 
-    @State private var blinkPhase = false
-
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: iconName)
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(iconColor)
-            if isSyncing, let progress = syncProgress, progress.bytesPerSecond > 0 {
-                Text(formatSpeed(progress.bytesPerSecond))
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundColor(.green)
+            if isSyncing, let progress = syncProgress, progress.bytesPerSecond > 100 {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 2) {
+                        Text("↑")
+                            .foregroundColor(.green)
+                        Text(formatSpeed(progress.bytesPerSecond))
+                            .foregroundColor(.green)
+                    }
+                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                }
             }
-        }
-        .onChange(of: isSyncing) { _, syncing in
-            if syncing {
-                startBlinking()
-            } else {
-                blinkPhase = false
-            }
-        }
-        .onAppear {
-            if isSyncing { startBlinking() }
         }
     }
 
@@ -44,19 +38,7 @@ struct MenuBarIcon: View {
 
     private var iconColor: Color {
         if !isConnected { return .gray }
-        if isSyncing { return blinkPhase ? .blue : .green }
+        if isSyncing { return .blue }
         return .green
-    }
-
-    private func startBlinking() {
-        Task { @MainActor in
-            while isSyncing {
-                withAnimation(.easeInOut(duration: 0.6)) {
-                    blinkPhase.toggle()
-                }
-                try? await Task.sleep(nanoseconds: 600_000_000)
-            }
-            blinkPhase = false
-        }
     }
 }

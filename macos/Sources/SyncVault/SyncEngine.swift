@@ -11,9 +11,9 @@ actor SyncEngine {
     /// Cache of relative directory path → server folder ID (built during sync)
     private var folderIDCache: [String: String] = [:]
 
-    init(apiClient: APIClient, dbPath: URL) throws {
+    init(apiClient: APIClient, db: SyncDatabase) {
         self.apiClient = apiClient
-        self.db = try SyncDatabase(path: dbPath.path)
+        self.db = db
     }
 
     /// Sync a task. changedPaths == nil means full scan (first sync).
@@ -122,25 +122,8 @@ actor SyncEngine {
                             let parentRelPath = (relativePath as NSString).deletingLastPathComponent
                             let parentID = try await self.ensureRemoteDirectory(parentRelPath, rootID: task.remoteFolderID)
 
-                            let CHUNK_THRESHOLD: Int64 = 64 * 1024 * 1024  // 64 MB
-                            let uploaded: ServerFile
-
-                            if let remoteID = remoteFileID {
-                                // Existing file — try delta first
-                                let usedDelta = try await self.uploadDelta(fileURL: fileURL, remoteFileID: remoteID, relativePath: relativePath)
-                                if usedDelta {
-                                    // Delta upload handled internally; re-fetch the file to get updated metadata
-                                    uploaded = try await self.apiClient.getFile(id: remoteID)
-                                } else if fileSize > CHUNK_THRESHOLD {
-                                    uploaded = try await self.uploadChunked(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize)
-                                } else {
-                                    uploaded = try await self.apiClient.uploadFileFromDisk(fileURL: fileURL, filename: displayName, parentID: parentID)
-                                }
-                            } else if fileSize > CHUNK_THRESHOLD {
-                                uploaded = try await self.uploadChunked(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize)
-                            } else {
-                                uploaded = try await self.apiClient.uploadFileFromDisk(fileURL: fileURL, filename: displayName, parentID: parentID)
-                            }
+                            // Stream upload from disk — no memory limit, no timeout
+                            let uploaded = try await self.apiClient.uploadFileFromDisk(fileURL: fileURL, filename: displayName, parentID: parentID)
 
                             // Use the hash from server response
                             try self.db.updateState(taskID: taskID, fileName: relativePath, contentHash: uploaded.contentHash ?? "")
@@ -193,6 +176,12 @@ actor SyncEngine {
                             let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
                             try self.db.updateState(taskID: taskID, fileName: relativePath, contentHash: hash)
                             return .conflict(displayName)
+
+                        case .createDirectory(let relativePath):
+                            let _ = try await self.ensureRemoteDirectory(relativePath, rootID: task.remoteFolderID)
+                            let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
+                            logger.info(" Created dir: \(relativePath)")
+                            return .uploaded(displayName)
                         }
                     } catch let error as APIError where error == .unauthorized {
                         logger.info(" Auth failed — re-throwing")
@@ -442,6 +431,15 @@ actor SyncEngine {
         var actions: [SyncAction] = []
         let remoteByPath = Dictionary(remote.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
         let localByPath = Dictionary(local.filter { !$0.isDirectory }.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
+
+        // Create empty directories on server
+        let localDirs = local.filter { $0.isDirectory }
+        let remoteDirPaths = Set(folderIDCache.keys)
+        for dir in localDirs {
+            if !remoteDirPaths.contains(dir.relativePath) {
+                actions.append(.createDirectory(dir.relativePath))
+            }
+        }
 
         // Local files → upload if new/changed
         for (relPath, localFile) in localByPath {
@@ -698,6 +696,7 @@ enum SyncAction: CustomStringConvertible {
     case markRemovedLocally(String, String)  // remoteFileID, relativePath
     case deleteLocal(String, String)         // localPath, relativePath
     case conflict(String, String, String)    // localPath, remoteFileID, relativePath
+    case createDirectory(String)             // relativePath
 
     var fileName: String {
         switch self {
@@ -706,6 +705,7 @@ enum SyncAction: CustomStringConvertible {
         case .markRemovedLocally(_, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .deleteLocal(_, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .conflict(_, _, let p): return URL(fileURLWithPath: p).lastPathComponent
+        case .createDirectory(let p): return URL(fileURLWithPath: p).lastPathComponent
         }
     }
 
@@ -716,6 +716,7 @@ enum SyncAction: CustomStringConvertible {
         case .markRemovedLocally(_, let p): return "markRemovedLocally(\(p))"
         case .deleteLocal(_, let p): return "deleteLocal(\(p))"
         case .conflict(_, _, let p): return "conflict(\(p))"
+        case .createDirectory(let p): return "createDir(\(p))"
         }
     }
 }

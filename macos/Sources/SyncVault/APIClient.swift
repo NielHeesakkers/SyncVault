@@ -4,9 +4,14 @@ actor APIClient {
     let baseURL: String
     private var accessToken: String?
     private var refreshToken: String?
+    private let session: URLSession
 
     init(baseURL: String) {
         self.baseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 0    // No timeout for requests
+        config.timeoutIntervalForResource = 0   // No timeout for resources
+        self.session = URLSession(configuration: config)
     }
 
     func login(username: String, password: String) async throws {
@@ -156,7 +161,7 @@ actor APIClient {
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
 
-        let (responseData, response) = try await URLSession.shared.data(for: request)
+        let (responseData, response) = try await session.data(for: request)
         try checkResponse(response)
         return try JSONDecoder().decode(BackupEntry.self, from: responseData)
     }
@@ -202,25 +207,25 @@ actor APIClient {
     func initChunkedUpload(filename: String, parentID: String?, totalSize: Int64, chunkSize: Int = 64 * 1024 * 1024) async throws -> UploadSession {
         var body: [String: Any] = ["filename": filename, "total_size": totalSize, "chunk_size": chunkSize]
         if let parentID = parentID { body["parent_id"] = parentID }
-        return try await post("/api/files/upload/chunked/init", body: body)
+        return try await post("/api/uploads/init", body: body)
     }
 
     func uploadChunk(uploadID: String, chunkIndex: Int, data: Data) async throws {
-        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/upload/chunked/\(uploadID)/chunk/\(chunkIndex)")!)
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/uploads/\(uploadID)/chunks/\(chunkIndex)")!)
         request.httpMethod = "PUT"
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 0
         addAuth(&request)
-        let (_, response) = try await URLSession.shared.upload(for: request, from: data)
+        let (_, response) = try await session.upload(for: request, from: data)
         try checkResponse(response)
     }
 
     func getUploadStatus(uploadID: String) async throws -> UploadStatus {
-        return try await get("/api/files/upload/chunked/\(uploadID)/status")
+        return try await get("/api/uploads/\(uploadID)/status")
     }
 
     func completeChunkedUpload(uploadID: String) async throws -> ServerFile {
-        return try await post("/api/files/upload/chunked/\(uploadID)/complete", body: [:])
+        return try await post("/api/uploads/\(uploadID)/complete", body: [:])
     }
 
     // MARK: - Delta Sync
@@ -251,7 +256,7 @@ actor APIClient {
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
 
-        let (responseData, response) = try await URLSession.shared.data(for: request)
+        let (responseData, response) = try await session.data(for: request)
         try checkResponse(response)
         return try JSONDecoder().decode(ServerFile.self, from: responseData)
     }
@@ -262,7 +267,7 @@ actor APIClient {
         var request = URLRequest(url: URL(string: "\(baseURL)\(path)")!)
         request.httpMethod = "GET"
         addAuth(&request)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try checkResponse(response)
         return try JSONDecoder().decode(T.self, from: data)
     }
@@ -271,7 +276,7 @@ actor APIClient {
         var request = URLRequest(url: URL(string: "\(baseURL)\(path)")!)
         request.httpMethod = "GET"
         addAuth(&request)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try checkResponse(response)
         return data
     }
@@ -282,7 +287,7 @@ actor APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         addAuth(&request)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try checkResponse(response)
         return try JSONDecoder().decode(T.self, from: data)
     }
@@ -291,7 +296,7 @@ actor APIClient {
         var request = URLRequest(url: URL(string: "\(baseURL)\(path)")!)
         request.httpMethod = "DELETE"
         addAuth(&request)
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await session.data(for: request)
         try checkResponse(response)
     }
 
@@ -301,7 +306,7 @@ actor APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         addAuth(&request)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try checkResponse(response)
         return try JSONDecoder().decode(T.self, from: data)
     }
@@ -326,7 +331,7 @@ actor APIClient {
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try checkResponse(response)
         return try JSONDecoder().decode(ServerFile.self, from: data)
     }
@@ -377,7 +382,7 @@ actor APIClient {
         tempHandle.closeFile()
 
         // Upload from file (URLSession streams from disk, not memory)
-        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: tempURL)
+        let (data, response) = try await session.upload(for: request, fromFile: tempURL)
         try checkResponse(response)
         return try JSONDecoder().decode(ServerFile.self, from: data)
     }

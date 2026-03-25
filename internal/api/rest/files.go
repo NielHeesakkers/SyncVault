@@ -108,52 +108,85 @@ func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUploadFile handles multipart file upload, stores content, and creates metadata + version.
+// Streams directly from the request body — no memory buffering of the file.
 func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
 
-	// Parse multipart form (limit to 32 MB in memory).
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "could not parse multipart form"})
+	reader, err := r.MultipartReader()
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "could not parse multipart"})
 		return
 	}
 
-	file, header, err := r.FormFile("file")
-	if err != nil {
+	var parentID string
+	var filename string
+	var mimeType string
+	var contentHash string
+	var size int64
+	var fileProcessed bool
+
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "could not read multipart"})
+			return
+		}
+
+		switch part.FormName() {
+		case "parent_id":
+			b, _ := io.ReadAll(part)
+			parentID = string(b)
+		case "file":
+			filename = part.FileName()
+			// Read first 512 bytes for MIME detection
+			buf := make([]byte, 512)
+			n, _ := part.Read(buf)
+			mimeType = http.DetectContentType(buf[:n])
+
+			// Pipe: stream the already-read bytes + rest of part directly into storage
+			pr, pw := io.Pipe()
+			errCh := make(chan error, 1)
+			go func() {
+				var putErr error
+				contentHash, size, putErr = s.store.Put(pr)
+				errCh <- putErr
+			}()
+
+			// Write the already-read bytes first
+			if _, err := pw.Write(buf[:n]); err != nil {
+				pw.CloseWithError(err)
+				<-errCh
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not store file"})
+				return
+			}
+			// Stream the rest
+			if _, err := io.Copy(pw, part); err != nil {
+				pw.CloseWithError(err)
+				<-errCh
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not store file"})
+				return
+			}
+			pw.Close()
+
+			if putErr := <-errCh; putErr != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not store file"})
+				return
+			}
+			fileProcessed = true
+		}
+		part.Close()
+	}
+
+	if !fileProcessed {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing file field"})
-		return
-	}
-	defer file.Close()
-
-	parentID := r.FormValue("parent_id")
-
-	// Read first 512 bytes for MIME detection.
-	buf := make([]byte, 512)
-	n, _ := file.Read(buf)
-	mimeType := http.DetectContentType(buf[:n])
-
-	// Seek back to beginning to store the full file.
-	type readSeeker interface {
-		io.Reader
-		io.Seeker
-	}
-	if rs, ok := file.(readSeeker); ok {
-		rs.Seek(0, io.SeekStart)
-	} else {
-		// Fallback: re-join the already-read bytes with the rest.
-		// This path is taken when the multipart file doesn't implement Seeker.
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not seek file"})
-		return
-	}
-
-	// Store in content-addressable storage.
-	contentHash, size, err := s.store.Put(file)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not store file"})
 		return
 	}
 
 	// Create file metadata entry.
-	f, err := s.db.CreateFile(parentID, claims.UserID, header.Filename, false, size, contentHash, mimeType)
+	f, err := s.db.CreateFile(parentID, claims.UserID, filename, false, size, contentHash, mimeType)
 	if err != nil {
 		if errors.Is(err, metadata.ErrDuplicateFile) {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "file already exists"})

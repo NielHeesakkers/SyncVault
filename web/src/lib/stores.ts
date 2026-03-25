@@ -1,4 +1,34 @@
 import { writable } from 'svelte/store';
+import { browser } from '$app/environment';
+
+// Theme
+function createThemeStore() {
+	const initial = browser ? (localStorage.getItem('syncvault-theme') || 'dark') : 'dark';
+	const { subscribe, set, update } = writable<'dark' | 'light'>(initial);
+
+	return {
+		subscribe,
+		set(value: 'dark' | 'light') {
+			set(value);
+			if (browser) {
+				localStorage.setItem('syncvault-theme', value);
+				document.documentElement.setAttribute('data-theme', value);
+			}
+		},
+		toggle() {
+			update(current => {
+				const next = current === 'dark' ? 'light' : 'dark';
+				if (browser) {
+					localStorage.setItem('syncvault-theme', next);
+					document.documentElement.setAttribute('data-theme', next);
+				}
+				return next;
+			});
+		}
+	};
+}
+
+export const theme = createThemeStore();
 
 export interface User {
 	id?: string;

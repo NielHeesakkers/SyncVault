@@ -29,7 +29,7 @@
 	<title>Login — SyncVault</title>
 </svelte:head>
 
-<div class="min-h-screen flex items-center justify-center px-4" style="background: #0a0a0b;">
+<div class="min-h-screen flex items-center justify-center px-4" style="background: var(--bg-base);">
 	<div class="w-full max-w-sm">
 		<!-- Logo -->
 		<div class="flex flex-col items-center mb-8">
@@ -37,11 +37,11 @@
 				<Shield size={22} class="text-white" />
 			</div>
 			<h1 class="text-xl font-semibold text-white">SyncVault</h1>
-			<p class="text-sm mt-1.5" style="color: rgba(255,255,255,0.40);">Sign in to your account</p>
+			<p class="text-sm mt-1.5" style="color: var(--text-tertiary);">Sign in to your account</p>
 		</div>
 
 		<!-- Card -->
-		<div class="rounded-xl border p-6" style="background: #111113; border-color: rgba(255,255,255,0.07);">
+		<div class="rounded-xl border p-6" style="background: var(--bg-elevated); border-color: var(--border);">
 			{#if error}
 				<div class="mb-4 rounded-lg border px-4 py-3 text-sm text-red-400" style="background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.20);">
 					{error}
@@ -50,7 +50,7 @@
 
 			<form onsubmit={handleLogin} class="space-y-4">
 				<div>
-					<label for="username" class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Username</label>
+					<label for="username" class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Username</label>
 					<input
 						id="username"
 						type="text"
@@ -62,7 +62,7 @@
 				</div>
 
 				<div>
-					<label for="password" class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Password</label>
+					<label for="password" class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Password</label>
 					<input
 						id="password"
 						type="password"
@@ -89,6 +89,6 @@
 			</form>
 		</div>
 
-		<p class="mt-6 text-center text-xs" style="color: rgba(255,255,255,0.20);">SyncVault — Open Source File Sync & Backup</p>
+		<p class="mt-6 text-center text-xs" style="color: var(--text-tertiary);">SyncVault — Open Source File Sync & Backup</p>
 	</div>
 </div>

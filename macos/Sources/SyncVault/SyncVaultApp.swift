@@ -19,7 +19,8 @@ struct SyncVaultApp: App {
         MenuBarExtra {
             MenuBarView(appState: appState, updaterService: updaterService)
         } label: {
-            MenuBarIcon(isSyncing: appState.isSyncing, isConnected: appState.isConnected, syncProgress: appState.syncProgress)
+            Image(systemName: appState.isSyncing ? "arrow.triangle.2.circlepath.icloud" :
+                    appState.isConnected ? "checkmark.icloud" : "cloud.slash")
         }
         .menuBarExtraStyle(.window)
         .onChange(of: tokenImporter.pendingData) { _, newValue in

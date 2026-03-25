@@ -19,8 +19,9 @@
 		Bell,
 		LayoutDashboard
 	} from 'lucide-svelte';
+	import { Sun, Moon } from 'lucide-svelte';
 	import { api } from '$lib/api';
-	import { currentUser, showToast } from '$lib/stores';
+	import { currentUser, showToast, theme } from '$lib/stores';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 
@@ -84,6 +85,11 @@
 	let changingPwd = $state(false);
 
 	onMount(async () => {
+		// Apply saved theme
+		const savedTheme = localStorage.getItem('syncvault-theme') || 'dark';
+		document.documentElement.setAttribute('data-theme', savedTheme);
+		theme.set(savedTheme as 'dark' | 'light');
+
 		try {
 			const res = await fetch('/api/health');
 			if (res.ok) {
@@ -170,9 +176,9 @@
 	{@render children()}
 {:else}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-	<div class="flex h-screen overflow-hidden" style="background: #0a0a0b;" onclick={closeUserMenu}>
+	<div class="flex h-screen overflow-hidden" style="background: var(--bg-base);" onclick={closeUserMenu}>
 		<!-- Sidebar -->
-		<aside class="w-56 flex-shrink-0 flex flex-col border-r" style="background: #0a0a0b; border-color: rgba(255,255,255,0.06);">
+		<aside class="w-56 flex-shrink-0 flex flex-col border-r" style="background: #0b1018; border-color: rgba(255,255,255,0.16);">
 			<!-- Logo -->
 			<div class="px-4 py-5 flex items-center gap-2.5">
 				<div class="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
@@ -192,7 +198,7 @@
 								{isActive(item.href)
 									? 'text-white'
 									: 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'}"
-								style={isActive(item.href) ? 'background: rgba(255,255,255,0.08);' : ''}
+								style={isActive(item.href) ? 'background: rgba(255,255,255,0.18);' : ''}
 							>
 								{#if isActive(item.href)}
 									<span class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full"></span>
@@ -218,7 +224,7 @@
 										{isActive(item.href)
 											? 'text-white'
 											: 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'}"
-										style={isActive(item.href) ? 'background: rgba(255,255,255,0.08);' : ''}
+										style={isActive(item.href) ? 'background: rgba(255,255,255,0.18);' : ''}
 									>
 										{#if isActive(item.href)}
 											<span class="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-blue-500 rounded-r-full"></span>
@@ -234,9 +240,20 @@
 			</nav>
 
 			<!-- User section at bottom -->
-			<div class="px-2 py-3 border-t" style="border-color: rgba(255,255,255,0.06);">
-				<!-- Notification bell row -->
-				<div class="px-1 mb-1">
+			<div class="px-2 py-3 border-t" style="border-color: rgba(255,255,255,0.16);">
+				<!-- Theme toggle + Notification row -->
+				<div class="px-1 mb-1 flex items-center gap-1">
+					<button
+						onclick={() => theme.toggle()}
+						class="flex items-center justify-center w-8 h-8 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/[0.04] transition-all duration-150"
+						title={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+					>
+						{#if $theme === 'dark'}
+							<Sun size={15} />
+						{:else}
+							<Moon size={15} />
+						{/if}
+					</button>
 					<div class="relative inline-block">
 						<button
 							onclick={(e) => { e.stopPropagation(); showNotifications = !showNotifications; if (showNotifications) { markAllRead(); } }}
@@ -252,9 +269,9 @@
 						{#if showNotifications}
 							<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 							<div class="absolute bottom-full left-0 mb-2 w-80 rounded-xl shadow-2xl border z-50 max-h-96 overflow-y-auto"
-								style="background: #1a1a1d; border-color: rgba(255,255,255,0.10);"
+								style="background: #192231; border-color: rgba(255,255,255,0.10);"
 								onclick={(e) => e.stopPropagation()}>
-								<div class="px-4 py-3 border-b flex items-center justify-between" style="border-color: rgba(255,255,255,0.06);">
+								<div class="px-4 py-3 border-b flex items-center justify-between" style="border-color: rgba(255,255,255,0.16);">
 									<span class="text-sm font-semibold text-white">Notifications</span>
 									<button onclick={() => (showNotifications = false)} class="text-xs text-white/30 hover:text-white/60 transition-colors">Close</button>
 								</div>
@@ -262,7 +279,7 @@
 									<div class="px-4 py-6 text-center text-sm" style="color: rgba(255,255,255,0.30);">No notifications</div>
 								{:else}
 									{#each notifications as notif}
-										<div class="px-4 py-3 border-b {notif.read ? '' : 'bg-blue-500/5'}" style="border-color: rgba(255,255,255,0.04);">
+										<div class="px-4 py-3 border-b {notif.read ? '' : 'bg-blue-500/5'}" style="border-color: rgba(255,255,255,0.12);">
 											<p class="text-sm font-medium text-white/80">{notif.title}</p>
 											<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.40);">{notif.message}</p>
 											{#if notif.type === 'team_invite' && !notif.acted}
@@ -305,7 +322,7 @@
 						<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 						<div
 							class="absolute bottom-full left-0 mb-1 w-48 rounded-xl shadow-2xl border py-1 z-40"
-							style="background: #1a1a1d; border-color: rgba(255,255,255,0.10);"
+							style="background: #192231; border-color: rgba(255,255,255,0.10);"
 							onclick={(e) => e.stopPropagation()}
 						>
 							<button
@@ -314,7 +331,7 @@
 							>
 								<KeyRound size={14} /> Change Password
 							</button>
-							<div class="my-1 border-t" style="border-color: rgba(255,255,255,0.06);"></div>
+							<div class="my-1 border-t" style="border-color: rgba(255,255,255,0.16);"></div>
 							<button
 								onclick={() => api.logout()}
 								class="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
@@ -328,7 +345,7 @@
 		</aside>
 
 		<!-- Main content area -->
-		<div class="flex-1 flex flex-col min-w-0" style="background: #0a0a0b;">
+		<div class="flex-1 flex flex-col min-w-0" style="background: var(--bg-base);">
 			<!-- Page content -->
 			<main class="flex-1 overflow-auto">
 				{@render children()}
@@ -345,15 +362,15 @@
 		{#snippet children()}
 			<div class="space-y-3">
 				<div>
-					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Current password</label>
+					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Current password</label>
 					<input type="password" bind:value={changePwdForm.current_password} placeholder="Enter current password" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">New password</label>
+					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">New password</label>
 					<input type="password" bind:value={changePwdForm.new_password} placeholder="Enter new password" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.50);">Confirm new password</label>
+					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Confirm new password</label>
 					<input type="password" bind:value={changePwdForm.confirm_password} placeholder="Confirm new password"
 						style={changePwdForm.confirm_password && changePwdForm.new_password !== changePwdForm.confirm_password ? 'border-color: #ef4444;' : ''} />
 					{#if changePwdForm.confirm_password && changePwdForm.new_password !== changePwdForm.confirm_password}
@@ -363,7 +380,7 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showChangePwd = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all duration-150" style="border-color: rgba(255,255,255,0.10);">Cancel</button>
+			<button onclick={() => (showChangePwd = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all duration-150" style="border-color: var(--border);">Cancel</button>
 			<button
 				onclick={doChangePassword}
 				disabled={changingPwd || !changePwdForm.current_password || !changePwdForm.new_password || changePwdForm.new_password !== changePwdForm.confirm_password}

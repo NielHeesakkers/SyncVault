@@ -14,17 +14,12 @@ struct MenuBarView: View {
     }
 
     var body: some View {
-        ZStack {
-            // Glassmorphism vibrancy background
-            VisualEffectView(material: .popover, blendingMode: .behindWindow)
-                .ignoresSafeArea()
-
-            VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
                 // MARK: - Header: Connection status
                 sectionView {
                     HStack(spacing: 8) {
                         if appState.isConnected {
-                            PulsingDot(color: .green)
+                            Circle().fill(Color.green).frame(width: 8, height: 8)
                         } else {
                             Circle()
                                 .fill(Color(white: 0.4))
@@ -166,6 +161,16 @@ struct MenuBarView: View {
                         }
                     }
 
+                    // MARK: - Speed Graph
+                    if appState.isSyncing && !appState.speedHistory.isEmpty {
+                        subtleDivider
+                        sectionView {
+                            menuSectionHeader("Sync Speed")
+                            SpeedGraphView(history: appState.speedHistory)
+                                .frame(height: 40)
+                        }
+                    }
+
                     subtleDivider
 
                     // MARK: - Sync Tasks + Storage
@@ -187,7 +192,7 @@ struct MenuBarView: View {
                                     .lineLimit(1)
                                 Spacer()
                                 if task.isEnabled && appState.isSyncing {
-                                    PulsingDot(color: taskStatusColor(task))
+                                    Circle().fill(taskStatusColor(task)).frame(width: 6, height: 6)
                                 } else {
                                     Circle()
                                         .fill(taskStatusColor(task))
@@ -302,7 +307,6 @@ struct MenuBarView: View {
                 .padding(.bottom, 8)
                 .padding(.top, 2)
             }
-        }
         .frame(width: 300)
     }
 

@@ -56,7 +56,7 @@
 		if (['pdf'].includes(ext)) return { icon: FileText, color: '#ef4444' };
 		if (['doc','docx','odt','rtf','txt','md'].includes(ext)) return { icon: FileText, color: '#3b82f6' };
 		if (['xls','xlsx','csv','ods'].includes(ext)) return { icon: FileText, color: '#22c55e' };
-		return { icon: File, color: 'rgba(255,255,255,0.40)' };
+		return { icon: File, color: 'var(--text-tertiary)' };
 	}
 
 	let folderId = $derived($page.params.folderId);
@@ -248,7 +248,7 @@
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 <div
 	class="h-full flex flex-col"
-	style="background: #0a0a0b;"
+	style="background: var(--bg-base);"
 	onclick={closeContextMenu}
 	ondragover={(e) => { e.preventDefault(); dragOver = true; }}
 	ondragleave={() => { dragOver = false; }}
@@ -256,7 +256,7 @@
 >
 	{#if dragOver}
 		<div class="fixed inset-0 z-40 pointer-events-none flex items-center justify-center" style="background: rgba(59,130,246,0.08); border: 3px dashed rgba(59,130,246,0.40);">
-			<div class="rounded-xl px-8 py-6 text-center" style="background: #1a1a1d; border: 1px solid rgba(255,255,255,0.10);">
+			<div class="rounded-xl px-8 py-6 text-center" style="background: var(--bg-overlay); border: 1px solid var(--border);">
 				<Upload size={36} class="mx-auto mb-3 text-blue-400" />
 				<p class="text-base font-semibold text-white">Drop files to upload</p>
 			</div>
@@ -264,7 +264,7 @@
 	{/if}
 
 	<!-- Header bar -->
-	<div class="px-5 py-3.5 border-b flex items-center justify-between gap-4" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+	<div class="px-5 py-3.5 border-b flex items-center justify-between gap-4" style="background: var(--bg-elevated); border-color: var(--border);">
 		<BreadcrumbNav items={breadcrumbs} onclick={navigateToBreadcrumb} />
 		<div class="flex items-center gap-2 flex-shrink-0">
 			{#if uploading}
@@ -282,7 +282,7 @@
 			<button
 				onclick={() => (showNewFolder = true)}
 				class="flex items-center gap-2 text-sm font-medium rounded-lg px-3.5 py-2 transition-all duration-150 text-white/60 hover:text-white/80"
-				style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.07);"
+				style="background: var(--bg-hover); border: 1px solid var(--border);"
 			>
 				<FolderPlus size={14} /> New Folder
 			</button>
@@ -293,19 +293,19 @@
 
 	<div class="flex-1 overflow-auto p-5">
 		{#if loading}
-			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 				<table class="min-w-full">
 					<thead>
-						<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+						<tr style="border-bottom: 1px solid var(--border);">
 							<th class="px-4 py-3 w-8"></th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Name</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Size</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Modified</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Name</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: var(--text-tertiary);">Size</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">Modified</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each [1,2,3,4,5] as _}
-							<tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+							<tr style="border-bottom: 1px solid var(--border);">
 								<td class="px-4 py-3.5"><div class="skeleton h-5 rounded w-5"></div></td>
 								<td class="px-4 py-3.5"><div class="skeleton h-4 rounded w-40"></div></td>
 								<td class="px-4 py-3.5 hidden sm:table-cell"><div class="skeleton h-4 rounded w-16"></div></td>
@@ -317,19 +317,19 @@
 			</div>
 		{:else if items.length === 0}
 			<div class="text-center py-24">
-				<FolderOpen size={48} style="color: rgba(255,255,255,0.08); margin: 0 auto 16px;" />
+				<FolderOpen size={48} style="color: var(--text-tertiary); margin: 0 auto 16px;" />
 				<p class="text-sm font-medium text-white/40">This folder is empty</p>
-				<p class="text-xs mt-1.5" style="color: rgba(255,255,255,0.20);">Upload files or create a folder to get started.</p>
+				<p class="text-xs mt-1.5" style="color: var(--text-tertiary);">Upload files or create a folder to get started.</p>
 			</div>
 		{:else}
-			<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 				<table class="min-w-full">
 					<thead>
-						<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+						<tr style="border-bottom: 1px solid var(--border);">
 							<th class="px-4 py-3 w-8"></th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Name</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Size</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Modified</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Name</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: var(--text-tertiary);">Size</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">Modified</th>
 							<th class="px-4 py-3 w-10"></th>
 						</tr>
 					</thead>
@@ -354,20 +354,20 @@
 									<span class="text-sm font-medium text-white/75">{item.name}</span>
 								</td>
 								<td class="px-4 py-3.5 hidden sm:table-cell">
-									<span class="text-sm" style="color: rgba(255,255,255,0.40);">
+									<span class="text-sm" style="color: var(--text-tertiary);">
 										{item.type === 'folder' ? '—' : formatBytes(item.size)}
 									</span>
 								</td>
 								<td class="px-4 py-3.5 hidden md:table-cell">
-									<span class="text-sm" style="color: rgba(255,255,255,0.40);">{formatDate(item.updated_at)}</span>
+									<span class="text-sm" style="color: var(--text-tertiary);">{formatDate(item.updated_at)}</span>
 								</td>
 								<td class="px-4 py-3.5">
 									<button
 										onclick={(e) => { e.stopPropagation(); openContextMenu(e, item); }}
 										class="p-1 rounded transition-colors"
-										style="color: rgba(255,255,255,0.25);"
-										onmouseenter={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.60)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)'; }}
-										onmouseleave={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.25)'; (e.currentTarget as HTMLElement).style.background = ''; }}
+										style="color: var(--text-tertiary);"
+										onmouseenter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)'; }}
+										onmouseleave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--text-tertiary)'; (e.currentTarget as HTMLElement).style.background = ''; }}
 									>
 										<MoreHorizontal size={15} />
 									</button>
@@ -385,21 +385,21 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div
 		class="fixed z-50 rounded-xl py-1 w-44"
-		style="left: {contextMenu.x}px; top: {contextMenu.y}px; background: #1a1a1d; border: 1px solid rgba(255,255,255,0.10); box-shadow: 0 8px 32px rgba(0,0,0,0.5);"
+		style="left: {contextMenu.x}px; top: {contextMenu.y}px; background: var(--bg-overlay); border: 1px solid var(--border); box-shadow: 0 8px 32px rgba(0,0,0,0.5);"
 		onclick={(e) => e.stopPropagation()}
 	>
 		{#if contextMenu.item.type === 'file'}
 			<button onclick={() => { downloadFile(contextMenu!.item); }} class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-white/70">
-				<Download size={14} style="color: rgba(255,255,255,0.40);" /> Download
+				<Download size={14} style="color: var(--text-tertiary);" /> Download
 			</button>
 		{/if}
 		<button onclick={() => startRename(contextMenu!.item)} class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-white/70">
-			<Edit2 size={14} style="color: rgba(255,255,255,0.40);" /> Rename
+			<Edit2 size={14} style="color: var(--text-tertiary);" /> Rename
 		</button>
 		<button class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-white/70" onclick={closeContextMenu}>
-			<Move size={14} style="color: rgba(255,255,255,0.40);" /> Move
+			<Move size={14} style="color: var(--text-tertiary);" /> Move
 		</button>
-		<div style="border-top: 1px solid rgba(255,255,255,0.07); margin: 4px 0;"></div>
+		<div style="border-top: 1px solid var(--border); margin: 4px 0;"></div>
 		<button onclick={() => confirmDelete(contextMenu!.item)} class="context-item-danger flex items-center gap-2 w-full px-4 py-2 text-sm text-red-400">
 			<Trash2 size={14} class="text-red-400" /> Delete
 		</button>

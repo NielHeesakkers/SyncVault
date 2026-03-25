@@ -1,20 +1,55 @@
 @import 'tailwindcss';
 
-:root {
-  --bg-base: #0a0a0b;
-  --bg-elevated: #111113;
-  --bg-overlay: #1a1a1d;
-  --bg-hover: rgba(255,255,255,0.04);
-  --bg-active: rgba(255,255,255,0.08);
-  --border: rgba(255,255,255,0.06);
-  --border-strong: rgba(255,255,255,0.10);
-  --text-primary: #e4e4e7;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
-  --accent-blue: #3b82f6;
-  --accent-green: #22c55e;
+:root, [data-theme="dark"] {
+  --bg-base: #0b1018;
+  --bg-elevated: #111927;
+  --bg-overlay: #192231;
+  --bg-hover: rgba(255,255,255,0.06);
+  --bg-active: rgba(255,255,255,0.10);
+  --border: rgba(255,255,255,0.10);
+  --border-strong: rgba(255,255,255,0.18);
+  --text-primary: #f0f2f5;
+  --text-secondary: #9ca3b0;
+  --text-tertiary: #6b7280;
+  --accent-blue: #2563eb;
+  --accent-green: #10b981;
   --accent-red: #ef4444;
   --accent-yellow: #f59e0b;
+  --accent-cyan: #06b6d4;
+  --sidebar-bg: #0b1018;
+  --sidebar-text: rgba(255,255,255,0.70);
+  --sidebar-text-active: #ffffff;
+  --sidebar-active-bg: rgba(255,255,255,0.10);
+  --sidebar-border: rgba(255,255,255,0.08);
+  --input-bg: rgba(255,255,255,0.07);
+  --input-border: rgba(255,255,255,0.15);
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg-base: #f5f7fa;
+  --bg-elevated: #ffffff;
+  --bg-overlay: #f0f2f5;
+  --bg-hover: rgba(0,0,0,0.04);
+  --bg-active: rgba(0,0,0,0.08);
+  --border: rgba(0,0,0,0.10);
+  --border-strong: rgba(0,0,0,0.18);
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-tertiary: #9ca3af;
+  --accent-blue: #2563eb;
+  --accent-green: #059669;
+  --accent-red: #dc2626;
+  --accent-yellow: #d97706;
+  --accent-cyan: #0891b2;
+  --sidebar-bg: #1e293b;
+  --sidebar-text: rgba(255,255,255,0.70);
+  --sidebar-text-active: #ffffff;
+  --sidebar-active-bg: rgba(255,255,255,0.10);
+  --sidebar-border: rgba(255,255,255,0.08);
+  --input-bg: #ffffff;
+  --input-border: rgba(0,0,0,0.15);
+  color-scheme: light;
 }
 
 *, *::before, *::after {
@@ -72,8 +107,8 @@ input[type="date"],
 input[type="url"],
 textarea,
 select {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.10);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: 8px;
   color: var(--text-primary);
   font-size: 0.875rem;

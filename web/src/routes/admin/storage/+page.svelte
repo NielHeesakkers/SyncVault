@@ -88,16 +88,16 @@
 	<title>Storage — SyncVault Admin</title>
 </svelte:head>
 
-<div class="p-6 space-y-5" style="background: #0a0a0b; min-height: 100%;">
+<div class="p-6 space-y-5" style="background: var(--bg-base); min-height: 100%;">
 	<div>
 		<h1 class="text-base font-semibold text-white">Storage</h1>
-		<p class="text-sm mt-1" style="color: rgba(255,255,255,0.35);">System-wide storage usage overview.</p>
+		<p class="text-sm mt-1" style="color: var(--text-tertiary);">System-wide storage usage overview.</p>
 	</div>
 
 	{#if loading}
 		<div class="space-y-5">
 			{#each [1,2] as _}
-				<div class="rounded-xl border p-6" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+				<div class="rounded-xl border p-6" style="background: var(--bg-elevated); border-color: var(--border);">
 					<div class="skeleton h-4 rounded w-32 mb-4"></div>
 					<div class="skeleton h-2 rounded w-full mb-3"></div>
 					<div class="flex gap-8">
@@ -110,7 +110,7 @@
 		</div>
 	{:else}
 		<!-- Overall storage -->
-		<div class="rounded-xl border p-6" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+		<div class="rounded-xl border p-6" style="background: var(--bg-elevated); border-color: var(--border);">
 			<div class="flex items-center gap-3 mb-5">
 				<div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: rgba(59,130,246,0.15);">
 					<HardDrive size={16} class="text-blue-400" />
@@ -122,37 +122,37 @@
 				<div class="grid grid-cols-3 gap-4 mt-5">
 					<div class="text-center">
 						<p class="text-xl font-bold text-white">{formatBytes(overview.used)}</p>
-						<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.30);">Used</p>
+						<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Used</p>
 					</div>
 					<div class="text-center">
 						<p class="text-xl font-bold text-green-400">{formatBytes(overview.available)}</p>
-						<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.30);">Available</p>
+						<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Available</p>
 					</div>
 					<div class="text-center">
 						<p class="text-xl font-bold text-white">{formatBytes(overview.total)}</p>
-						<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.30);">Total</p>
+						<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Total</p>
 					</div>
 				</div>
 			{:else}
-				<p class="text-sm" style="color: rgba(255,255,255,0.30);">Storage data unavailable.</p>
+				<p class="text-sm" style="color: var(--text-tertiary);">Storage data unavailable.</p>
 			{/if}
 		</div>
 
 		<!-- Per user -->
-		<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
-			<div class="px-5 py-4 border-b flex items-center gap-2" style="border-color: rgba(255,255,255,0.05);">
+		<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
+			<div class="px-5 py-4 border-b flex items-center gap-2" style="border-color: var(--border);">
 				<User size={15} class="text-blue-400" />
 				<h2 class="text-sm font-semibold text-white/70">Storage by User</h2>
 			</div>
 			{#if users.length === 0}
-				<div class="text-center py-10 text-sm" style="color: rgba(255,255,255,0.30);">No user data available.</div>
+				<div class="text-center py-10 text-sm" style="color: var(--text-tertiary);">No user data available.</div>
 			{:else}
 				<table class="min-w-full">
 					<thead>
-						<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">User</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Used</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Quota</th>
+						<tr style="border-bottom: 1px solid var(--border);">
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">User</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Used</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">Quota</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -175,7 +175,7 @@
 											<StorageBar used={user.storage_used} total={user.storage_quota} />
 										</div>
 									{:else}
-										<span class="text-sm" style="color: rgba(255,255,255,0.30);">Unlimited</span>
+										<span class="text-sm" style="color: var(--text-tertiary);">Unlimited</span>
 									{/if}
 								</td>
 							</tr>
@@ -187,17 +187,17 @@
 
 		<!-- Per team -->
 		{#if teams.length > 0}
-		<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
-			<div class="px-5 py-4 border-b flex items-center gap-2" style="border-color: rgba(255,255,255,0.05);">
+		<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
+			<div class="px-5 py-4 border-b flex items-center gap-2" style="border-color: var(--border);">
 				<FolderTree size={15} class="text-blue-400" />
 				<h2 class="text-sm font-semibold text-white/70">Storage by Team</h2>
 			</div>
 			<table class="min-w-full">
 				<thead>
-					<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Team</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Used</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">% of total</th>
+					<tr style="border-bottom: 1px solid var(--border);">
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Team</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Used</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">% of total</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -215,18 +215,18 @@
 							<td class="px-4 py-3.5 hidden md:table-cell">
 								{#if overview?.used && overview.used > 0}
 									<div class="flex items-center gap-2">
-										<div class="flex-1 max-w-24 rounded-full h-1.5" style="background: rgba(255,255,255,0.08);">
+										<div class="flex-1 max-w-24 rounded-full h-1.5" style="background: var(--border);">
 											<div
 												class="h-1.5 bg-blue-500 rounded-full"
 												style="width: {Math.min(100, (team.size / overview.used) * 100).toFixed(1)}%"
 											></div>
 										</div>
-										<span class="text-xs" style="color: rgba(255,255,255,0.40);">
+										<span class="text-xs" style="color: var(--text-tertiary);">
 											{((team.size / overview.used) * 100).toFixed(1)}%
 										</span>
 									</div>
 								{:else}
-									<span class="text-xs" style="color: rgba(255,255,255,0.25);">—</span>
+									<span class="text-xs" style="color: var(--text-tertiary);">—</span>
 								{/if}
 							</td>
 						</tr>
@@ -240,10 +240,10 @@
 
 <style>
 	.storage-row {
-		border-bottom: 1px solid rgba(255,255,255,0.04);
+		border-bottom: 1px solid var(--border);
 	}
 	.storage-row:hover {
-		background: rgba(255,255,255,0.02);
+		background: var(--bg-hover);
 	}
 	.storage-row:last-child {
 		border-bottom: none;

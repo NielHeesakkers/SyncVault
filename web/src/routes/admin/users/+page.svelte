@@ -196,11 +196,11 @@
 
 <svelte:head><title>Users — SyncVault Admin</title></svelte:head>
 
-<div class="p-6" style="background: #0a0a0b; min-height: 100%;">
+<div class="p-6" style="background: var(--bg-base); min-height: 100%;">
 	<div class="mb-6 flex items-center justify-between">
 		<div>
 			<h1 class="text-base font-semibold text-white">Users</h1>
-			<p class="text-sm mt-1" style="color: rgba(255,255,255,0.35);">{users.length} user{users.length !== 1 ? 's' : ''} total</p>
+			<p class="text-sm mt-1" style="color: var(--text-tertiary);">{users.length} user{users.length !== 1 ? 's' : ''} total</p>
 		</div>
 		<button onclick={openCreate}
 			class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg px-4 py-2 transition-all duration-150">
@@ -208,9 +208,9 @@
 		</button>
 	</div>
 
-	<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+	<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 		{#if loading}
-			<div class="px-4 py-3 border-b" style="border-color: rgba(255,255,255,0.05);">
+			<div class="px-4 py-3 border-b" style="border-color: var(--border);">
 				<div class="flex gap-8">
 					{#each [1,2,3,4] as _}
 						<div class="skeleton h-3 rounded w-16"></div>
@@ -218,7 +218,7 @@
 				</div>
 			</div>
 			{#each [1,2,3,4] as _}
-				<div class="px-4 py-3.5 border-b flex items-center gap-3" style="border-color: rgba(255,255,255,0.04);">
+				<div class="px-4 py-3.5 border-b flex items-center gap-3" style="border-color: var(--border);">
 					<div class="skeleton w-8 h-8 rounded-full flex-shrink-0"></div>
 					<div class="space-y-1.5 flex-1">
 						<div class="skeleton h-3 rounded w-32"></div>
@@ -229,19 +229,19 @@
 			{/each}
 		{:else if users.length === 0}
 			<div class="flex flex-col items-center justify-center py-20">
-				<div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
-					<Users size={24} style="color: rgba(255,255,255,0.20);" />
+				<div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style="background: var(--bg-active);">
+					<Users size={24} style="color: var(--text-tertiary);" />
 				</div>
-				<p class="text-base font-medium" style="color: rgba(255,255,255,0.40);">No users found</p>
+				<p class="text-base font-medium" style="color: var(--text-tertiary);">No users found</p>
 			</div>
 		{:else}
 			<table class="min-w-full">
 				<thead>
-					<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">User</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Role</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden lg:table-cell" style="color: rgba(255,255,255,0.30);">Storage</th>
-						<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Actions</th>
+					<tr style="border-bottom: 1px solid var(--border);">
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">User</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: var(--text-tertiary);">Role</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden lg:table-cell" style="color: var(--text-tertiary);">Storage</th>
+						<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -254,13 +254,13 @@
 									</div>
 									<div>
 										<p class="text-sm font-medium text-white/80">{user.username}</p>
-										<p class="text-xs" style="color: rgba(255,255,255,0.35);">{user.email}</p>
+										<p class="text-xs" style="color: var(--text-tertiary);">{user.email}</p>
 									</div>
 								</div>
 							</td>
 							<td class="px-4 py-3.5 hidden sm:table-cell">
 								<span class="inline-flex items-center gap-1 text-[11px] font-medium rounded-full px-2.5 py-0.5"
-									style="{user.role === 'admin' ? 'background: rgba(168,85,247,0.12); color: #c084fc; border: 1px solid rgba(168,85,247,0.20);' : 'background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.45); border: 1px solid rgba(255,255,255,0.08);'}">
+									style="{user.role === 'admin' ? 'background: rgba(168,85,247,0.12); color: #c084fc; border: 1px solid rgba(168,85,247,0.20);' : 'background: var(--bg-active); color: var(--text-secondary); border: 1px solid var(--border);'}">
 									{#if user.role === 'admin'}<Shield size={10} />{:else}<User size={10} />{/if}
 									{user.role}
 								</span>
@@ -269,7 +269,7 @@
 								{#if user.storage_quota}
 									<div class="w-40"><StorageBar used={user.storage_used ?? 0} total={user.storage_quota} /></div>
 								{:else}
-									<span class="text-sm" style="color: rgba(255,255,255,0.35);">{formatBytes(user.storage_used ?? 0)}</span>
+									<span class="text-sm" style="color: var(--text-tertiary);">{formatBytes(user.storage_used ?? 0)}</span>
 								{/if}
 							</td>
 							<td class="px-4 py-3.5">
@@ -294,19 +294,19 @@
 		{#snippet children()}
 			<div class="space-y-3">
 				<div>
-					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Username</label>
+					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Username</label>
 					<input type="text" bind:value={createForm.username} />
 				</div>
 				<div>
-					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Email</label>
+					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Email</label>
 					<input type="email" bind:value={createForm.email} />
 				</div>
 				<div>
-					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Password</label>
+					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Password</label>
 					<input type="password" bind:value={createForm.password} />
 				</div>
 				<div>
-					<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Role</label>
+					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Role</label>
 					<select bind:value={createForm.role}>
 						<option value="user">User</option>
 						<option value="admin">Admin</option>
@@ -314,8 +314,8 @@
 				</div>
 				{#if teams.length > 0}
 					<div>
-						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Team Folders</label>
-						<div class="space-y-2 border rounded-lg p-3" style="border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);">
+						<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Team Folders</label>
+						<div class="space-y-2 border rounded-lg p-3" style="border-color: var(--border); background: var(--bg-hover);">
 							{#each teams as team}
 								<div class="flex items-center justify-between gap-3">
 									<span class="text-sm text-white/60">{team.name}</span>
@@ -335,7 +335,7 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showCreate = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">Cancel</button>
+			<button onclick={() => (showCreate = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Cancel</button>
 			<button onclick={createUser} disabled={creating || !createForm.username || !createForm.password}
 				class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg transition-all">
 				{creating ? 'Creating…' : 'Create'}
@@ -349,20 +349,20 @@
 	<Modal title={editTarget.username} onclose={() => { showEdit = false; editTarget = null; }}>
 		{#snippet children()}
 			<!-- Tab bar -->
-			<div class="flex gap-0 border-b -mx-6 px-6 mb-4" style="border-color: rgba(255,255,255,0.06);">
+			<div class="flex gap-0 border-b -mx-6 px-6 mb-4" style="border-color: var(--border);">
 				<button onclick={() => editTab = 'details'}
 					class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
-					style="{editTab === 'details' ? 'border-color: #3b82f6; color: #60a5fa;' : 'border-color: transparent; color: rgba(255,255,255,0.40);'}">
+					style="{editTab === 'details' ? 'border-color: #3b82f6; color: #60a5fa;' : 'border-color: transparent; color: var(--text-tertiary);'}">
 					Details
 				</button>
 				<button onclick={() => editTab = 'tokens'}
 					class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
-					style="{editTab === 'tokens' ? 'border-color: #3b82f6; color: #60a5fa;' : 'border-color: transparent; color: rgba(255,255,255,0.40);'}">
+					style="{editTab === 'tokens' ? 'border-color: #3b82f6; color: #60a5fa;' : 'border-color: transparent; color: var(--text-tertiary);'}">
 					Connection Token
 				</button>
 				<button onclick={() => { editTab = 'delete'; deleteConfirmText = ''; }}
 					class="px-4 py-2 text-sm font-medium border-b-2 transition-colors"
-					style="{editTab === 'delete' ? 'border-color: #ef4444; color: #f87171;' : 'border-color: transparent; color: rgba(255,255,255,0.40);'}">
+					style="{editTab === 'delete' ? 'border-color: #ef4444; color: #f87171;' : 'border-color: transparent; color: var(--text-tertiary);'}">
 					Delete
 				</button>
 			</div>
@@ -370,22 +370,22 @@
 			{#if editTab === 'details'}
 				<div class="space-y-3">
 					<div>
-						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Username</label>
+						<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Username</label>
 						<input type="text" value={editTarget.username} readonly style="opacity: 0.5; cursor: not-allowed;" />
 					</div>
 					<div>
-						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Email</label>
+						<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Email</label>
 						<input type="email" bind:value={editForm.email} />
 					</div>
 					<div>
-						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Role</label>
+						<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Role</label>
 						<select bind:value={editForm.role}>
 							<option value="user">User</option>
 							<option value="admin">Admin</option>
 						</select>
 					</div>
 					<div>
-						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Storage quota (0 = unlimited)</label>
+						<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Storage quota (0 = unlimited)</label>
 						<div class="flex items-center gap-2">
 							<input type="number" min="0" bind:value={editForm.storage_quota} placeholder="0" style="width: 120px;" />
 							<select bind:value={editForm.storage_quota_unit} style="width: auto;">
@@ -397,8 +397,8 @@
 					</div>
 					{#if teams.length > 0}
 						<div>
-							<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Team Folders</label>
-							<div class="space-y-2 border rounded-lg p-3" style="border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);">
+							<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Team Folders</label>
+							<div class="space-y-2 border rounded-lg p-3" style="border-color: var(--border); background: var(--bg-hover);">
 								{#each teams as team}
 									<div class="flex items-center justify-between gap-3">
 										<span class="text-sm text-white/60">{team.name}</span>
@@ -415,8 +415,8 @@
 							</div>
 						</div>
 					{/if}
-					<div class="border-t pt-3" style="border-color: rgba(255,255,255,0.06);">
-						<p class="text-[10px] font-semibold uppercase tracking-wider mb-2" style="color: rgba(255,255,255,0.30);">Reset Password (optional)</p>
+					<div class="border-t pt-3" style="border-color: var(--border);">
+						<p class="text-[10px] font-semibold uppercase tracking-wider mb-2" style="color: var(--text-tertiary);">Reset Password (optional)</p>
 						<div class="space-y-2">
 							<input type="password" bind:value={editForm.newPassword} placeholder="New password" />
 							<input type="password" bind:value={editForm.confirmPassword} placeholder="Confirm password"
@@ -430,17 +430,17 @@
 
 			{:else if editTab === 'tokens'}
 				<div class="space-y-4">
-					<p class="text-sm" style="color: rgba(255,255,255,0.50);">Connection tokens allow users to connect the macOS app without manually entering server details. The token is encrypted with a 6-character PIN that is emailed to the user.</p>
+					<p class="text-sm" style="color: var(--text-secondary);">Connection tokens allow users to connect the macOS app without manually entering server details. The token is encrypted with a 6-character PIN that is emailed to the user.</p>
 
-					<div class="flex items-center gap-3 p-4 rounded-lg border" style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08);">
-						<Key size={20} style="color: rgba(255,255,255,0.30); flex-shrink: 0;" />
+					<div class="flex items-center gap-3 p-4 rounded-lg border" style="background: var(--bg-hover); border-color: var(--border);">
+						<Key size={20} style="color: var(--text-tertiary); flex-shrink: 0;" />
 						<div class="flex-1">
 							{#if editTarget.has_token}
 								<p class="text-sm font-medium text-white/70">Token available</p>
-								<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.35);">One-time download — will be invalidated after download</p>
+								<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">One-time download — will be invalidated after download</p>
 							{:else}
-								<p class="text-sm font-medium" style="color: rgba(255,255,255,0.40);">No active token</p>
-								<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.25);">Generate a new token to create a .syncvault file</p>
+								<p class="text-sm font-medium" style="color: var(--text-tertiary);">No active token</p>
+								<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Generate a new token to create a .syncvault file</p>
 							{/if}
 						</div>
 					</div>
@@ -471,26 +471,26 @@
 
 					<div class="space-y-2">
 						<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
-							style="{deleteAction === 'delete' ? 'border-color: rgba(239,68,68,0.30); background: rgba(239,68,68,0.06);' : 'border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);'}">
+							style="{deleteAction === 'delete' ? 'border-color: rgba(239,68,68,0.30); background: rgba(239,68,68,0.06);' : 'border-color: var(--border); background: var(--bg-hover);'}">
 							<input type="radio" bind:group={deleteAction} value="delete" />
 							<div>
 								<span class="text-sm font-medium text-white/70">Delete all files</span>
-								<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.35);">All files, versions, and shared links will be permanently deleted</p>
+								<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">All files, versions, and shared links will be permanently deleted</p>
 							</div>
 						</label>
 						<label class="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors"
-							style="{deleteAction === 'transfer' ? 'border-color: rgba(59,130,246,0.30); background: rgba(59,130,246,0.06);' : 'border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);'}">
+							style="{deleteAction === 'transfer' ? 'border-color: rgba(59,130,246,0.30); background: rgba(59,130,246,0.06);' : 'border-color: var(--border); background: var(--bg-hover);'}">
 							<input type="radio" bind:group={deleteAction} value="transfer" />
 							<div>
 								<span class="text-sm font-medium text-white/70">Transfer files to another user</span>
-								<p class="text-xs mt-0.5" style="color: rgba(255,255,255,0.35);">The user's folder will be moved to another user's home folder</p>
+								<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">The user's folder will be moved to another user's home folder</p>
 							</div>
 						</label>
 					</div>
 
 					{#if deleteAction === 'transfer'}
 						<div>
-							<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Transfer to</label>
+							<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Transfer to</label>
 							<select bind:value={transferToUserId}>
 								<option value="">Select a user…</option>
 								{#each users.filter(u => u.id !== editTarget?.id) as u}
@@ -500,8 +500,8 @@
 						</div>
 					{/if}
 
-					<div class="border-t pt-3" style="border-color: rgba(255,255,255,0.06);">
-						<label class="block text-xs font-medium mb-1.5" style="color: rgba(255,255,255,0.45);">Type <span class="font-bold text-red-400">DELETE</span> to confirm</label>
+					<div class="border-t pt-3" style="border-color: var(--border);">
+						<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);">Type <span class="font-bold text-red-400">DELETE</span> to confirm</label>
 						<input type="text" bind:value={deleteConfirmText} placeholder="DELETE" style="border-color: rgba(239,68,68,0.25);" />
 					</div>
 
@@ -515,14 +515,14 @@
 		{/snippet}
 		{#snippet footer()}
 			{#if editTab === 'details'}
-				<button onclick={() => { showEdit = false; editTarget = null; }} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">Cancel</button>
+				<button onclick={() => { showEdit = false; editTarget = null; }} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Cancel</button>
 				<button onclick={saveEdit}
 					disabled={editing || !!(editForm.newPassword && editForm.newPassword !== editForm.confirmPassword)}
 					class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg transition-all">
 					{editing ? 'Saving…' : 'Save'}
 				</button>
 			{:else}
-				<button onclick={() => { showEdit = false; editTarget = null; }} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: rgba(255,255,255,0.10);">Close</button>
+				<button onclick={() => { showEdit = false; editTarget = null; }} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Close</button>
 			{/if}
 		{/snippet}
 	</Modal>
@@ -530,10 +530,10 @@
 
 <style>
 	.user-row {
-		border-bottom: 1px solid rgba(255,255,255,0.04);
+		border-bottom: 1px solid var(--border);
 	}
 	.user-row:hover {
-		background: rgba(255,255,255,0.03);
+		background: var(--bg-hover);
 	}
 	.user-row:last-child {
 		border-bottom: none;

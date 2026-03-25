@@ -128,6 +128,20 @@ volumes:
 
 See `docker-compose.portainer.yml` for a ready-to-use Portainer compose file with all options.
 
+## Reverse Proxy (Nginx Proxy Manager)
+
+If you use Nginx Proxy Manager as a reverse proxy, add this to the **Advanced** > **Custom Nginx Configuration** of your proxy host to support large file uploads:
+
+```nginx
+client_max_body_size 0;
+proxy_read_timeout 86400;
+proxy_send_timeout 86400;
+proxy_connect_timeout 86400;
+proxy_request_buffering off;
+```
+
+This removes the upload size limit, sets 24-hour timeouts for large file transfers, and disables request buffering for direct streaming.
+
 ## API
 
 The REST API is available at `/api/*`. Key endpoints:

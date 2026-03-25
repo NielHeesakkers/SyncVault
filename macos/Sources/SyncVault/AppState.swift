@@ -13,6 +13,8 @@ class AppState: ObservableObject {
     @Published var isSyncing = false
     @Published var syncProgress: SyncProgress?
     @Published var syncQueue: [String] = []
+    @Published var speedHistory: [Double] = []  // last 60 samples (10 min at 10s intervals)
+    private var speedTimer: Timer?
     @Published var lastError: String?
     @Published var recentActivity: [ActivityItem] = []
     @Published var syncTasks: [SyncTask] = []
@@ -36,11 +38,31 @@ class AppState: ObservableObject {
     private var syncTimer: Timer?
     private var notificationTimer: Timer?
     private var fileWatchers: [UUID: FileWatcher] = [:]  // per sync task
+    private var syncDatabase: SyncDatabase?
 
     init() {
         loadConfig()
+        // Initialize sync database at app start so known state persists
+        initSyncDatabase()
         // Try to auto-reconnect with saved credentials
         Task { await tryAutoConnect() }
+    }
+
+    private func initSyncDatabase() {
+        let dbPath = Self.configDirectory.appendingPathComponent("sync.db")
+        do {
+            try FileManager.default.createDirectory(at: Self.configDirectory, withIntermediateDirectories: true)
+            // Touch the file so SQLite doesn't fail silently
+            if !FileManager.default.fileExists(atPath: dbPath.path) {
+                FileManager.default.createFile(atPath: dbPath.path, contents: nil)
+            }
+            syncDatabase = try SyncDatabase(path: dbPath.path)
+            // Force table creation with a dummy query
+            _ = try? syncDatabase?.getStates(taskID: "__init__")
+            logger.info("Sync database initialized at \(dbPath.path), exists: \(FileManager.default.fileExists(atPath: dbPath.path))")
+        } catch {
+            logger.error("Failed to initialize sync database: \(error)")
+        }
     }
 
     // MARK: - Connection
@@ -197,8 +219,8 @@ class AppState: ObservableObject {
 
         // Try to restore sync state from server (new-Mac scenario)
         let deviceID = getDeviceID()
-        let dbPath = Self.configDirectory.appendingPathComponent("sync.db")
-        if let engine = try? SyncEngine(apiClient: client, dbPath: dbPath) {
+        if let db = syncDatabase {
+            let engine = SyncEngine(apiClient: client, db: db)
             if let remoteStates = try? await client.getSyncStates(deviceID: deviceID, taskName: folderName) {
                 try? await engine.restoreSyncStates(taskID: task.id.uuidString, states: remoteStates)
                 logger.info("Restored \(remoteStates.count) sync states from server for task \(folderName)")
@@ -244,8 +266,8 @@ class AppState: ObservableObject {
             fileWatchers[task.id] = watcher
         }
 
-        // 5-minute fallback timer (in case FSEvents misses something)
-        syncTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+        // 60-second fallback timer (in case FSEvents misses something, or errors need retry)
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 await self?.runSync()
             }
@@ -267,6 +289,27 @@ class AppState: ObservableObject {
             watcher.stop()
         }
         fileWatchers.removeAll()
+    }
+
+    // MARK: - Speed Tracking
+
+    private func startSpeedTracking() {
+        speedTimer?.invalidate()
+        speedTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let speed = self.syncProgress?.bytesPerSecond ?? 0
+                self.speedHistory.append(speed)
+                if self.speedHistory.count > 60 {
+                    self.speedHistory.removeFirst(self.speedHistory.count - 60)
+                }
+            }
+        }
+    }
+
+    private func stopSpeedTracking() {
+        speedTimer?.invalidate()
+        speedTimer = nil
     }
 
     // MARK: - Device ID
@@ -360,9 +403,39 @@ class AppState: ObservableObject {
 
         isSyncing = true
         syncProgress = nil
+        startSpeedTracking()
         defer {
             isSyncing = false
             syncProgress = nil
+            stopSpeedTracking()
+        }
+
+        // Proactively refresh token before it expires
+        do {
+            // Test if token is still valid
+            let _ = try await client.healthCheck()
+        } catch {
+            logger.info(" Token check failed, re-authenticating...")
+            if await client.reAuthenticate() {
+                logger.info(" Re-authenticated successfully")
+            } else {
+                // Try with stored credentials directly
+                if let password = KeychainHelper.load(key: "server_password") {
+                    do {
+                        try await client.login(username: username, password: password)
+                        logger.info(" Re-logged in with stored credentials")
+                    } catch {
+                        logger.error(" Re-login failed: \(error)")
+                        lastError = "Session expired — please reconnect"
+                        isConnected = false
+                        return
+                    }
+                } else {
+                    lastError = "Session expired — please reconnect"
+                    isConnected = false
+                    return
+                }
+            }
         }
 
         for task in syncTasks where task.isEnabled && task.mode != .onDemand {
@@ -379,8 +452,12 @@ class AppState: ObservableObject {
             }
 
             do {
-                let dbPath = Self.configDirectory.appendingPathComponent("sync.db")
-                let engine = try SyncEngine(apiClient: client, dbPath: dbPath)
+                guard let db = syncDatabase else {
+                    logger.error("Sync database not initialized")
+                    initSyncDatabase()
+                    continue
+                }
+                let engine = SyncEngine(apiClient: client, db: db)
 
                 // Get changed paths from FSEvents watcher (nil = full scan needed)
                 let changedPaths = fileWatchers[task.id]?.consumeChangedPaths()

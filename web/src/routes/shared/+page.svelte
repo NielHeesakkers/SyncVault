@@ -75,22 +75,22 @@
 	<title>Shared — SyncVault</title>
 </svelte:head>
 
-<div class="p-6" style="background: #0a0a0b; min-height: 100%;">
+<div class="p-6" style="background: var(--bg-base); min-height: 100%;">
 	<div class="mb-6">
 		<h1 class="text-base font-semibold text-white">Shared Links</h1>
-		<p class="text-sm mt-1" style="color: rgba(255,255,255,0.35);">Links you have created to share files externally.</p>
+		<p class="text-sm mt-1" style="color: var(--text-tertiary);">Links you have created to share files externally.</p>
 	</div>
 
-	<div class="rounded-xl border overflow-hidden" style="background: #111113; border-color: rgba(255,255,255,0.05);">
+	<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 		{#if loading}
-			<div class="px-4 py-3 border-b" style="border-color: rgba(255,255,255,0.05);">
+			<div class="px-4 py-3 border-b" style="border-color: var(--border);">
 				<div class="flex gap-4">
 					<div class="skeleton h-3 rounded w-32"></div>
 					<div class="skeleton h-3 rounded w-24"></div>
 				</div>
 			</div>
 			{#each [1,2,3] as _}
-				<div class="px-4 py-3.5 border-b flex items-center gap-3" style="border-color: rgba(255,255,255,0.04);">
+				<div class="px-4 py-3.5 border-b flex items-center gap-3" style="border-color: var(--border);">
 					<div class="skeleton h-3 rounded w-36"></div>
 					<div class="skeleton h-3 rounded w-24 ml-4"></div>
 					<div class="skeleton h-3 rounded w-16 ml-auto"></div>
@@ -98,21 +98,21 @@
 			{/each}
 		{:else if links.length === 0}
 			<div class="flex flex-col items-center justify-center py-20">
-				<div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style="background: rgba(255,255,255,0.04);">
-					<Link size={24} style="color: rgba(255,255,255,0.20);" />
+				<div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style="background: var(--bg-active);">
+					<Link size={24} style="color: var(--text-tertiary);" />
 				</div>
-				<p class="text-base font-medium" style="color: rgba(255,255,255,0.40);">No shared links</p>
-				<p class="text-sm mt-1.5" style="color: rgba(255,255,255,0.25);">Create share links from the file browser.</p>
+				<p class="text-base font-medium" style="color: var(--text-tertiary);">No shared links</p>
+				<p class="text-sm mt-1.5" style="color: var(--text-tertiary);">Create share links from the file browser.</p>
 			</div>
 		{:else}
 			<table class="min-w-full">
 				<thead>
-					<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">File</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: rgba(255,255,255,0.30);">Link</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: rgba(255,255,255,0.30);">Downloads</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Expires</th>
-						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: rgba(255,255,255,0.30);">Created</th>
+					<tr style="border-bottom: 1px solid var(--border);">
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">File</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Link</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: var(--text-tertiary);">Downloads</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">Expires</th>
+						<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">Created</th>
 						<th class="px-4 py-3 w-20"></th>
 					</tr>
 				</thead>
@@ -124,24 +124,24 @@
 							</td>
 							<td class="px-4 py-3.5">
 								<div class="flex items-center gap-2">
-									<span class="text-xs font-mono truncate max-w-32" style="color: rgba(255,255,255,0.35);">/s/{link.token}</span>
+									<span class="text-xs font-mono truncate max-w-32" style="color: var(--text-tertiary);">/s/{link.token}</span>
 									{#if link.password_protected}
 										<span class="text-[10px] font-medium px-1.5 py-0.5 rounded" style="background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.20);">Password</span>
 									{/if}
 								</div>
 							</td>
 							<td class="px-4 py-3.5 hidden sm:table-cell">
-								<span class="text-sm" style="color: rgba(255,255,255,0.40);">
+								<span class="text-sm" style="color: var(--text-tertiary);">
 									{link.download_count ?? 0}{link.max_downloads ? `/${link.max_downloads}` : ''}
 								</span>
 							</td>
 							<td class="px-4 py-3.5 hidden md:table-cell">
-								<span class="text-sm" style="color: rgba(255,255,255,0.40);">
+								<span class="text-sm" style="color: var(--text-tertiary);">
 									{link.expires_at ? formatDate(link.expires_at) : 'Never'}
 								</span>
 							</td>
 							<td class="px-4 py-3.5 hidden md:table-cell">
-								<span class="text-sm" style="color: rgba(255,255,255,0.40);">{formatDateAbsolute(link.created_at)}</span>
+								<span class="text-sm" style="color: var(--text-tertiary);">{formatDateAbsolute(link.created_at)}</span>
 							</td>
 							<td class="px-4 py-3.5">
 								<div class="flex items-center gap-1 justify-end">
@@ -181,10 +181,10 @@
 
 <style>
 	.shared-row {
-		border-bottom: 1px solid rgba(255,255,255,0.04);
+		border-bottom: 1px solid var(--border);
 	}
 	.shared-row:hover {
-		background: rgba(255,255,255,0.03);
+		background: var(--bg-hover);
 	}
 	.shared-row:last-child {
 		border-bottom: none;

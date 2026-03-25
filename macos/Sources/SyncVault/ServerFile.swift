@@ -8,9 +8,10 @@ struct ServerFile: Codable, Identifiable {
     let size: Int64
     let contentHash: String?
     let mimeType: String?
-    let createdAt: String
-    let updatedAt: String
+    let createdAt: String?
+    let updatedAt: String?
     let deletedAt: String?
+    let removedLocally: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, name, size
@@ -21,6 +22,7 @@ struct ServerFile: Codable, Identifiable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case deletedAt = "deleted_at"
+        case removedLocally = "removed_locally"
     }
 }
 
