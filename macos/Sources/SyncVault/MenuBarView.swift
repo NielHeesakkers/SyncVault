@@ -73,7 +73,6 @@ struct MenuBarView: View {
                                     .font(.system(size: 10))
                                     .foregroundColor(.blue)
                                     .rotationEffect(.degrees(appState.isSyncing ? 360 : 0))
-                                    .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: appState.isSyncing)
                                 Text("\(progress.action) \(progress.currentFile)")
                                     .font(.system(size: 11))
                                     .lineLimit(1)
@@ -101,8 +100,7 @@ struct MenuBarView: View {
                                         .font(.system(size: 10, weight: .medium))
                                         .foregroundColor(.blue)
                                         .rotationEffect(.degrees(appState.isSyncing ? 360 : 0))
-                                        .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: appState.isSyncing)
-                                } else {
+                                    } else {
                                     Image(systemName: "checkmark.icloud.fill")
                                         .font(.system(size: 10, weight: .medium))
                                         .foregroundColor(.green)
@@ -164,7 +162,6 @@ struct MenuBarView: View {
                                         .foregroundColor(Color(white: 0.4))
                                 }
                                 .padding(.vertical, 1)
-                                .transition(.move(edge: .top).combined(with: .opacity))
                             }
                         }
                     }
