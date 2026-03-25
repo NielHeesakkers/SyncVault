@@ -184,12 +184,13 @@ class AppState: ObservableObject {
         let response: TaskResponse = try await client.createTask(body: body)
 
         // Save locally
-        let task = SyncTask(
+        var task = SyncTask(
             localPath: localPath,
             remoteFolderID: response.folderID,
             remoteFolderName: folderName,
             mode: mode
         )
+        task.serverTaskID = response.id
         syncTasks.append(task)
         saveConfig()
 
@@ -200,6 +201,12 @@ class AppState: ObservableObject {
     }
 
     func deleteSyncTask(_ task: SyncTask) {
+        // Delete on server first
+        if let serverID = task.serverTaskID, let client = apiClient {
+            Task {
+                try? await client.deleteTask(id: serverID)
+            }
+        }
         syncTasks.removeAll { $0.id == task.id }
         saveConfig()
     }

@@ -2,6 +2,7 @@ import Foundation
 
 struct SyncTask: Codable, Identifiable {
     let id: UUID
+    var serverTaskID: String?  // ID on the server for delete/update
     var localPath: String
     var remoteFolderID: String
     var remoteFolderName: String

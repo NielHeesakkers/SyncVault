@@ -56,6 +56,10 @@ actor APIClient {
         return try await post("/api/tasks", body: body)
     }
 
+    func deleteTask(id: String) async throws {
+        try await delete("/api/tasks/\(id)")
+    }
+
     // MARK: - Task Retention Policy
 
     func getTaskRetention(taskID: String) async throws -> RetentionPolicy {

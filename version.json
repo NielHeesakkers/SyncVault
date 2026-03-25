@@ -1,9 +1,20 @@
 {
-  "version": "2.1.4",
+  "version": "2.1.5",
   "min_version": "1.0",
   "release_date": "2026-03-25",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1.4/SyncVault-2.1.4.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1.5/SyncVault-2.1.5.dmg",
   "history": [
+    {
+      "version": "2.1.5",
+      "date": "2026-03-25",
+      "changes": [
+        "Delete sync task removes from server (fixes 409)",
+        "Server task ID tracked per sync task",
+        "Open Files on Server with auto-login",
+        "Test Server always visible",
+        "Changelog and Info tabs"
+      ]
+    },
     {
       "version": "2.1.4",
       "date": "2026-03-25",

@@ -3,15 +3,15 @@
   <channel>
     <title>SyncVault</title>
     <item>
-      <title>Version 2.1.4</title>
-      <sparkle:version>2.1.4</sparkle:version>
-      <sparkle:shortVersionString>2.1.4</sparkle:shortVersionString>
-      <pubDate>Tue, 25 Mar 2026 11:35:00 +0100</pubDate>
+      <title>Version 2.1.5</title>
+      <sparkle:version>2.1.5</sparkle:version>
+      <sparkle:shortVersionString>2.1.5</sparkle:shortVersionString>
+      <pubDate>Tue, 25 Mar 2026 12:30:00 +0100</pubDate>
       <enclosure
-        url="https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1.4/SyncVault-2.1.4.zip"
-        length="2304527"
+        url="https://github.com/NielHeesakkers/SyncVault/releases/download/v2.1.5/SyncVault-2.1.5.zip"
+        length="2305680"
         type="application/octet-stream"
-        sparkle:edSignature="3XTWZae7p3029G4kbLP1/yrOHUbJaO/CLknmIWbwB3uF5Liqd3ZpKDTEvAINf5IR4DTAjA1LAQV+W1uBYu55Dw==" />
+        sparkle:edSignature="Z8+q+IOWRuaVneEhPUOiAhKCQTLn+/8aLsMCrIUf+VUhZwMsbPNl36YOqSKZkJXbJFqMQuRVwPF65aPlSZ8tDw==" />
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
     </item>
   </channel>

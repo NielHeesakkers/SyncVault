@@ -1,3 +1,16 @@
+## [2.1.5] — 2026-03-25
+
+Backend/Web:
+- Auto-login endpoint for macOS app browser handoff
+
+macOS App:
+- Delete sync task now also removes it from server (fixes 409 on recreate)
+- Server task ID tracked per sync task
+- Open Files on Server with auto-login
+- Test Server button always visible
+- Password field shows dots when saved
+- Changelog and Info tabs in Settings
+
 ## [2.1.4] — 2026-03-25
 
 Backend/Web:
