@@ -1,3 +1,20 @@
+## [2.3.0] — 2026-03-25
+
+Backend/Web:
+- Files now have 'removed_locally' field — locally deleted files stay visible on server
+- Sync state sync endpoints: known state stored per user/device on server
+- 'Removed locally' label shown next to files in web UI file browser
+- New endpoints: PUT /api/files/{id}/removed-locally, GET/PUT/DELETE /api/sync-state
+
+macOS App:
+- Synology Drive-style sync engine: FSEvents triggers immediate sync (no 30s wait)
+- 4 parallel uploads with AsyncSemaphore concurrency control
+- No cycle limit — all pending files processed in one pass
+- Small files uploaded first, large files last
+- Upload speed shown in menu bar (green ↑ / purple ↓)
+- Known state synced to server after each cycle (restore-to-new-Mac support)
+- Files deleted locally are marked on server instead of deleted
+
 ## [2.2.1] — 2026-03-25
 
 macOS App:

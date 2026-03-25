@@ -16,25 +16,27 @@ import (
 
 // fileResponse is the JSON representation of a file metadata entry.
 type fileResponse struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	IsDir       bool      `json:"is_dir"`
-	Size        int64     `json:"size"`
-	ContentHash string    `json:"content_hash,omitempty"`
-	MimeType    string    `json:"mime_type,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	IsDir          bool      `json:"is_dir"`
+	Size           int64     `json:"size"`
+	ContentHash    string    `json:"content_hash,omitempty"`
+	MimeType       string    `json:"mime_type,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	RemovedLocally bool      `json:"removed_locally"`
 }
 
 // toFileResponse converts a metadata.File to a fileResponse.
 func toFileResponse(f metadata.File) fileResponse {
 	fr := fileResponse{
-		ID:        f.ID,
-		Name:      f.Name,
-		IsDir:     f.IsDir,
-		Size:      f.Size,
-		CreatedAt: f.CreatedAt,
-		UpdatedAt: f.UpdatedAt,
+		ID:             f.ID,
+		Name:           f.Name,
+		IsDir:          f.IsDir,
+		Size:           f.Size,
+		CreatedAt:      f.CreatedAt,
+		UpdatedAt:      f.UpdatedAt,
+		RemovedLocally: f.RemovedLocally,
 	}
 	if f.ContentHash.Valid {
 		fr.ContentHash = f.ContentHash.String
@@ -289,24 +291,26 @@ func (s *Server) handleListTrash(w http.ResponseWriter, r *http.Request) {
 // changeResponse is the JSON representation of a single change-feed entry.
 // It extends fileResponse with parent_id and deleted_at so clients can handle deletions and moves.
 type changeResponse struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	ParentID    *string `json:"parent_id"`
-	IsDir       bool    `json:"is_dir"`
-	Size        int64   `json:"size"`
-	ContentHash string  `json:"content_hash,omitempty"`
-	UpdatedAt   string  `json:"updated_at"`
-	DeletedAt   *string `json:"deleted_at"`
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	ParentID       *string `json:"parent_id"`
+	IsDir          bool    `json:"is_dir"`
+	Size           int64   `json:"size"`
+	ContentHash    string  `json:"content_hash,omitempty"`
+	UpdatedAt      string  `json:"updated_at"`
+	DeletedAt      *string `json:"deleted_at"`
+	RemovedLocally bool    `json:"removed_locally"`
 }
 
 // toChangeResponse converts a metadata.File to a changeResponse.
 func toChangeResponse(f metadata.File) changeResponse {
 	cr := changeResponse{
-		ID:        f.ID,
-		Name:      f.Name,
-		IsDir:     f.IsDir,
-		Size:      f.Size,
-		UpdatedAt: f.UpdatedAt.UTC().Format(time.RFC3339),
+		ID:             f.ID,
+		Name:           f.Name,
+		IsDir:          f.IsDir,
+		Size:           f.Size,
+		UpdatedAt:      f.UpdatedAt.UTC().Format(time.RFC3339),
+		RemovedLocally: f.RemovedLocally,
 	}
 	if f.ParentID.Valid {
 		s := f.ParentID.String
@@ -619,6 +623,43 @@ func (s *Server) handleRestoreFolderAtTime(w http.ResponseWriter, r *http.Reques
 		"status":   "restored",
 		"restored": restored,
 	})
+}
+
+// handleSetRemovedLocally handles PUT /api/files/{id}/removed-locally.
+// Accepts {"removed": true/false} and updates the removed_locally flag on the file.
+func (s *Server) handleSetRemovedLocally(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var req struct {
+		Removed bool `json:"removed"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	var err error
+	if req.Removed {
+		err = s.db.MarkRemovedLocally(id)
+	} else {
+		err = s.db.UnmarkRemovedLocally(id)
+	}
+	if err != nil {
+		if errors.Is(err, metadata.ErrFileNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update file"})
+		return
+	}
+
+	f, err := s.db.GetFileByID(id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get updated file"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toFileResponse(*f))
 }
 
 // handleDownloadFile streams a file's content from storage.

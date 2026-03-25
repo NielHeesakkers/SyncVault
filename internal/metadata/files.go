@@ -11,17 +11,18 @@ import (
 
 // File represents a file or directory in the SyncVault metadata store.
 type File struct {
-	ID          string
-	ParentID    sql.NullString
-	OwnerID     string
-	Name        string
-	IsDir       bool
-	Size        int64
-	ContentHash sql.NullString
-	MimeType    sql.NullString
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	DeletedAt   sql.NullString
+	ID             string
+	ParentID       sql.NullString
+	OwnerID        string
+	Name           string
+	IsDir          bool
+	Size           int64
+	ContentHash    sql.NullString
+	MimeType       sql.NullString
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	DeletedAt      sql.NullString
+	RemovedLocally bool
 }
 
 // ErrFileNotFound is returned when a file cannot be found.
@@ -94,7 +95,7 @@ func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, 
 // GetFileByID returns the file with the given ID (including soft-deleted).
 func (d *DB) GetFileByID(id string) (*File, error) {
 	row := d.db.QueryRow(
-		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
 		 FROM files WHERE id = ?`, id,
 	)
 	return scanFile(row)
@@ -107,13 +108,13 @@ func (d *DB) ListChildren(parentID string) ([]File, error) {
 	var err error
 	if parentID == "" {
 		rows, err = d.db.Query(
-			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at
+			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
 			 FROM files WHERE parent_id IS NULL AND deleted_at IS NULL
 			 ORDER BY is_dir DESC, name`,
 		)
 	} else {
 		rows, err = d.db.Query(
-			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at
+			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
 			 FROM files WHERE parent_id = ? AND deleted_at IS NULL
 			 ORDER BY is_dir DESC, name`,
 			parentID,
@@ -225,7 +226,7 @@ func (d *DB) RestoreFile(id string) error {
 // ListTrashedFiles returns all soft-deleted files owned by ownerID.
 func (d *DB) ListTrashedFiles(ownerID string) ([]File, error) {
 	rows, err := d.db.Query(
-		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
 		 FROM files WHERE owner_id=? AND deleted_at IS NOT NULL
 		 ORDER BY deleted_at DESC`,
 		ownerID,
@@ -249,7 +250,7 @@ func (d *DB) ListTrashedFiles(ownerID string) ([]File, error) {
 // ListAllTrashedFiles returns all soft-deleted files across all users (admin view).
 func (d *DB) ListAllTrashedFiles() ([]File, error) {
 	rows, err := d.db.Query(
-		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
 		 FROM files WHERE deleted_at IS NOT NULL
 		 ORDER BY deleted_at DESC`,
 	)
@@ -291,7 +292,7 @@ func (d *DB) UpdateFileContent(id, contentHash string, size int64) error {
 func (d *DB) ListChangedFiles(since time.Time, ownerID string) ([]File, error) {
 	sinceStr := since.UTC().Format(time.RFC3339Nano)
 	rows, err := d.db.Query(
-		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
 		 FROM files
 		 WHERE owner_id = ?
 		   AND (updated_at > ? OR deleted_at > ?)
@@ -367,12 +368,12 @@ func (d *DB) ListTopFoldersBySize() ([]FolderSizeEntry, error) {
 // scanFile scans a single File from a *sql.Row.
 func scanFile(row *sql.Row) (*File, error) {
 	var f File
-	var isDirInt int
+	var isDirInt, removedLocallyInt int
 	var createdAt, updatedAt string
 	err := row.Scan(
 		&f.ID, &f.ParentID, &f.OwnerID, &f.Name, &isDirInt,
 		&f.Size, &f.ContentHash, &f.MimeType,
-		&createdAt, &updatedAt, &f.DeletedAt,
+		&createdAt, &updatedAt, &f.DeletedAt, &removedLocallyInt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrFileNotFound
@@ -381,6 +382,7 @@ func scanFile(row *sql.Row) (*File, error) {
 		return nil, fmt.Errorf("metadata: scan file: %w", err)
 	}
 	f.IsDir = isDirInt != 0
+	f.RemovedLocally = removedLocallyInt != 0
 	f.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
 	f.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
 	return &f, nil
@@ -389,17 +391,18 @@ func scanFile(row *sql.Row) (*File, error) {
 // scanFileRow scans a single File from *sql.Rows.
 func scanFileRow(rows *sql.Rows) (*File, error) {
 	var f File
-	var isDirInt int
+	var isDirInt, removedLocallyInt int
 	var createdAt, updatedAt string
 	err := rows.Scan(
 		&f.ID, &f.ParentID, &f.OwnerID, &f.Name, &isDirInt,
 		&f.Size, &f.ContentHash, &f.MimeType,
-		&createdAt, &updatedAt, &f.DeletedAt,
+		&createdAt, &updatedAt, &f.DeletedAt, &removedLocallyInt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("metadata: scan file row: %w", err)
 	}
 	f.IsDir = isDirInt != 0
+	f.RemovedLocally = removedLocallyInt != 0
 	f.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdAt)
 	f.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedAt)
 	return &f, nil
@@ -611,6 +614,32 @@ func (d *DB) ListChangeDates(parentID, ownerID string) ([]time.Time, error) {
 		dates = append(dates, t)
 	}
 	return dates, rows.Err()
+}
+
+// MarkRemovedLocally sets removed_locally=1 for the given file.
+func (d *DB) MarkRemovedLocally(fileID string) error {
+	res, err := d.db.Exec(`UPDATE files SET removed_locally=1 WHERE id=?`, fileID)
+	if err != nil {
+		return fmt.Errorf("metadata: mark removed locally: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrFileNotFound
+	}
+	return nil
+}
+
+// UnmarkRemovedLocally sets removed_locally=0 for the given file.
+func (d *DB) UnmarkRemovedLocally(fileID string) error {
+	res, err := d.db.Exec(`UPDATE files SET removed_locally=0 WHERE id=?`, fileID)
+	if err != nil {
+		return fmt.Errorf("metadata: unmark removed locally: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrFileNotFound
+	}
+	return nil
 }
 
 // nullStringVal returns nil if ns is not valid, else the string value.

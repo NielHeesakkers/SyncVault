@@ -16,6 +16,7 @@
 		version_id: string;
 		content_hash: string;
 		updated_at: string;
+		removed_locally?: boolean;
 		_isTeam?: boolean;
 	}
 
@@ -583,6 +584,9 @@
 								</td>
 								<td class="px-4 py-3">
 									<span class="text-sm font-medium text-gray-900">{file.name}</span>
+									{#if file.removed_locally}
+										<span class="ml-2 text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">Removed locally</span>
+									{/if}
 								</td>
 								<td class="px-4 py-3 hidden sm:table-cell">
 									<span class="text-sm text-gray-500">

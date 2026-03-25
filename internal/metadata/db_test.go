@@ -28,6 +28,7 @@ var expectedTables = []string{
 	"share_links",
 	"retention_policies",
 	"sync_state",
+	"sync_states",
 	"sync_tasks",
 }
 

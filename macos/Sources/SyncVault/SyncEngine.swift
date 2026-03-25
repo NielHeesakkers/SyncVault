@@ -66,111 +66,179 @@ actor SyncEngine {
             logger.info("   \(a)")
         }
 
-        // 5. Execute (max 10 per cycle)
-        let maxPerCycle = 10
-        let limited = Array(actions.prefix(maxPerCycle))
-        let total = actions.count
-        var completed = 0
-        var bytes: Int64 = 0
-        let start = Date()
-        let names = actions.map { $0.fileName }
-
-        if limited.count < total {
-            logger.info(" Limiting to \(maxPerCycle) of \(total)")
+        // 5. Sort: uploads small files first (large last), other actions first
+        let sortedActions = actions.sorted { a, b in
+            let sizeOf: (SyncAction) -> Int64 = { action in
+                if case .upload(let path, _) = action {
+                    return (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? 0
+                }
+                return 0
+            }
+            let aIsUpload = { if case .upload = a { return true }; return false }()
+            let bIsUpload = { if case .upload = b { return true }; return false }()
+            if aIsUpload && bIsUpload { return sizeOf(a) < sizeOf(b) }
+            if aIsUpload { return false } // non-uploads first
+            if bIsUpload { return true }
+            return false
         }
 
-        for (i, action) in limited.enumerated() {
-            do {
-                let pending = Array(names.dropFirst(i + 1).prefix(5))
+        // 6. Execute all actions (no limit), uploads in parallel (max 4 concurrent)
+        let total = sortedActions.count
+        let bytes = ActorCounter()
+        let completed = ActorCounter()
+        let start = Date()
+        let names = sortedActions.map { $0.fileName }
+        var authFailed = false
 
-                switch action {
-                case .upload(let path, let relativePath):
-                    let fileURL = URL(fileURLWithPath: path)
-                    let attrs = try FileManager.default.attributesOfItem(atPath: path)
-                    let size = (attrs[.size] as? Int64) ?? 0
-                    let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
+        let semaphore = AsyncSemaphore(limit: 4)
 
-                    onProgress(SyncProgress(
-                        currentFile: displayName, action: "Uploading",
-                        bytesTransferred: bytes, totalBytes: size,
-                        filesCompleted: completed, filesTotal: total,
-                        bytesPerSecond: Self.speed(bytes: bytes, since: start),
-                        pendingFiles: pending
-                    ))
+        await withTaskGroup(of: (SyncActionResult).self) { group in
+            for (i, action) in sortedActions.enumerated() {
+                group.addTask {
+                    await semaphore.wait()
+                    defer { Task { await semaphore.signal() } }
 
-                    // Ensure parent directories exist on server
-                    let parentRelPath = (relativePath as NSString).deletingLastPathComponent
-                    let parentID = try await ensureRemoteDirectory(parentRelPath, rootID: task.remoteFolderID)
+                    let pending = Array(names.dropFirst(i + 1).prefix(5))
+                    let curBytes = await bytes.value
+                    let curCompleted = Int(await completed.value)
 
-                    let hash = try Self.hashFile(at: fileURL)
-                    let _ = try await apiClient.uploadFileFromDisk(fileURL: fileURL, filename: displayName, parentID: parentID)
-                    try db.updateState(taskID: taskID, fileName: relativePath, contentHash: hash)
-                    bytes += size
-                    result.uploaded += 1
-                    result.fileActivity.append(ActivityItem(filename: displayName, action: "uploaded", timestamp: Date()))
-                    logger.info(" Uploaded: \(relativePath) (\(size) bytes)")
+                    do {
+                        switch action {
+                        case .upload(let path, let relativePath):
+                            let fileURL = URL(fileURLWithPath: path)
+                            let attrs = try FileManager.default.attributesOfItem(atPath: path)
+                            let size = (attrs[.size] as? Int64) ?? 0
+                            let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
 
-                case .download(let fileID, let localPath, let relativePath):
-                    let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
-                    onProgress(SyncProgress(
-                        currentFile: displayName, action: "Downloading",
-                        bytesTransferred: bytes, totalBytes: 0,
-                        filesCompleted: completed, filesTotal: total,
-                        bytesPerSecond: Self.speed(bytes: bytes, since: start),
-                        pendingFiles: pending
-                    ))
+                            onProgress(SyncProgress(
+                                currentFile: displayName, action: "Uploading",
+                                bytesTransferred: curBytes, totalBytes: size,
+                                filesCompleted: curCompleted, filesTotal: total,
+                                bytesPerSecond: Self.speed(bytes: curBytes, since: start),
+                                pendingFiles: pending
+                            ))
 
-                    let data = try await apiClient.downloadFile(id: fileID)
-                    let url = URL(fileURLWithPath: localPath)
-                    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try data.write(to: url)
-                    let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
-                    try db.updateState(taskID: taskID, fileName: relativePath, contentHash: hash)
-                    let size = Int64(data.count)
-                    bytes += size
-                    result.downloaded += 1
-                    result.fileActivity.append(ActivityItem(filename: displayName, action: "downloaded", timestamp: Date()))
-                    logger.info(" Downloaded: \(relativePath) (\(size) bytes)")
+                            // Ensure parent directories exist on server
+                            let parentRelPath = (relativePath as NSString).deletingLastPathComponent
+                            let parentID = try await self.ensureRemoteDirectory(parentRelPath, rootID: task.remoteFolderID)
 
-                case .deleteRemote(let fileID, let relativePath):
-                    try await apiClient.deleteFile(id: fileID)
-                    try db.removeState(taskID: taskID, fileName: relativePath)
-                    result.deleted += 1
-                    let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
-                    result.fileActivity.append(ActivityItem(filename: displayName, action: "deleted", timestamp: Date()))
+                            // Upload first, then hash the source file (already on disk)
+                            let _ = try await self.apiClient.uploadFileFromDisk(fileURL: fileURL, filename: displayName, parentID: parentID)
+                            let hash = try Self.hashFile(at: fileURL)
+                            try self.db.updateState(taskID: taskID, fileName: relativePath, contentHash: hash)
+                            await bytes.add(size)
+                            logger.info(" Uploaded: \(relativePath) (\(size) bytes)")
+                            return .uploaded(displayName)
 
-                case .deleteLocal(let path, let relativePath):
-                    try FileManager.default.removeItem(atPath: path)
-                    try db.removeState(taskID: taskID, fileName: relativePath)
-                    result.deleted += 1
-                    let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
-                    result.fileActivity.append(ActivityItem(filename: displayName, action: "deleted", timestamp: Date()))
+                        case .download(let fileID, let localPath, let relativePath):
+                            let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
+                            onProgress(SyncProgress(
+                                currentFile: displayName, action: "Downloading",
+                                bytesTransferred: curBytes, totalBytes: 0,
+                                filesCompleted: curCompleted, filesTotal: total,
+                                bytesPerSecond: Self.speed(bytes: curBytes, since: start),
+                                pendingFiles: pending
+                            ))
 
-                case .conflict(let localPath, let remoteID, let relativePath):
-                    let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
-                    let data = try await apiClient.downloadFile(id: remoteID)
-                    let url = URL(fileURLWithPath: localPath)
-                    let conflictName = Self.conflictName(for: displayName)
-                    let conflictPath = url.deletingLastPathComponent().appendingPathComponent(conflictName)
-                    try FileManager.default.moveItem(at: url, to: conflictPath)
-                    try data.write(to: url)
-                    let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
-                    try db.updateState(taskID: taskID, fileName: relativePath, contentHash: hash)
-                    result.conflicts += 1
-                    result.fileActivity.append(ActivityItem(filename: "\(displayName) (conflict)", action: "downloaded", timestamp: Date()))
+                            let data = try await self.apiClient.downloadFile(id: fileID)
+                            let url = URL(fileURLWithPath: localPath)
+                            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                            try data.write(to: url)
+                            let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
+                            try self.db.updateState(taskID: taskID, fileName: relativePath, contentHash: hash)
+                            let size = Int64(data.count)
+                            await bytes.add(size)
+                            logger.info(" Downloaded: \(relativePath) (\(size) bytes)")
+                            return .downloaded(displayName)
+
+                        case .markRemovedLocally(let fileID, let relativePath):
+                            try await self.apiClient.markFileRemovedLocally(id: fileID, removed: true)
+                            try self.db.removeState(taskID: taskID, fileName: relativePath)
+                            let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
+                            logger.info(" Marked removed locally: \(relativePath)")
+                            return .markedRemoved(displayName)
+
+                        case .deleteLocal(let path, let relativePath):
+                            try FileManager.default.removeItem(atPath: path)
+                            try self.db.removeState(taskID: taskID, fileName: relativePath)
+                            let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
+                            return .deletedLocal(displayName)
+
+                        case .conflict(let localPath, let remoteID, let relativePath):
+                            let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
+                            let data = try await self.apiClient.downloadFile(id: remoteID)
+                            let url = URL(fileURLWithPath: localPath)
+                            let conflictName = Self.conflictName(for: displayName)
+                            let conflictPath = url.deletingLastPathComponent().appendingPathComponent(conflictName)
+                            try FileManager.default.moveItem(at: url, to: conflictPath)
+                            try data.write(to: url)
+                            let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
+                            try self.db.updateState(taskID: taskID, fileName: relativePath, contentHash: hash)
+                            return .conflict(displayName)
+                        }
+                    } catch let error as APIError where error == .unauthorized {
+                        logger.info(" Auth failed — re-throwing")
+                        return .authFailed
+                    } catch {
+                        logger.info(" Failed: \(action) — \(error)")
+                        return .error
+                    }
                 }
+            }
 
-                completed += 1
-            } catch let error as APIError where error == .unauthorized {
-                logger.info(" Auth failed — re-throwing")
-                throw error
-            } catch {
-                logger.info(" Failed: \(action) — \(error)")
-                result.errors += 1
+            for await actionResult in group {
+                switch actionResult {
+                case .uploaded(let name):
+                    result.uploaded += 1
+                    result.fileActivity.append(ActivityItem(filename: name, action: "uploaded", timestamp: Date()))
+                    await completed.increment()
+                case .downloaded(let name):
+                    result.downloaded += 1
+                    result.fileActivity.append(ActivityItem(filename: name, action: "downloaded", timestamp: Date()))
+                    await completed.increment()
+                case .markedRemoved(let name):
+                    result.deleted += 1
+                    result.fileActivity.append(ActivityItem(filename: name, action: "removed locally", timestamp: Date()))
+                    await completed.increment()
+                case .deletedLocal(let name):
+                    result.deleted += 1
+                    result.fileActivity.append(ActivityItem(filename: name, action: "deleted", timestamp: Date()))
+                    await completed.increment()
+                case .conflict(let name):
+                    result.conflicts += 1
+                    result.fileActivity.append(ActivityItem(filename: "\(name) (conflict)", action: "downloaded", timestamp: Date()))
+                    await completed.increment()
+                case .authFailed:
+                    authFailed = true
+                case .error:
+                    result.errors += 1
+                    await completed.increment()
+                }
             }
         }
 
+        if authFailed {
+            throw APIError.unauthorized
+        }
+
         return result
+    }
+
+    // MARK: - Sync State Export/Restore
+
+    func exportSyncStates(taskID: String) -> [[String: String]] {
+        guard let states = try? db.getStates(taskID: taskID) else { return [] }
+        return states.values.map { state in
+            ["file_name": state.fileName, "content_hash": state.contentHash]
+        }
+    }
+
+    func restoreSyncStates(taskID: String, states: [[String: Any]]) throws {
+        for stateDict in states {
+            guard let fileName = stateDict["file_name"] as? String,
+                  let contentHash = stateDict["content_hash"] as? String else { continue }
+            try db.updateState(taskID: taskID, fileName: fileName, contentHash: contentHash)
+        }
     }
 
     // MARK: - Remote Tree
@@ -314,7 +382,20 @@ actor SyncEngine {
                 continue
             }
 
-            guard let attrs = try? fm.attributesOfItem(atPath: changedPath) else { continue }
+            // File no longer exists → mark as deleted
+            guard let attrs = try? fm.attributesOfItem(atPath: changedPath) else {
+                files.append(LocalFileInfo(
+                    relativePath: relativePath,
+                    fullPath: changedPath,
+                    isDirectory: false,
+                    size: 0,
+                    modifiedAt: Date(),
+                    contentHash: nil,
+                    deletedLocally: true
+                ))
+                continue
+            }
+
             let isDir = attrs[.type] as? FileAttributeType == .typeDirectory
             let size = (attrs[.size] as? Int64) ?? 0
             let modified = (attrs[.modificationDate] as? Date) ?? Date()
@@ -369,12 +450,13 @@ actor SyncEngine {
             }
         }
 
-        // Remote files not in local → download (two-way only)
+        // Remote files not in local → download or mark removed (two-way only)
         if mode == .twoWay {
             for (relPath, remoteFile) in remoteByPath {
                 if localByPath[relPath] == nil {
                     if known[relPath] != nil {
-                        actions.append(.deleteRemote(remoteFile.id, relPath))
+                        // File was known (synced before) but deleted locally → mark removed on server
+                        actions.append(.markRemovedLocally(remoteFile.id, relPath))
                     } else {
                         let localPath = (basePath as NSString).appendingPathComponent(relPath)
                         actions.append(.download(remoteFile.id, localPath, relPath))
@@ -393,6 +475,15 @@ actor SyncEngine {
 
         for localFile in changedLocal where !localFile.isDirectory {
             let relPath = localFile.relativePath
+
+            // File deleted locally
+            if localFile.deletedLocally {
+                if mode == .twoWay, let remoteFile = remoteByPath[relPath], known[relPath] != nil {
+                    actions.append(.markRemovedLocally(remoteFile.id, relPath))
+                }
+                continue
+            }
+
             if let remoteFile = remoteByPath[relPath] {
                 if localFile.contentHash != remoteFile.contentHash {
                     let knownHash = known[relPath]?.contentHash
@@ -416,7 +507,7 @@ actor SyncEngine {
             }
         }
 
-        // New remote files
+        // New remote files not yet known → download
         if mode == .twoWay {
             for (relPath, remoteFile) in remoteByPath {
                 if known[relPath] == nil {
@@ -480,6 +571,7 @@ struct LocalFileInfo {
     let size: Int64
     let modifiedAt: Date
     let contentHash: String?
+    var deletedLocally: Bool = false
 }
 
 /// Remote file with its relative path in the folder tree.
@@ -512,17 +604,17 @@ struct SyncResult {
 }
 
 enum SyncAction: CustomStringConvertible {
-    case upload(String, String)           // localPath, relativePath
-    case download(String, String, String) // remoteFileID, localPath, relativePath
-    case deleteRemote(String, String)     // remoteFileID, relativePath
-    case deleteLocal(String, String)      // localPath, relativePath
-    case conflict(String, String, String) // localPath, remoteFileID, relativePath
+    case upload(String, String)              // localPath, relativePath
+    case download(String, String, String)    // remoteFileID, localPath, relativePath
+    case markRemovedLocally(String, String)  // remoteFileID, relativePath
+    case deleteLocal(String, String)         // localPath, relativePath
+    case conflict(String, String, String)    // localPath, remoteFileID, relativePath
 
     var fileName: String {
         switch self {
         case .upload(_, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .download(_, _, let p): return URL(fileURLWithPath: p).lastPathComponent
-        case .deleteRemote(_, let p): return URL(fileURLWithPath: p).lastPathComponent
+        case .markRemovedLocally(_, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .deleteLocal(_, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .conflict(_, _, let p): return URL(fileURLWithPath: p).lastPathComponent
         }
@@ -532,9 +624,56 @@ enum SyncAction: CustomStringConvertible {
         switch self {
         case .upload(_, let p): return "upload(\(p))"
         case .download(_, _, let p): return "download(\(p))"
-        case .deleteRemote(_, let p): return "deleteRemote(\(p))"
+        case .markRemovedLocally(_, let p): return "markRemovedLocally(\(p))"
         case .deleteLocal(_, let p): return "deleteLocal(\(p))"
         case .conflict(_, _, let p): return "conflict(\(p))"
         }
     }
+}
+
+// MARK: - Async helpers
+
+/// Simple actor-based semaphore for limiting concurrency in task groups.
+actor AsyncSemaphore {
+    private var count: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(limit: Int) { count = limit }
+
+    func wait() async {
+        if count > 0 {
+            count -= 1
+        } else {
+            await withCheckedContinuation { cont in
+                waiters.append(cont)
+            }
+        }
+    }
+
+    func signal() {
+        if waiters.isEmpty {
+            count += 1
+        } else {
+            waiters.removeFirst().resume()
+        }
+    }
+}
+
+/// Thread-safe counter for use inside task groups.
+actor ActorCounter {
+    private(set) var value: Int64 = 0
+
+    func add(_ n: Int64) { value += n }
+    func increment() { value += 1 }
+}
+
+/// Result type for individual sync actions executed in a task group.
+private enum SyncActionResult {
+    case uploaded(String)
+    case downloaded(String)
+    case markedRemoved(String)
+    case deletedLocal(String)
+    case conflict(String)
+    case authFailed
+    case error
 }

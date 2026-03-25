@@ -82,6 +82,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/files/history/download", s.handleDownloadFolderAtTime)
 		r.Post("/api/files/history/restore", s.handleRestoreFolderAtTime)
 		r.Put("/api/files/{id}", s.handleUpdateFile)
+		r.Put("/api/files/{id}/removed-locally", s.handleSetRemovedLocally)
 		r.Delete("/api/files/{id}", s.handleDeleteFile)
 		r.Post("/api/files/{id}/restore", s.handleRestoreFile)
 		r.Get("/api/files/{id}/download", s.handleDownloadFile)
@@ -98,6 +99,11 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/files/{id}/shares", s.handleListShares)
 		r.Delete("/api/shares/{id}", s.handleDeleteShare)
 		r.Get("/api/shares/mine", s.handleListMyShares)
+
+		// Known sync state (per user per device).
+		r.Put("/api/sync-state/{deviceID}/{taskName}", s.handlePutSyncState)
+		r.Get("/api/sync-state/{deviceID}/{taskName}", s.handleGetSyncState)
+		r.Delete("/api/sync-state/{deviceID}/{taskName}", s.handleDeleteSyncState)
 
 		// Sync task management.
 		r.Get("/api/tasks", s.handleListTasks)
@@ -155,7 +161,7 @@ func (s *Server) setupRoutes() {
 	r.NotFound(ServeSPA().ServeHTTP)
 }
 
-const AppVersion = "2.2.1"
+const AppVersion = "2.3.0"
 
 // handleHealth returns a simple health check response.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

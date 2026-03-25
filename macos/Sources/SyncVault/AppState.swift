@@ -195,6 +195,16 @@ class AppState: ObservableObject {
         syncTasks.append(task)
         saveConfig()
 
+        // Try to restore sync state from server (new-Mac scenario)
+        let deviceID = getDeviceID()
+        let dbPath = Self.configDirectory.appendingPathComponent("sync.db")
+        if let engine = try? SyncEngine(apiClient: client, dbPath: dbPath) {
+            if let remoteStates = try? await client.getSyncStates(deviceID: deviceID, taskName: folderName) {
+                try? await engine.restoreSyncStates(taskID: task.id.uuidString, states: remoteStates)
+                logger.info("Restored \(remoteStates.count) sync states from server for task \(folderName)")
+            }
+        }
+
         // For on-demand mode, register the File Provider domain
         if mode == .onDemand {
             try await setupOnDemandSync(folderID: response.folderID)
@@ -227,17 +237,25 @@ class AppState: ObservableObject {
         // Start file watchers for each sync task
         for task in syncTasks where task.isEnabled && task.mode != .onDemand {
             let watcher = FileWatcher(path: task.localPath)
+            watcher.onChange = { [weak self] in
+                self?.onFileChanged()
+            }
             watcher.start()
             fileWatchers[task.id] = watcher
         }
 
-        // Run sync every 30 seconds
-        syncTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        // 5-minute fallback timer (in case FSEvents misses something)
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 await self?.runSync()
             }
         }
         // Also run immediately
+        Task { await runSync() }
+    }
+
+    /// Called by FileWatcher when changes are detected (already debounced 1s).
+    func onFileChanged() {
         Task { await runSync() }
     }
 
@@ -249,6 +267,18 @@ class AppState: ObservableObject {
             watcher.stop()
         }
         fileWatchers.removeAll()
+    }
+
+    // MARK: - Device ID
+
+    func getDeviceID() -> String {
+        let key = "device_id"
+        if let existing = UserDefaults.standard.string(forKey: key) {
+            return existing
+        }
+        let newID = UUID().uuidString
+        UserDefaults.standard.set(newID, forKey: key)
+        return newID
     }
 
     // MARK: - Notification Polling
@@ -363,6 +393,11 @@ class AppState: ObservableObject {
                 }
 
                 logger.info(" Result: \(result.uploaded) up, \(result.downloaded) down, \(result.deleted) del, \(result.conflicts) conflicts, \(result.errors) errors")
+
+                // Upload known state to server (for restore-to-new-Mac scenario)
+                let deviceID = getDeviceID()
+                let states = await engine.exportSyncStates(taskID: task.id.uuidString)
+                try? await client.saveSyncStates(deviceID: deviceID, taskName: task.remoteFolderName, states: states)
 
                 // Add individual file activity
                 for item in result.fileActivity {

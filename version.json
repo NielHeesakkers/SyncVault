@@ -1,9 +1,19 @@
 {
-  "version": "2.2.1",
+  "version": "2.3.0",
   "min_version": "1.0",
   "release_date": "2026-03-25",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.2.1/SyncVault-2.2.1.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.3.0/SyncVault-2.3.0.dmg",
   "history": [
+    {
+      "version": "2.3.0",
+      "date": "2026-03-25",
+      "changes": [
+        "Synology Drive-style sync",
+        "Parallel uploads",
+        "Removed locally support",
+        "Known state server sync"
+      ]
+    },
     {
       "version": "2.2.1",
       "date": "2026-03-25",

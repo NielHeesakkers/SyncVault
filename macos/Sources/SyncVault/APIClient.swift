@@ -41,6 +41,22 @@ actor APIClient {
         try await delete("/api/files/\(id)")
     }
 
+    func markFileRemovedLocally(id: String, removed: Bool) async throws {
+        let body: [String: Any] = ["removed": removed]
+        let _: EmptyResponse = try await put("/api/files/\(id)/removed-locally", body: body)
+    }
+
+    // MARK: - Sync State (for cross-device restore)
+
+    func saveSyncStates(deviceID: String, taskName: String, states: [[String: String]]) async throws {
+        let _: EmptyResponse = try await put("/api/sync-state/\(deviceID)/\(taskName)", body: states)
+    }
+
+    func getSyncStates(deviceID: String, taskName: String) async throws -> [[String: Any]] {
+        let raw: [[String: String]] = try await get("/api/sync-state/\(deviceID)/\(taskName)")
+        return raw.map { dict in dict.mapValues { $0 as Any } }
+    }
+
     func getChanges(since: Date) async throws -> ChangesResponse {
         let formatter = ISO8601DateFormatter()
         let sinceStr = formatter.string(from: since)

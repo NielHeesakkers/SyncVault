@@ -19,7 +19,7 @@ struct SyncVaultApp: App {
         MenuBarExtra {
             MenuBarView(appState: appState, updaterService: updaterService)
         } label: {
-            MenuBarIcon(isSyncing: appState.isSyncing, isConnected: appState.isConnected)
+            MenuBarIcon(isSyncing: appState.isSyncing, isConnected: appState.isConnected, syncProgress: appState.syncProgress)
         }
         .menuBarExtraStyle(.window)
         .onChange(of: tokenImporter.pendingData) { _, newValue in

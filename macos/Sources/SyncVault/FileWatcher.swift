@@ -13,6 +13,10 @@ final class FileWatcher {
     private let lock = NSLock()
     private var isInitialScan = true
 
+    /// Called (on main queue) when file changes are detected. Debounced 1 second.
+    var onChange: (() -> Void)?
+    private var debounceWorkItem: DispatchWorkItem?
+
     init(path: String) {
         self.path = path
     }
@@ -94,7 +98,6 @@ final class FileWatcher {
 
     private func handleEvents(paths: [String], flags: [FSEventStreamEventFlags]) {
         lock.lock()
-        defer { lock.unlock() }
 
         for (i, eventPath) in paths.enumerated() {
             let flag = flags[i]
@@ -115,5 +118,15 @@ final class FileWatcher {
                 changedPaths.insert(eventPath)
             }
         }
+
+        lock.unlock()
+
+        // Debounce: fire onChange 1 second after the last event
+        debounceWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.onChange?()
+        }
+        debounceWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
     }
 }

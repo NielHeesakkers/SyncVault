@@ -37,7 +37,7 @@ var ErrRootFolderNotFound = errors.New("metadata: user root folder not found")
 // owned by the user, that is a directory and has not been deleted.
 func (d *DB) GetUserRootFolder(userID string) (*File, error) {
 	row := d.db.QueryRow(
-		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
 		 FROM files
 		 WHERE owner_id = ? AND parent_id IS NULL AND is_dir = 1 AND deleted_at IS NULL
 		 ORDER BY created_at ASC

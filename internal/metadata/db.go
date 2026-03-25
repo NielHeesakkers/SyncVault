@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -46,7 +47,30 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("metadata: apply schema: %w", err)
 	}
 
+	// Run incremental migrations that are safe to re-apply on existing databases.
+	migrations := []string{
+		`ALTER TABLE files ADD COLUMN removed_locally INTEGER NOT NULL DEFAULT 0`,
+	}
+	for _, m := range migrations {
+		if _, err := rawDB.Exec(m); err != nil {
+			// Ignore "duplicate column name" errors — migration already applied.
+			if !isDuplicateColumnError(err) {
+				rawDB.Close()
+				return nil, fmt.Errorf("metadata: migration %q: %w", m, err)
+			}
+		}
+	}
+
 	return &DB{db: rawDB}, nil
+}
+
+// isDuplicateColumnError returns true when SQLite reports that a column already exists.
+func isDuplicateColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "duplicate column name") || strings.Contains(s, "already exists")
 }
 
 // Close closes the underlying database connection.

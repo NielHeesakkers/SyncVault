@@ -10,17 +10,18 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS files (
-    id           TEXT PRIMARY KEY,
-    parent_id    TEXT REFERENCES files(id),
-    owner_id     TEXT NOT NULL REFERENCES users(id),
-    name         TEXT NOT NULL,
-    is_dir       INTEGER NOT NULL DEFAULT 0,
-    size         INTEGER NOT NULL DEFAULT 0,
-    content_hash TEXT,
-    mime_type    TEXT,
-    created_at   TEXT NOT NULL,
-    updated_at   TEXT NOT NULL,
-    deleted_at   TEXT,
+    id               TEXT PRIMARY KEY,
+    parent_id        TEXT REFERENCES files(id),
+    owner_id         TEXT NOT NULL REFERENCES users(id),
+    name             TEXT NOT NULL,
+    is_dir           INTEGER NOT NULL DEFAULT 0,
+    size             INTEGER NOT NULL DEFAULT 0,
+    content_hash     TEXT,
+    mime_type        TEXT,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL,
+    deleted_at       TEXT,
+    removed_locally  INTEGER NOT NULL DEFAULT 0,
     UNIQUE(parent_id, name, owner_id)
 );
 
@@ -149,6 +150,17 @@ CREATE TABLE IF NOT EXISTS connection_tokens (
     encrypted_data BLOB NOT NULL,
     used           INTEGER NOT NULL DEFAULT 0,
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sync_states (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES users(id),
+    device_id    TEXT NOT NULL,
+    task_name    TEXT NOT NULL,
+    file_path    TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    synced_at    TEXT NOT NULL,
+    UNIQUE(user_id, device_id, task_name, file_path)
 );
 
 -- Indexes
