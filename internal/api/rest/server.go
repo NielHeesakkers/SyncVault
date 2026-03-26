@@ -115,6 +115,10 @@ func (s *Server) setupRoutes() {
 		r.Delete("/api/shares/{id}", s.handleDeleteShare)
 		r.Get("/api/shares/mine", s.handleListMyShares)
 
+		// Hash check and file tree (for sync clients).
+		r.Post("/api/files/check-hashes", s.handleCheckHashes)
+		r.Get("/api/files/tree", s.handleFileTree)
+
 		// Known sync state (per user per device).
 		r.Put("/api/sync-state/{deviceID}/{taskName}", s.handlePutSyncState)
 		r.Get("/api/sync-state/{deviceID}/{taskName}", s.handleGetSyncState)
@@ -179,7 +183,7 @@ func (s *Server) setupRoutes() {
 	r.NotFound(ServeSPA().ServeHTTP)
 }
 
-const AppVersion = "2.4.0"
+const AppVersion = "2.5.0"
 
 // handleHealth returns a simple health check response.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

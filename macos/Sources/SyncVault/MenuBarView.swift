@@ -77,14 +77,19 @@ struct MenuBarView: View {
                                     .font(.system(size: 11, design: .monospaced))
                                     .foregroundColor(.secondary)
                             }
-                            ProgressView(value: Double(progress.filesCompleted), total: Double(max(progress.filesTotal, 1)))
+                            ProgressView(value: Double(progress.bytesTransferred), total: Double(max(progress.totalBytes, 1)))
                                 .tint(.blue)
                                 .scaleEffect(y: 0.6)
-                            if progress.bytesPerSecond > 0 {
-                                HStack {
-                                    Spacer()
-                                    Text(formatSpeed(progress.bytesPerSecond))
-                                        .font(.system(size: 10, design: .monospaced))
+                            HStack {
+                                if progress.bytesPerSecond > 100 {
+                                    Text("↑ \(formatSpeed(progress.bytesPerSecond))")
+                                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                        .foregroundColor(.green)
+                                }
+                                Spacer()
+                                if progress.totalBytes > 0 {
+                                    Text("\(formatBytes(progress.bytesTransferred)) / \(formatBytes(progress.totalBytes))")
+                                        .font(.system(size: 9, design: .monospaced))
                                         .foregroundColor(.secondary)
                                 }
                             }
@@ -255,10 +260,17 @@ struct MenuBarView: View {
                         }
                     }
 
+                    actionRow(icon: appState.isPaused ? "play.fill" : "pause.fill",
+                             label: appState.isPaused ? "Resume Sync" : "Pause Sync",
+                             color: appState.isPaused ? .green : .orange) {
+                        appState.togglePause()
+                    }
+                    .opacity(appState.isConnected ? 1 : 0.4)
+
                     actionRow(icon: "arrow.triangle.2.circlepath", label: "Sync Now") {
                         Task { await appState.runSync() }
                     }
-                    .opacity(appState.isConnected && !appState.isSyncing ? 1 : 0.4)
+                    .opacity(appState.isConnected && !appState.isSyncing && !appState.isPaused ? 1 : 0.4)
 
                     actionRow(icon: "globe", label: "Open Files on Server", color: .blue) {
                         let baseURL = appState.serverURL.isEmpty ? "https://sync.heesakkers.com" : appState.serverURL

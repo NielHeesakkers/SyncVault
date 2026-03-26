@@ -784,3 +784,103 @@ func nullStringVal(ns sql.NullString) interface{} {
 	}
 	return nil
 }
+
+// FileTreeEntry is a file with its relative path for tree listing.
+type FileTreeEntry struct {
+	ID           string
+	Name         string
+	RelativePath string
+	IsDir        bool
+	Size         int64
+	ContentHash  sql.NullString
+	RemovedLocally bool
+}
+
+// ListFilesRecursive returns all files (recursively) under a folder with relative paths.
+func (d *DB) ListFilesRecursive(folderID, ownerID string, isAdmin bool) ([]FileTreeEntry, error) {
+	var entries []FileTreeEntry
+	err := d.listFilesRecursiveHelper(folderID, "", ownerID, isAdmin, &entries)
+	return entries, err
+}
+
+func (d *DB) listFilesRecursiveHelper(folderID, prefix, ownerID string, isAdmin bool, entries *[]FileTreeEntry) error {
+	query := "SELECT id, name, is_dir, size, content_hash, removed_locally FROM files WHERE parent_id = ? AND deleted_at IS NULL"
+	args := []interface{}{folderID}
+	if !isAdmin {
+		query += " AND owner_id = ?"
+		args = append(args, ownerID)
+	}
+	query += " ORDER BY is_dir DESC, name"
+
+	rows, err := d.db.Query(query, args...)
+	if err != nil {
+		return fmt.Errorf("metadata: list files recursive: %w", err)
+	}
+	defer rows.Close()
+
+	var children []FileTreeEntry
+	for rows.Next() {
+		var e FileTreeEntry
+		var isDir int
+		var removedLocally int
+		if err := rows.Scan(&e.ID, &e.Name, &isDir, &e.Size, &e.ContentHash, &removedLocally); err != nil {
+			return fmt.Errorf("metadata: scan file tree entry: %w", err)
+		}
+		e.IsDir = isDir != 0
+		e.RemovedLocally = removedLocally != 0
+		if prefix == "" {
+			e.RelativePath = e.Name
+		} else {
+			e.RelativePath = prefix + "/" + e.Name
+		}
+		children = append(children, e)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, child := range children {
+		*entries = append(*entries, child)
+		if child.IsDir {
+			if err := d.listFilesRecursiveHelper(child.ID, child.RelativePath, ownerID, isAdmin, entries); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// CheckHashes takes a list of content hashes and returns those that already exist in the database.
+func (d *DB) CheckHashes(hashes []string) ([]string, error) {
+	if len(hashes) == 0 {
+		return nil, nil
+	}
+
+	// Build query with placeholders
+	placeholders := ""
+	args := make([]interface{}, len(hashes))
+	for i, h := range hashes {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args[i] = h
+	}
+
+	query := fmt.Sprintf("SELECT DISTINCT content_hash FROM files WHERE content_hash IN (%s) AND deleted_at IS NULL", placeholders)
+	rows, err := d.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("metadata: check hashes: %w", err)
+	}
+	defer rows.Close()
+
+	var existing []string
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			return nil, err
+		}
+		existing = append(existing, h)
+	}
+	return existing, rows.Err()
+}

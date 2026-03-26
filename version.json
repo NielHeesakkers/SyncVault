@@ -1,9 +1,18 @@
 {
-  "version": "2.4.0",
+  "version": "2.5.0",
   "min_version": "1.0",
-  "release_date": "2026-03-25",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.4.0/SyncVault-2.4.0.dmg",
+  "release_date": "2026-03-26",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.0/SyncVault-2.5.0.dmg",
   "history": [
+    {
+      "version": "2.5.0",
+      "date": "2026-03-26",
+      "changes": [
+        "Hash-based dedup (skip existing files)",
+        "Dynamic parallel uploads 2-16",
+        "Light/dark theme toggle"
+      ]
+    },
     {
       "version": "2.4.0",
       "date": "2026-03-25",

@@ -727,3 +727,73 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+// handleCheckHashes accepts a list of content hashes and returns which ones already exist on the server.
+// This allows the client to skip uploading files that the server already has (deduplication).
+func (s *Server) handleCheckHashes(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Hashes []string `json:"hashes"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	if len(req.Hashes) == 0 {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"existing": []string{}})
+		return
+	}
+
+	existing, err := s.db.CheckHashes(req.Hashes)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not check hashes"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"existing": existing})
+}
+
+// handleFileTree returns a flat list of all files (recursively) under a given folder.
+// Used by the sync client to compare local vs remote without multiple API calls.
+func (s *Server) handleFileTree(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	folderID := r.URL.Query().Get("folder_id")
+	if folderID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "folder_id required"})
+		return
+	}
+
+	files, err := s.db.ListFilesRecursive(folderID, claims.UserID, claims.Role == "admin")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list file tree"})
+		return
+	}
+
+	type treeEntry struct {
+		ID           string `json:"id"`
+		Name         string `json:"name"`
+		RelativePath string `json:"relative_path"`
+		IsDir        bool   `json:"is_dir"`
+		Size         int64  `json:"size"`
+		ContentHash  string `json:"content_hash,omitempty"`
+		RemovedLocally bool `json:"removed_locally"`
+	}
+
+	result := make([]treeEntry, 0, len(files))
+	for _, f := range files {
+		entry := treeEntry{
+			ID:           f.ID,
+			Name:         f.Name,
+			RelativePath: f.RelativePath,
+			IsDir:        f.IsDir,
+			Size:         f.Size,
+			RemovedLocally: f.RemovedLocally,
+		}
+		if f.ContentHash.Valid {
+			entry.ContentHash = f.ContentHash.String
+		}
+		result = append(result, entry)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"files": result})
+}

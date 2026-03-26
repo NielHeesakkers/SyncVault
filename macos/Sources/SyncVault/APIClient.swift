@@ -73,6 +73,18 @@ actor APIClient {
         return true
     }
 
+    /// Check which hashes exist on the server. Returns existing, missing, and changed paths.
+    func checkHashes(parentID: String, hashes: [String: String]) async throws -> HashCheckResponse {
+        let body: [String: Any] = ["parent_id": parentID, "hashes": hashes]
+        return try await post("/api/files/check-hashes", body: body)
+    }
+
+    /// Get full recursive file tree under a folder
+    func getFileTree(parentID: String) async throws -> [RemoteTreeFile] {
+        let response: FileTreeResponse = try await get("/api/files/tree?parent_id=\(parentID)")
+        return response.files
+    }
+
     func createTask(body: [String: Any]) async throws -> TaskResponse {
         return try await post("/api/tasks", body: body)
     }
@@ -194,7 +206,27 @@ actor APIClient {
 
     func createFolder(name: String, parentID: String) async throws -> ServerFile {
         let body: [String: Any] = ["name": name, "parent_id": parentID, "is_dir": true]
-        return try await post("/api/files", body: body)
+        // Use raw post to handle the minimal server response
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        addAuth(&request)
+        let (data, response) = try await session.data(for: request)
+        try checkResponse(response)
+        // Decode as dictionary first, then build ServerFile
+        guard let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = dict["id"] as? String,
+              let name = dict["name"] as? String else {
+            throw APIError.invalidResponse
+        }
+        return ServerFile(
+            id: id, parentID: dict["parent_id"] as? String, name: name,
+            isDir: (dict["is_dir"] as? Bool) ?? true, size: (dict["size"] as? Int64) ?? 0,
+            contentHash: dict["content_hash"] as? String, mimeType: dict["mime_type"] as? String,
+            createdAt: dict["created_at"] as? String, updatedAt: dict["updated_at"] as? String,
+            deletedAt: dict["deleted_at"] as? String, removedLocally: dict["removed_locally"] as? Bool
+        )
     }
 
     func moveFile(id: String, name: String, parentID: String) async throws {
@@ -224,8 +256,8 @@ actor APIClient {
         return try await get("/api/uploads/\(uploadID)/status")
     }
 
-    func completeChunkedUpload(uploadID: String) async throws -> ServerFile {
-        return try await post("/api/uploads/\(uploadID)/complete", body: [:])
+    func completeChunkedUpload(uploadID: String) async throws -> ChunkedUploadResult {
+        return try await post("/api/uploads/\(uploadID)/complete", body: [:] as [String: String])
     }
 
     // MARK: - Delta Sync
@@ -506,6 +538,18 @@ struct UploadStatus: Codable {
     }
 }
 
+struct ChunkedUploadResult: Codable {
+    let id: String
+    let name: String
+    let size: Int64
+    let contentHash: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, size
+        case contentHash = "content_hash"
+    }
+}
+
 // MARK: - Delta sync models
 
 struct BlockSignature: Codable {
@@ -549,6 +593,47 @@ struct DeltaManifest: Codable {
 
 // Used for POST endpoints that return an empty or minimal body
 private struct EmptyResponse: Codable {}
+
+// MARK: - Hash check / file tree models
+
+struct HashCheckResponse: Codable {
+    let existing: [String: HashCheckFile]
+    let missing: [String]
+    let changed: [String: HashCheckFile]
+}
+
+struct HashCheckFile: Codable {
+    let id: String
+    let hash: String?
+    let serverHash: String?
+    let size: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case id, hash, size
+        case serverHash = "server_hash"
+    }
+}
+
+struct FileTreeResponse: Codable {
+    let files: [RemoteTreeFile]
+}
+
+struct RemoteTreeFile: Codable {
+    let id: String
+    let path: String
+    let name: String
+    let size: Int64
+    let contentHash: String?
+    let isDir: Bool
+    let removedLocally: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id, path, name, size
+        case contentHash = "content_hash"
+        case isDir = "is_dir"
+        case removedLocally = "removed_locally"
+    }
+}
 
 enum APIError: Error, LocalizedError, Equatable {
     case unauthorized

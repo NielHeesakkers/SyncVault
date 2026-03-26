@@ -11,6 +11,7 @@ let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionS
 class AppState: ObservableObject {
     @Published var isConnected = false
     @Published var isSyncing = false
+    @Published var isPaused = false
     @Published var syncProgress: SyncProgress?
     @Published var syncQueue: [String] = []
     @Published var speedHistory: [Double] = []  // last 60 samples (10 min at 10s intervals)
@@ -391,9 +392,20 @@ class AppState: ObservableObject {
         }
     }
 
+    func togglePause() {
+        isPaused.toggle()
+        if !isPaused {
+            Task { await runSync() }
+        }
+    }
+
     func runSync() async {
         guard let client = apiClient, isConnected else {
             logger.info(" Not connected, skipping")
+            return
+        }
+        guard !isPaused else {
+            logger.info(" Sync paused, skipping")
             return
         }
         guard !isSyncing else {
@@ -463,7 +475,7 @@ class AppState: ObservableObject {
                 let changedPaths = fileWatchers[task.id]?.consumeChangedPaths()
 
                 let result = try await engine.syncTask(task, changedPaths: changedPaths) { [weak self] progress in
-                    Task { @MainActor [weak self] in
+                    await MainActor.run { [weak self] in
                         self?.syncProgress = progress
                         self?.syncQueue = progress.pendingFiles
                     }

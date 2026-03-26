@@ -1,3 +1,19 @@
+## [2.5.0] — 2026-03-26
+
+Backend/Web:
+- Hash check endpoint: clients skip uploading files server already has
+- File tree endpoint: flat recursive listing for faster sync comparison
+- Light/dark theme toggle with CSS custom properties
+- All pages refactored to use theme variables
+
+macOS App:
+- Dynamic parallel uploads (2-16 based on file size)
+- Chunked upload for files >50MB with parallel chunks and resume
+- Speed graph sparkline in menu bar (last 10 min)
+- Progress bar fix during active uploads
+- Auto-reconnect with saved credentials
+- No more phantom downloads (hash-based dedup)
+
 ## [2.4.0] — 2026-03-25
 
 Backend/Web:
