@@ -751,8 +751,7 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCheckHashes accepts a list of content hashes and returns which ones already exist on the server.
-// This allows the client to skip uploading files that the server already has (deduplication).
-// Returns: {"existing": {"abc123": true, "def456": false, ...}}
+// Returns: {"existing": ["abc123", "def456"]} — only hashes that exist.
 func (s *Server) handleCheckHashes(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
 
@@ -765,17 +764,27 @@ func (s *Server) handleCheckHashes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(req.Hashes) == 0 {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"existing": map[string]bool{}})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"existing": []string{}})
 		return
 	}
 
-	existing, err := s.db.CheckFileHashes(claims.UserID, req.Hashes)
+	existingMap, err := s.db.CheckFileHashes(claims.UserID, req.Hashes)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not check hashes"})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{"existing": existing})
+	var existingList []string
+	for hash, exists := range existingMap {
+		if exists {
+			existingList = append(existingList, hash)
+		}
+	}
+	if existingList == nil {
+		existingList = []string{}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"existing": existingList})
 }
 
 // handleFileTree returns a flat list of all files (recursively) under a given folder.
