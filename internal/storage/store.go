@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
+	"strings" // used by Get/Delete manifest parsing
 )
 
 // ErrNotFound is returned when a file hash is not found in the store.
@@ -44,39 +44,57 @@ func (s *Store) manifestPath(hash string) string {
 	return filepath.Join(s.dir, hash[:2], hash+".manifest")
 }
 
-// Put reads all data from r, splits it into chunks, stores each chunk by its hash,
+// Put streams data from r in 4 MB chunks, stores each chunk by its hash,
 // writes a manifest, and returns the overall file hash, total size, and any error.
+// Memory usage is O(chunkSize) regardless of file size.
 func (s *Store) Put(r io.Reader) (fileHash string, size int64, err error) {
-	// Read all data first to compute the file-level hash and chunk it.
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return "", 0, fmt.Errorf("storage: read input: %w", err)
+	fileHasher := sha256.New()
+	buf := make([]byte, s.chunker.chunkSize)
+
+	type manifestEntry struct {
+		index int
+		hash  string
+		size  int
 	}
+	var entries []manifestEntry
+	index := 0
 
-	// Compute overall file hash.
-	h := sha256.Sum256(data)
-	fileHash = hex.EncodeToString(h[:])
-	size = int64(len(data))
+	for {
+		n, readErr := io.ReadFull(r, buf)
+		if n > 0 {
+			chunk := buf[:n]
 
-	// Chunk the data.
-	chunks, err := s.chunker.Chunk(strings.NewReader(string(data)))
-	if err != nil {
-		return "", 0, fmt.Errorf("storage: chunk data: %w", err)
-	}
+			// Update the running file hash
+			fileHasher.Write(chunk)
+			size += int64(n)
 
-	// Store each chunk.
-	for _, chunk := range chunks {
-		cp := s.chunkPath(chunk.Hash)
-		if err := os.MkdirAll(filepath.Dir(cp), 0755); err != nil {
-			return "", 0, fmt.Errorf("storage: create chunk dir: %w", err)
-		}
-		// Only write if not already present (deduplication).
-		if _, statErr := os.Stat(cp); os.IsNotExist(statErr) {
-			if err := os.WriteFile(cp, chunk.Data, 0644); err != nil {
-				return "", 0, fmt.Errorf("storage: write chunk: %w", err)
+			// Compute chunk hash
+			ch := sha256.Sum256(chunk)
+			chunkHash := hex.EncodeToString(ch[:])
+
+			// Store chunk (deduplicated)
+			cp := s.chunkPath(chunkHash)
+			if err := os.MkdirAll(filepath.Dir(cp), 0755); err != nil {
+				return "", 0, fmt.Errorf("storage: create chunk dir: %w", err)
 			}
+			if _, statErr := os.Stat(cp); os.IsNotExist(statErr) {
+				if err := os.WriteFile(cp, chunk, 0644); err != nil {
+					return "", 0, fmt.Errorf("storage: write chunk: %w", err)
+				}
+			}
+
+			entries = append(entries, manifestEntry{index: index, hash: chunkHash, size: n})
+			index++
+		}
+		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF {
+			break
+		}
+		if readErr != nil {
+			return "", 0, fmt.Errorf("storage: read input: %w", readErr)
 		}
 	}
+
+	fileHash = hex.EncodeToString(fileHasher.Sum(nil))
 
 	// Write manifest: one line per chunk — "<index> <hash> <size>"
 	mp := s.manifestPath(fileHash)
@@ -85,8 +103,8 @@ func (s *Store) Put(r io.Reader) (fileHash string, size int64, err error) {
 	}
 
 	var sb strings.Builder
-	for _, chunk := range chunks {
-		sb.WriteString(fmt.Sprintf("%d %s %d\n", chunk.Index, chunk.Hash, chunk.Size))
+	for _, e := range entries {
+		sb.WriteString(fmt.Sprintf("%d %s %d\n", e.index, e.hash, e.size))
 	}
 	if err := os.WriteFile(mp, []byte(sb.String()), 0644); err != nil {
 		return "", 0, fmt.Errorf("storage: write manifest: %w", err)

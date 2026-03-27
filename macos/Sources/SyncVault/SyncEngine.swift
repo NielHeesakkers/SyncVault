@@ -310,12 +310,30 @@ actor SyncEngine {
                             let parentRelPath = (relativePath as NSString).deletingLastPathComponent
                             let parentID = try await self.ensureRemoteDirectory(parentRelPath, rootID: task.remoteFolderID)
 
-                            // Stream upload from disk (memory-safe for large files)
-                            let uploadResult = try await self.apiClient.uploadFileFromDisk(fileURL: fileURL, filename: displayName, parentID: parentID)
-                            let uploadedHash = uploadResult.contentHash ?? ""
+                            let uploadedHash: String
+                            if fileSize > 50 * 1024 * 1024 {
+                                // Large files: chunked upload (64MB pieces, resumable)
+                                let result = try await self.uploadChunked(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize) { chunkBytes in
+                                    await bytesUploaded.add(chunkBytes)
+                                    let curB = await bytesUploaded.value
+                                    await onProgress(SyncProgress(
+                                        currentFile: displayName, action: "Uploading",
+                                        bytesTransferred: curB, totalBytes: totalBytesToUpload,
+                                        filesCompleted: Int(await completed.value), filesTotal: total,
+                                        bytesPerSecond: Self.speed(bytes: curB, since: start),
+                                        pendingFiles: pending
+                                    ))
+                                }
+                                uploadedHash = result.contentHash
+                            } else {
+                                // Small files: single-shot upload
+                                let data = try Data(contentsOf: fileURL)
+                                let result = try await self.apiClient.uploadFile(data: data, filename: displayName, parentID: parentID)
+                                uploadedHash = result.contentHash ?? ""
+                                await bytesUploaded.add(fileSize)
+                            }
 
                             logger.info("Uploaded: \(relativePath) (\(fileSize) bytes, hash: \(uploadedHash))")
-                            await bytesUploaded.add(fileSize)
                             return .uploaded(displayName)
 
                         case .download(let fileID, let localPath, let relativePath):
@@ -581,44 +599,104 @@ actor SyncEngine {
 
     // MARK: - Fast Upload Helpers
 
+    /// Cache key for storing upload session IDs in UserDefaults.
+    private func uploadCacheKey(filename: String, parentID: String, fileSize: Int64) -> String {
+        "sv_upload_\(parentID)_\(filename)_\(fileSize)"
+    }
+
     private func uploadChunked(fileURL: URL, filename: String, parentID: String, fileSize: Int64, onChunkUploaded: ((Int64) async -> Void)? = nil) async throws -> ChunkedUploadResult {
         let chunkSize = 64 * 1024 * 1024  // 64 MB chunks
+        let cacheKey = uploadCacheKey(filename: filename, parentID: parentID, fileSize: fileSize)
 
-        // 1. Init session
-        let session = try await apiClient.initChunkedUpload(filename: filename, parentID: parentID, totalSize: fileSize, chunkSize: chunkSize)
+        // 1. Try to resume an existing upload session, or create a new one
+        var uploadID: String
+        var totalChunks: Int
 
-        // 2. Check if we can resume (might have partial upload from before)
-        let status = try await apiClient.getUploadStatus(uploadID: session.uploadID)
+        if let cachedID = UserDefaults.standard.string(forKey: cacheKey) {
+            // Check if the cached session is still valid on the server
+            do {
+                let status = try await apiClient.getUploadStatus(uploadID: cachedID)
+                uploadID = cachedID
+                totalChunks = status.totalChunks
+                let received = status.receivedChunks.count
+                logger.info("Resuming upload session \(cachedID): \(received)/\(totalChunks) chunks already received")
+            } catch {
+                // Session expired or invalid — create a new one
+                logger.info("Cached upload session \(cachedID) expired, creating new session")
+                let session = try await apiClient.initChunkedUpload(filename: filename, parentID: parentID, totalSize: fileSize, chunkSize: chunkSize)
+                uploadID = session.uploadID
+                totalChunks = session.totalChunks
+                UserDefaults.standard.set(uploadID, forKey: cacheKey)
+            }
+        } else {
+            let session = try await apiClient.initChunkedUpload(filename: filename, parentID: parentID, totalSize: fileSize, chunkSize: chunkSize)
+            uploadID = session.uploadID
+            totalChunks = session.totalChunks
+            UserDefaults.standard.set(uploadID, forKey: cacheKey)
+        }
+
+        // 2. Check which chunks are already received
+        let status = try await apiClient.getUploadStatus(uploadID: uploadID)
         let receivedSet = Set(status.receivedChunks)
 
-        // 3. Upload missing chunks
-        let missingChunks = (0..<session.totalChunks).filter { !receivedSet.contains($0) }
-        let chunkParallel = DynamicSemaphore.parallelismFor(fileSize: fileSize)
-        let chunkSemaphore = DynamicSemaphore(initialLimit: chunkParallel)
+        // 3. Upload missing chunks — 10 in parallel via nonisolated static method
+        let missingChunks = (0..<totalChunks).filter { !receivedSet.contains($0) }
 
-        try await withThrowingTaskGroup(of: Int64.self) { group in
-            for i in missingChunks {
-                group.addTask {
-                    await chunkSemaphore.wait()
-                    defer { Task { await chunkSemaphore.signal() } }
+        if !missingChunks.isEmpty {
+            let chunkSemaphore = DynamicSemaphore(initialLimit: 10)
+            let token = await apiClient.currentToken() ?? ""
+            let base = await apiClient.baseURL
 
-                    let handle = try FileHandle(forReadingFrom: fileURL)
-                    defer { handle.closeFile() }
-                    handle.seek(toFileOffset: UInt64(i) * UInt64(chunkSize))
-                    let data = handle.readData(ofLength: chunkSize)
+            // Report already-uploaded bytes for progress
+            let alreadyUploaded = Int64(receivedSet.count) * Int64(chunkSize)
+            if alreadyUploaded > 0 {
+                await onChunkUploaded?(alreadyUploaded)
+            }
 
-                    try await self.apiClient.uploadChunk(uploadID: session.uploadID, chunkIndex: i, data: data)
+            try await withThrowingTaskGroup(of: Int64.self) { group in
+                for i in missingChunks {
+                    group.addTask {
+                        await chunkSemaphore.wait()
+                        defer { Task { await chunkSemaphore.signal() } }
 
-                    return Int64(data.count)
+                        let handle = try FileHandle(forReadingFrom: fileURL)
+                        defer { handle.closeFile() }
+                        handle.seek(toFileOffset: UInt64(i) * UInt64(chunkSize))
+                        let data = handle.readData(ofLength: chunkSize)
+
+                        try await APIClient.uploadChunkDirect(baseURL: base, token: token, uploadID: uploadID, chunkIndex: i, data: data)
+
+                        return Int64(data.count)
+                    }
+                }
+                for try await size in group {
+                    await onChunkUploaded?(size)
                 }
             }
-            for try await size in group {
-                await onChunkUploaded?(size)
+        } else {
+            logger.info("All chunks already uploaded, calling complete")
+            // Report full size for progress
+            await onChunkUploaded?(fileSize)
+        }
+
+        // 4. Complete — retry up to 5 times with increasing delay (server may be busy assembling)
+        var lastCompleteError: Error?
+        for attempt in 1...5 {
+            do {
+                let result = try await apiClient.completeChunkedUpload(uploadID: uploadID)
+                UserDefaults.standard.removeObject(forKey: cacheKey)
+                return result
+            } catch {
+                lastCompleteError = error
+                logger.warning("Complete attempt \(attempt)/5 failed: \(error.localizedDescription)")
+                if attempt < 5 {
+                    try await Task.sleep(nanoseconds: UInt64(attempt) * 3_000_000_000)
+                }
             }
         }
 
-        // 4. Complete
-        return try await apiClient.completeChunkedUpload(uploadID: session.uploadID)
+        // Keep the session cached for next sync cycle to resume
+        throw lastCompleteError!
     }
 
     private func uploadDelta(fileURL: URL, remoteFileID: String, relativePath: String) async throws -> Bool {

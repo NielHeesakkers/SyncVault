@@ -1,3 +1,16 @@
+## [2.5.3] — 2026-03-27
+
+macOS App:
+- Chunked upload with 10 parallel connections (was 1 serial)
+- Automatic retry on connection lost (-1005) for all HTTP calls
+- Upload session caching: resume after failure instead of re-uploading
+- Complete call retries 5x with increasing delay
+- Progress bar and speed now update per chunk during upload
+
+Server:
+- Streaming storage: Put() now streams in 4MB blocks instead of loading entire file into memory
+- Fixes OOM crash when assembling large files (>1GB) after chunked upload
+
 ## [2.5.0] — 2026-03-26
 
 Backend/Web:

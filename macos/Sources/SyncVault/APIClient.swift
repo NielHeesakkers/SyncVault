@@ -9,10 +9,14 @@ actor APIClient {
     init(baseURL: String) {
         self.baseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 0    // No timeout for requests
-        config.timeoutIntervalForResource = 0   // No timeout for resources
+        config.timeoutIntervalForRequest = 86400
+        config.timeoutIntervalForResource = 86400
+        config.httpMaximumConnectionsPerHost = 6
         self.session = URLSession(configuration: config)
     }
+
+    /// Return the current access token (for use in nonisolated upload functions).
+    func currentToken() -> String? { accessToken }
 
     func login(username: String, password: String) async throws {
         let body = ["username": username, "password": password]
@@ -245,13 +249,52 @@ actor APIClient {
     }
 
     func uploadChunk(uploadID: String, chunkIndex: Int, data: Data) async throws {
-        var request = URLRequest(url: URL(string: "\(baseURL)/api/uploads/\(uploadID)/chunks/\(chunkIndex)")!)
-        request.httpMethod = "PUT"
-        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 0
-        addAuth(&request)
-        let (_, response) = try await session.upload(for: request, from: data)
-        try checkResponse(response)
+        let token = accessToken ?? ""
+        try await Self.uploadChunkDirect(baseURL: baseURL, token: token, uploadID: uploadID, chunkIndex: chunkIndex, data: data)
+    }
+
+    /// Shared upload session — 10 parallel connections, separate from API session.
+    private static let uploadSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 86400
+        config.timeoutIntervalForResource = 86400
+        config.httpMaximumConnectionsPerHost = 10
+        return URLSession(configuration: config)
+    }()
+
+    /// Upload a chunk without actor serialization — allows truly parallel uploads.
+    nonisolated static func uploadChunkDirect(baseURL: String, token: String, uploadID: String, chunkIndex: Int, data: Data) async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sv_chunk_\(uploadID)_\(chunkIndex).tmp")
+        try data.write(to: tempURL)
+
+        var lastError: Error?
+        for attempt in 1...3 {
+            do {
+                var request = URLRequest(url: URL(string: "\(baseURL)/api/uploads/\(uploadID)/chunks/\(chunkIndex)")!)
+                request.httpMethod = "PUT"
+                request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                request.timeoutInterval = 86400
+
+                let (_, response) = try await uploadSession.upload(for: request, fromFile: tempURL)
+                guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+                    throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
+                }
+
+                try? FileManager.default.removeItem(at: tempURL)
+                return
+            } catch {
+                lastError = error
+                let nsError = error as NSError
+                if nsError.domain == NSURLErrorDomain && nsError.code == -1005 && attempt < 3 {
+                    try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
+                    continue
+                }
+            }
+        }
+        try? FileManager.default.removeItem(at: tempURL)
+        throw lastError!
     }
 
     func getUploadStatus(uploadID: String) async throws -> UploadStatus {
@@ -297,11 +340,30 @@ actor APIClient {
 
     // MARK: - Private HTTP methods
 
+    /// Execute a request with automatic retry on -1005 (stale connection).
+    private func execute(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        var lastError: Error?
+        for attempt in 1...3 {
+            do {
+                return try await session.data(for: request)
+            } catch {
+                lastError = error
+                let nsError = error as NSError
+                if nsError.domain == NSURLErrorDomain && nsError.code == -1005 && attempt < 3 {
+                    try await Task.sleep(nanoseconds: UInt64(attempt) * 500_000_000)
+                    continue
+                }
+                throw error
+            }
+        }
+        throw lastError!
+    }
+
     private func get<T: Decodable>(_ path: String) async throws -> T {
         var request = URLRequest(url: URL(string: "\(baseURL)\(path)")!)
         request.httpMethod = "GET"
         addAuth(&request)
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await execute(request)
         try checkResponse(response)
         return try JSONDecoder().decode(T.self, from: data)
     }
@@ -310,7 +372,7 @@ actor APIClient {
         var request = URLRequest(url: URL(string: "\(baseURL)\(path)")!)
         request.httpMethod = "GET"
         addAuth(&request)
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await execute(request)
         try checkResponse(response)
         return data
     }
@@ -321,7 +383,7 @@ actor APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         addAuth(&request)
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await execute(request)
         try checkResponse(response)
         return try JSONDecoder().decode(T.self, from: data)
     }
@@ -330,7 +392,7 @@ actor APIClient {
         var request = URLRequest(url: URL(string: "\(baseURL)\(path)")!)
         request.httpMethod = "DELETE"
         addAuth(&request)
-        let (_, response) = try await session.data(for: request)
+        let (_, response) = try await execute(request)
         try checkResponse(response)
     }
 
@@ -340,7 +402,7 @@ actor APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         addAuth(&request)
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await execute(request)
         try checkResponse(response)
         return try JSONDecoder().decode(T.self, from: data)
     }
@@ -365,58 +427,7 @@ actor APIClient {
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
 
-        let (data, response) = try await session.data(for: request)
-        try checkResponse(response)
-        return try JSONDecoder().decode(ServerFile.self, from: data)
-    }
-
-    /// Upload a file from disk without loading it into memory.
-    /// Writes a multipart body to a temp file, then uses URLSession.upload(for:fromFile:).
-    func uploadFileFromDisk(fileURL: URL, filename: String, parentID: String?) async throws -> ServerFile {
-        let boundary = UUID().uuidString
-        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/upload")!)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 0  // No timeout — large files can take hours
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        addAuth(&request)
-
-        // Write multipart body to a temp file
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("upload-\(UUID().uuidString).multipart")
-        FileManager.default.createFile(atPath: tempURL.path, contents: nil)
-        let tempHandle = try FileHandle(forWritingTo: tempURL)
-        defer { try? FileManager.default.removeItem(at: tempURL) }
-
-        func writeString(_ s: String) { tempHandle.write(s.data(using: .utf8)!) }
-
-        // parent_id field
-        if let parentID = parentID {
-            writeString("--\(boundary)\r\n")
-            writeString("Content-Disposition: form-data; name=\"parent_id\"\r\n\r\n")
-            writeString("\(parentID)\r\n")
-        }
-
-        // file field header
-        writeString("--\(boundary)\r\n")
-        writeString("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
-        writeString("Content-Type: application/octet-stream\r\n\r\n")
-
-        // Stream file content in chunks
-        let sourceHandle = try FileHandle(forReadingFrom: fileURL)
-        let chunkSize = 256 * 1024 * 1024 // 256MB
-        while autoreleasepool(invoking: {
-            let chunk = sourceHandle.readData(ofLength: chunkSize)
-            if chunk.isEmpty { return false }
-            tempHandle.write(chunk)
-            return true
-        }) {}
-        sourceHandle.closeFile()
-
-        // closing boundary
-        writeString("\r\n--\(boundary)--\r\n")
-        tempHandle.closeFile()
-
-        // Upload from file (URLSession streams from disk, not memory)
-        let (data, response) = try await session.upload(for: request, fromFile: tempURL)
+        let (data, response) = try await execute(request)
         try checkResponse(response)
         return try JSONDecoder().decode(ServerFile.self, from: data)
     }
