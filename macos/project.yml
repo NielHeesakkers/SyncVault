@@ -51,8 +51,8 @@ targets:
         CFBundleDisplayName: SyncVault
         CFBundleName: SyncVault
         CFBundleIdentifier: com.syncvault.app
-        CFBundleVersion: "2.5.0"
-        CFBundleShortVersionString: "2.5.0"
+        CFBundleVersion: "2.5.1"
+        CFBundleShortVersionString: "2.5.1"
         CFBundlePackageType: APPL
         LSMinimumSystemVersion: "13.0"
         LSUIElement: true
