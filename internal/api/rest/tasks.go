@@ -129,16 +129,43 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create the subfolder under the root folder.
+	// Create or reuse the subfolder under the root folder.
+	// First check if a folder with this name already exists (active or soft-deleted) and reuse it.
+	// This avoids the rename-and-recreate path in CreateFile which would lose existing files.
 	subFolderName := folderNameForTask(req.Type, taskName)
-	subFolder, err := s.db.CreateFile(rootFolder.ID, claims.UserID, subFolderName, true, 0, "", "")
-	if err != nil {
-		if errors.Is(err, metadata.ErrDuplicateFile) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "a folder with this name already exists"})
-			return
+	var subFolder *metadata.File
+	existing, findErr := s.db.FindFileByName(rootFolder.ID, claims.UserID, subFolderName)
+	if findErr == nil && existing != nil {
+		// Folder exists — reuse it.
+		if existing.DeletedAt.Valid {
+			_ = s.db.RestoreFile(existing.ID)
+			_ = s.db.UnmarkRemovedLocally(existing.ID)
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create task folder"})
-		return
+		subFolder = existing
+	} else {
+		// Folder does not exist — create it.
+		created, createErr := s.db.CreateFile(rootFolder.ID, claims.UserID, subFolderName, true, 0, "", "")
+		if createErr != nil {
+			if errors.Is(createErr, metadata.ErrDuplicateFile) {
+				// Race: another request created it between our check and insert. Find and reuse.
+				existing2, findErr2 := s.db.FindFileByName(rootFolder.ID, claims.UserID, subFolderName)
+				if findErr2 == nil && existing2 != nil {
+					if existing2.DeletedAt.Valid {
+						_ = s.db.RestoreFile(existing2.ID)
+						_ = s.db.UnmarkRemovedLocally(existing2.ID)
+					}
+					subFolder = existing2
+				} else {
+					writeJSON(w, http.StatusConflict, map[string]string{"error": "a folder with this name already exists"})
+					return
+				}
+			} else {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create task folder"})
+				return
+			}
+		} else {
+			subFolder = created
+		}
 	}
 
 	// Create the sync task record.

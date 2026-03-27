@@ -118,6 +118,7 @@ func (s *Server) setupRoutes() {
 		// Hash check and file tree (for sync clients).
 		r.Post("/api/files/check-hashes", s.handleCheckHashes)
 		r.Get("/api/files/tree", s.handleFileTree)
+		r.Get("/api/files/{id}/tree", s.handleFileTree)
 
 		// Known sync state (per user per device).
 		r.Put("/api/sync-state/{deviceID}/{taskName}", s.handlePutSyncState)

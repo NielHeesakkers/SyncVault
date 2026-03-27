@@ -73,15 +73,17 @@ actor APIClient {
         return true
     }
 
-    /// Check which hashes exist on the server. Returns existing, missing, and changed paths.
-    func checkHashes(parentID: String, hashes: [String: String]) async throws -> HashCheckResponse {
-        let body: [String: Any] = ["parent_id": parentID, "hashes": hashes]
-        return try await post("/api/files/check-hashes", body: body)
+    /// Check which hashes exist on the server. Returns a list of hashes that already exist.
+    /// Used for bulk deduplication: send all local hashes, get back which ones the server already has.
+    func checkHashes(_ hashes: [String]) async throws -> [String] {
+        let body: [String: Any] = ["hashes": hashes]
+        let response: CheckHashesResponse = try await post("/api/files/check-hashes", body: body)
+        return response.existing
     }
 
-    /// Get full recursive file tree under a folder
-    func getFileTree(parentID: String) async throws -> [RemoteTreeFile] {
-        let response: FileTreeResponse = try await get("/api/files/tree?parent_id=\(parentID)")
+    /// Get full recursive file tree under a folder (single API call replaces recursive listFiles).
+    func getFileTree(folderID: String) async throws -> [RemoteTreeFile] {
+        let response: FileTreeResponse = try await get("/api/files/tree?folder_id=\(folderID)")
         return response.files
     }
 
@@ -596,22 +598,10 @@ private struct EmptyResponse: Codable {}
 
 // MARK: - Hash check / file tree models
 
-struct HashCheckResponse: Codable {
-    let existing: [String: HashCheckFile]
-    let missing: [String]
-    let changed: [String: HashCheckFile]
-}
-
-struct HashCheckFile: Codable {
-    let id: String
-    let hash: String?
-    let serverHash: String?
-    let size: Int64
-
-    enum CodingKeys: String, CodingKey {
-        case id, hash, size
-        case serverHash = "server_hash"
-    }
+/// Response from POST /api/files/check-hashes.
+/// Server returns which hashes from our list already exist in storage.
+struct CheckHashesResponse: Codable {
+    let existing: [String]
 }
 
 struct FileTreeResponse: Codable {
@@ -620,15 +610,16 @@ struct FileTreeResponse: Codable {
 
 struct RemoteTreeFile: Codable {
     let id: String
-    let path: String
     let name: String
+    let relativePath: String
     let size: Int64
     let contentHash: String?
     let isDir: Bool
     let removedLocally: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case id, path, name, size
+        case id, name, size
+        case relativePath = "relative_path"
         case contentHash = "content_hash"
         case isDir = "is_dir"
         case removedLocally = "removed_locally"

@@ -1,9 +1,19 @@
 {
   "version": "2.5.0",
   "min_version": "1.0",
-  "release_date": "2026-03-26",
+  "release_date": "2026-03-27",
   "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.0/SyncVault-2.5.0.dmg",
   "history": [
+    {
+      "version": "2.5.0",
+      "date": "2026-03-27",
+      "changes": [
+        "Synology Drive-inspired sync rewrite",
+        "Hash-based dedup",
+        "Fix 409 folder conflicts",
+        "Light/dark theme toggle"
+      ]
+    },
     {
       "version": "2.5.0",
       "date": "2026-03-26",

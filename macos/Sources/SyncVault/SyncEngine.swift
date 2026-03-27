@@ -8,7 +8,7 @@ actor SyncEngine {
     private let apiClient: APIClient
     private let db: SyncDatabase
     private var isRunning = false
-    /// Cache of relative directory path → server folder ID (built during sync)
+    /// Cache of relative directory path -> server folder ID (built during sync)
     private var folderIDCache: [String: String] = [:]
 
     init(apiClient: APIClient, db: SyncDatabase) {
@@ -16,8 +16,10 @@ actor SyncEngine {
         self.db = db
     }
 
-    /// Sync a task. changedPaths == nil means full scan (first sync).
-    func syncTask(_ task: SyncTask, changedPaths: Set<String>?, onProgress: @Sendable @escaping (SyncProgress) async -> Void = { _ in }) async throws -> SyncResult {
+    // MARK: - Main Sync Entry Point
+
+    /// Sync a task. changedPaths == nil means full scan (first sync or reconnect).
+    func syncTask(_ task: SyncTask, changedPaths: Set<String>?, lastSyncDate: Date?, onProgress: @Sendable @escaping (SyncProgress) async -> Void = { _ in }) async throws -> SyncResult {
         guard !isRunning else { return SyncResult(uploaded: 0, downloaded: 0, deleted: 0, conflicts: 0, errors: 0, fileActivity: []) }
         isRunning = true
         defer { isRunning = false }
@@ -28,40 +30,220 @@ actor SyncEngine {
 
         // Reset folder cache each sync
         folderIDCache = [:]
-        folderIDCache[""] = task.remoteFolderID  // root = task's remote folder
+        folderIDCache[""] = task.remoteFolderID
 
-        // 1. Scan local files
-        let localFiles: [LocalFileInfo]
         if isFullScan {
-            logger.info("Full scan: \(basePath)")
-            localFiles = scanLocalFiles(at: basePath, excludePatterns: task.excludePatterns)
+            // Phase 1 (initial sync) or Phase 3 (reconnect after offline)
+            result = try await performFullSync(task: task, basePath: basePath, lastSyncDate: lastSyncDate, onProgress: onProgress)
         } else if let changed = changedPaths, !changed.isEmpty {
-            logger.info("Incremental: \(changed.count) changed paths")
-            localFiles = scanChangedFiles(basePath: basePath, changedPaths: changed, excludePatterns: task.excludePatterns)
+            // Phase 2: FSEvents-driven incremental sync
+            result = try await performIncrementalSync(task: task, basePath: basePath, changedPaths: changed, onProgress: onProgress)
         } else {
-            logger.info("No local changes, checking remote only")
-            localFiles = []
-        }
-        logger.info("Local files to process: \(localFiles.count)")
-
-        // 2. Get ALL remote files recursively (flatten the tree)
-        let remoteTree = try await fetchRemoteTree(rootID: task.remoteFolderID)
-        logger.info(" Remote files (recursive): \(remoteTree.count)")
-
-        // 3. Determine actions using relative paths (server is source of truth — no known state)
-        let actions: [SyncAction]
-        if isFullScan {
-            actions = determineActions(local: localFiles, remote: remoteTree, mode: task.mode, basePath: basePath)
-        } else {
-            actions = determineIncrementalActions(changedLocal: localFiles, remote: remoteTree, mode: task.mode, basePath: basePath)
+            logger.info("No changes detected, skipping sync for \(task.remoteFolderName)")
         }
 
-        logger.info(" Actions: \(actions.count)")
+        return result
+    }
+
+    // MARK: - Phase 1/3: Full Sync (Hash-Check Based)
+
+    /// Full sync using the server hash-check endpoint to avoid re-uploads.
+    /// If lastSyncDate is available, only hashes files modified since then (Phase 3 reconnect).
+    private func performFullSync(task: SyncTask, basePath: String, lastSyncDate: Date?, onProgress: @Sendable @escaping (SyncProgress) async -> Void) async throws -> SyncResult {
+        var result = SyncResult(uploaded: 0, downloaded: 0, deleted: 0, conflicts: 0, errors: 0, fileActivity: [])
+
+        // 1. Get remote file tree in one API call (replaces recursive listFiles)
+        logger.info("Fetching remote file tree for \(task.remoteFolderName)...")
+        let remoteTree = try await apiClient.getFileTree(folderID: task.remoteFolderID)
+        let remoteByPath = Dictionary(remoteTree.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
+
+        // Build folder ID cache from remote tree
+        for file in remoteTree where file.isDir {
+            folderIDCache[file.relativePath] = file.id
+        }
+        logger.info("Remote tree: \(remoteTree.count) entries")
+
+        // 2. Scan local files — only hash files modified since lastSyncDate (Phase 3 optimization)
+        logger.info("Scanning local files at \(basePath)...")
+        let localFiles = scanLocalFiles(at: basePath, excludePatterns: task.excludePatterns, lastSyncDate: lastSyncDate)
+        logger.info("Local files: \(localFiles.count) total")
+
+        // 3. Collect hashes of all local files that need checking
+        var localHashMap: [String: String] = [:]   // relativePath -> hash
+        var localFileMap: [String: LocalFileInfo] = [:] // relativePath -> info
+        var localDirs: [LocalFileInfo] = []
+
+        for file in localFiles {
+            if file.isDirectory {
+                localDirs.append(file)
+                continue
+            }
+            localFileMap[file.relativePath] = file
+            if let hash = file.contentHash {
+                localHashMap[file.relativePath] = hash
+            }
+        }
+
+        // 4. Ask server which hashes already exist (bulk dedup check)
+        let allHashes = Array(Set(localHashMap.values))  // Unique hashes only
+        var existingHashes: Set<String> = []
+        if !allHashes.isEmpty {
+            logger.info("Checking \(allHashes.count) unique hashes against server...")
+            let hashResponse = try await apiClient.checkHashes(allHashes)
+            existingHashes = Set(hashResponse)
+            logger.info("Server already has \(existingHashes.count) of \(allHashes.count) unique hashes")
+        }
+
+        // 5. Build actions
+        var actions: [SyncAction] = []
+
+        // Create missing directories on server
+        let remoteDirPaths = Set(folderIDCache.keys)
+        for dir in localDirs {
+            if !remoteDirPaths.contains(dir.relativePath) {
+                actions.append(.createDirectory(dir.relativePath))
+            }
+        }
+
+        // Determine uploads: only files whose hash is NOT on the server
+        for (relPath, localFile) in localFileMap {
+            guard let hash = localFile.contentHash else {
+                // File was skipped during hashing (unmodified since lastSync) and exists on server -> skip
+                if remoteByPath[relPath] != nil {
+                    continue
+                }
+                // Not on server and no hash -> we need to hash it now
+                if let fullHash = try? Self.hashFile(at: URL(fileURLWithPath: localFile.fullPath)) {
+                    if existingHashes.contains(fullHash) {
+                        continue // Server already has this content
+                    }
+                    // Check if it matches the remote file at this path
+                    if let remote = remoteByPath[relPath], remote.contentHash == fullHash {
+                        continue // Same content at same path
+                    }
+                    actions.append(.upload(localFile.fullPath, relPath, remoteByPath[relPath]?.id))
+                }
+                continue
+            }
+
+            // Hash is available
+            if let remote = remoteByPath[relPath] {
+                // File exists on server at same path
+                if remote.contentHash == hash {
+                    continue // Same hash, already synced
+                }
+                // Different hash -> upload (local wins, server keeps versions)
+                actions.append(.upload(localFile.fullPath, relPath, remote.id))
+            } else {
+                // File not on server at this path
+                if existingHashes.contains(hash) {
+                    // Content exists elsewhere on server but not at this path -> still upload
+                    // (the server will deduplicate storage internally)
+                    actions.append(.upload(localFile.fullPath, relPath, nil))
+                } else {
+                    // Completely new content -> upload
+                    actions.append(.upload(localFile.fullPath, relPath, nil))
+                }
+            }
+        }
+
+        // Two-way: download remote files not present locally
+        if task.mode == .twoWay {
+            let fm = FileManager.default
+            for (relPath, remoteFile) in remoteByPath where !remoteFile.isDir {
+                if localFileMap[relPath] == nil {
+                    let localPath = (basePath as NSString).appendingPathComponent(relPath)
+                    if !fm.fileExists(atPath: localPath) && !(remoteFile.removedLocally ?? false) {
+                        actions.append(.download(remoteFile.id, localPath, relPath))
+                    }
+                }
+            }
+        }
+
+        logger.info("Actions: \(actions.count) (from full sync)")
+
+        // 6. Execute actions
+        result = try await executeActions(actions, task: task, onProgress: onProgress)
+        return result
+    }
+
+    // MARK: - Phase 2: Incremental Sync (FSEvents)
+
+    /// Incremental sync: only process FSEvents-reported changes.
+    /// Hashes only the changed files, checks against server, uploads if different.
+    private func performIncrementalSync(task: SyncTask, basePath: String, changedPaths: Set<String>, onProgress: @Sendable @escaping (SyncProgress) async -> Void) async throws -> SyncResult {
+        logger.info("Incremental sync: \(changedPaths.count) changed paths")
+
+        // 1. Scan only the changed files
+        let changedFiles = scanChangedFiles(basePath: basePath, changedPaths: changedPaths, excludePatterns: task.excludePatterns)
+
+        // 2. Get remote tree for comparison
+        let remoteTree = try await apiClient.getFileTree(folderID: task.remoteFolderID)
+        let remoteByPath = Dictionary(remoteTree.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
+
+        // Build folder ID cache
+        for file in remoteTree where file.isDir {
+            folderIDCache[file.relativePath] = file.id
+        }
+
+        // 3. Build actions
+        var actions: [SyncAction] = []
+
+        for localFile in changedFiles where !localFile.isDirectory {
+            let relPath = localFile.relativePath
+
+            // File deleted locally
+            if localFile.deletedLocally {
+                if task.mode == .twoWay, let remoteFile = remoteByPath[relPath] {
+                    actions.append(.markRemovedLocally(remoteFile.id, relPath))
+                }
+                continue
+            }
+
+            if let remoteFile = remoteByPath[relPath] {
+                // Both exist - compare hashes
+                if localFile.contentHash != remoteFile.contentHash {
+                    actions.append(.upload(localFile.fullPath, relPath, remoteFile.id))
+                }
+            } else {
+                // Only local - upload
+                actions.append(.upload(localFile.fullPath, relPath, nil))
+            }
+        }
+
+        // Two-way: check for new remote files
+        if task.mode == .twoWay {
+            let fm = FileManager.default
+            let localPaths = Set(changedFiles.map { $0.relativePath })
+            for (relPath, remoteFile) in remoteByPath where !remoteFile.isDir {
+                if !localPaths.contains(relPath) {
+                    let localPath = (basePath as NSString).appendingPathComponent(relPath)
+                    if !fm.fileExists(atPath: localPath) && !(remoteFile.removedLocally ?? false) {
+                        actions.append(.download(remoteFile.id, localPath, relPath))
+                    }
+                }
+            }
+        }
+
+        logger.info("Actions: \(actions.count) (from incremental sync)")
+
+        // 4. Execute actions
+        return try await executeActions(actions, task: task, onProgress: onProgress)
+    }
+
+    // MARK: - Action Execution
+
+    /// Execute sync actions with parallel uploads, progress tracking, and error handling.
+    private func executeActions(_ actions: [SyncAction], task: SyncTask, onProgress: @Sendable @escaping (SyncProgress) async -> Void) async throws -> SyncResult {
+        var result = SyncResult(uploaded: 0, downloaded: 0, deleted: 0, conflicts: 0, errors: 0, fileActivity: [])
+
+        guard !actions.isEmpty else { return result }
+
         for a in actions.prefix(10) {
-            logger.info("   \(a)")
+            logger.info("  \(a)")
         }
 
-        // 5. Sort: uploads small files first (large last), other actions first
+        // Sort: non-uploads first, then uploads by size (small first)
         let sortedActions = actions.sorted { a, b in
             let sizeOf: (SyncAction) -> Int64 = { action in
                 if case .upload(let path, _, _) = action {
@@ -72,14 +254,21 @@ actor SyncEngine {
             let aIsUpload = { if case .upload = a { return true }; return false }()
             let bIsUpload = { if case .upload = b { return true }; return false }()
             if aIsUpload && bIsUpload { return sizeOf(a) < sizeOf(b) }
-            if aIsUpload { return false } // non-uploads first
+            if aIsUpload { return false }
             if bIsUpload { return true }
             return false
         }
 
-        // 6. Execute all actions (no limit), uploads in parallel with adaptive concurrency
+        // Calculate total bytes to upload for accurate progress
+        let totalBytesToUpload: Int64 = sortedActions.compactMap { action -> Int64? in
+            if case .upload(let path, _, _) = action {
+                return (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? 0
+            }
+            return nil
+        }.reduce(0, +)
+
         let total = sortedActions.count
-        let bytes = ActorCounter()
+        let bytesUploaded = ActorCounter()
         let completed = ActorCounter()
         let start = Date()
         let names = sortedActions.map { $0.fileName }
@@ -94,7 +283,7 @@ actor SyncEngine {
                     defer { Task { await semaphore.signal() } }
 
                     let pending = Array(names.dropFirst(i + 1).prefix(5))
-                    let curBytes = await bytes.value
+                    let curBytes = await bytesUploaded.value
                     let curCompleted = Int(await completed.value)
 
                     do {
@@ -111,7 +300,7 @@ actor SyncEngine {
 
                             await onProgress(SyncProgress(
                                 currentFile: displayName, action: "Uploading",
-                                bytesTransferred: curBytes, totalBytes: fileSize,
+                                bytesTransferred: curBytes, totalBytes: totalBytesToUpload,
                                 filesCompleted: curCompleted, filesTotal: total,
                                 bytesPerSecond: Self.speed(bytes: curBytes, since: start),
                                 pendingFiles: pending
@@ -121,43 +310,19 @@ actor SyncEngine {
                             let parentRelPath = (relativePath as NSString).deletingLastPathComponent
                             let parentID = try await self.ensureRemoteDirectory(parentRelPath, rootID: task.remoteFolderID)
 
-                            let CHUNK_THRESHOLD: Int64 = 50 * 1024 * 1024  // 50 MB
-                            var uploadedHash: String
+                            // Stream upload from disk (memory-safe for large files)
+                            let uploadResult = try await self.apiClient.uploadFileFromDisk(fileURL: fileURL, filename: displayName, parentID: parentID)
+                            let uploadedHash = uploadResult.contentHash ?? ""
 
-                            if fileSize > CHUNK_THRESHOLD {
-                                // Large file — chunked upload (8MB chunks, resumable)
-                                let chunkStart = Date()
-                                let chunkCounter = ActorCounter()
-                                let result = try await self.uploadChunked(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize) { chunkSize in
-                                    await chunkCounter.add(chunkSize)
-                                    await bytes.add(chunkSize)
-                                    let transferred = await chunkCounter.value
-                                    let speed = Double(transferred) / max(Date().timeIntervalSince(chunkStart), 0.1)
-                                    await onProgress(SyncProgress(
-                                        currentFile: displayName, action: "Uploading",
-                                        bytesTransferred: transferred, totalBytes: fileSize,
-                                        filesCompleted: curCompleted, filesTotal: total,
-                                        bytesPerSecond: speed,
-                                        pendingFiles: pending
-                                    ))
-                                }
-                                uploadedHash = result.contentHash
-                            } else {
-                                // Small file — stream upload
-                                let result = try await self.apiClient.uploadFileFromDisk(fileURL: fileURL, filename: displayName, parentID: parentID)
-                                uploadedHash = result.contentHash ?? ""
-                            }
-
-                            // Server now holds the canonical hash — no local state to update
-                            logger.info(" Uploaded: \(relativePath) (\(fileSize) bytes, hash: \(uploadedHash))")
-                            await bytes.add(fileSize)
+                            logger.info("Uploaded: \(relativePath) (\(fileSize) bytes, hash: \(uploadedHash))")
+                            await bytesUploaded.add(fileSize)
                             return .uploaded(displayName)
 
                         case .download(let fileID, let localPath, let relativePath):
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
                             await onProgress(SyncProgress(
                                 currentFile: displayName, action: "Downloading",
-                                bytesTransferred: curBytes, totalBytes: 0,
+                                bytesTransferred: curBytes, totalBytes: totalBytesToUpload,
                                 filesCompleted: curCompleted, filesTotal: total,
                                 bytesPerSecond: Self.speed(bytes: curBytes, since: start),
                                 pendingFiles: pending
@@ -168,14 +333,14 @@ actor SyncEngine {
                             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                             try data.write(to: url)
                             let size = Int64(data.count)
-                            await bytes.add(size)
-                            logger.info(" Downloaded: \(relativePath) (\(size) bytes)")
+                            await bytesUploaded.add(size)
+                            logger.info("Downloaded: \(relativePath) (\(size) bytes)")
                             return .downloaded(displayName)
 
                         case .markRemovedLocally(let fileID, let relativePath):
                             try await self.apiClient.markFileRemovedLocally(id: fileID, removed: true)
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
-                            logger.info(" Marked removed locally: \(relativePath)")
+                            logger.info("Marked removed locally: \(relativePath)")
                             return .markedRemoved(displayName)
 
                         case .deleteLocal(let path, let relativePath):
@@ -196,14 +361,14 @@ actor SyncEngine {
                         case .createDirectory(let relativePath):
                             let _ = try await self.ensureRemoteDirectory(relativePath, rootID: task.remoteFolderID)
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
-                            logger.info(" Created dir: \(relativePath)")
+                            logger.info("Created dir: \(relativePath)")
                             return .uploaded(displayName)
                         }
                     } catch let error as APIError where error == .unauthorized {
-                        logger.info(" Auth failed — re-throwing")
+                        logger.info("Auth failed - re-throwing")
                         return .authFailed
                     } catch {
-                        logger.info(" Failed: \(action) — \(error)")
+                        logger.info("Failed: \(action) - \(error)")
                         return .error
                     }
                 }
@@ -247,55 +412,11 @@ actor SyncEngine {
         return result
     }
 
-    // MARK: - Sync State Export/Restore
-
-    func exportSyncStates(taskID: String) -> [[String: String]] {
-        guard let states = try? db.getStates(taskID: taskID) else { return [] }
-        return states.values.map { state in
-            ["file_name": state.fileName, "content_hash": state.contentHash]
-        }
-    }
-
-    func restoreSyncStates(taskID: String, states: [[String: Any]]) throws {
-        for stateDict in states {
-            guard let fileName = stateDict["file_name"] as? String,
-                  let contentHash = stateDict["content_hash"] as? String else { continue }
-            try db.updateState(taskID: taskID, fileName: fileName, contentHash: contentHash)
-        }
-    }
-
-    // MARK: - Remote Tree
-
-    /// Recursively fetch all files/folders from a remote folder, returning them with relative paths.
-    private func fetchRemoteTree(rootID: String) async throws -> [RemoteFileInfo] {
-        var allFiles: [RemoteFileInfo] = []
-        try await fetchRemoteRecursive(folderID: rootID, relativePath: "", into: &allFiles)
-        return allFiles
-    }
-
-    private func fetchRemoteRecursive(folderID: String, relativePath: String, into files: inout [RemoteFileInfo]) async throws {
-        let children = try await apiClient.listFiles(parentID: folderID)
-        for child in children {
-            let childRelPath = relativePath.isEmpty ? child.name : "\(relativePath)/\(child.name)"
-            if child.isDir {
-                // Cache the folder ID for later use
-                folderIDCache[childRelPath] = child.id
-                // Recurse into subdirectory
-                try await fetchRemoteRecursive(folderID: child.id, relativePath: childRelPath, into: &files)
-            } else {
-                files.append(RemoteFileInfo(
-                    id: child.id,
-                    name: child.name,
-                    relativePath: childRelPath,
-                    contentHash: child.contentHash,
-                    size: child.size
-                ))
-            }
-        }
-    }
+    // MARK: - Remote Directory Management
 
     /// Ensure a remote directory path exists, creating parent dirs as needed.
     /// Returns the server folder ID for the given relative path.
+    /// Handles 409 gracefully by looking up the existing folder.
     private func ensureRemoteDirectory(_ relativePath: String, rootID: String) async throws -> String {
         if relativePath.isEmpty || relativePath == "." {
             return rootID
@@ -319,19 +440,21 @@ actor SyncEngine {
                 continue
             }
 
-            // Try to create the folder (will 409 if exists — that's ok)
+            // Try to create the folder (will 409 if exists)
             do {
                 let folder = try await apiClient.createFolder(name: component, parentID: currentParentID)
                 folderIDCache[currentPath] = folder.id
                 currentParentID = folder.id
-                logger.info(" Created remote dir: \(currentPath)")
+                logger.info("Created remote dir: \(currentPath)")
             } catch APIError.serverError(409) {
-                // Folder already exists — find its ID by listing parent
+                // Folder already exists - find its ID by listing parent
                 let children = try await apiClient.listFiles(parentID: currentParentID)
                 if let existing = children.first(where: { $0.name == component && $0.isDir }) {
                     folderIDCache[currentPath] = existing.id
                     currentParentID = existing.id
+                    logger.info("Found existing remote dir: \(currentPath) (id: \(existing.id))")
                 } else {
+                    logger.error("409 but folder not found in listing: \(currentPath)")
                     throw APIError.serverError(500)
                 }
             }
@@ -342,11 +465,15 @@ actor SyncEngine {
 
     // MARK: - File Scanning
 
-    /// Full scan: hash every file — server is the source of truth, no local cache.
-    private func scanLocalFiles(at path: String, excludePatterns: [String]) -> [LocalFileInfo] {
+    /// Scan local files. If lastSyncDate is provided, only hash files modified since then.
+    /// Files not modified since last sync are included with nil contentHash (assumed unchanged).
+    private func scanLocalFiles(at path: String, excludePatterns: [String], lastSyncDate: Date?) -> [LocalFileInfo] {
         var files: [LocalFileInfo] = []
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(atPath: path) else { return files }
+
+        var hashCount = 0
+        var skipCount = 0
 
         while let relativePath = enumerator.nextObject() as? String {
             if excludePatterns.contains(where: { matchPattern($0, against: relativePath) }) {
@@ -361,7 +488,14 @@ actor SyncEngine {
 
             var hash: String? = nil
             if !isDir {
-                hash = try? Self.hashFile(at: URL(fileURLWithPath: fullPath))
+                // Optimization: skip hashing files not modified since last sync
+                if let lastSync = lastSyncDate, modified <= lastSync {
+                    skipCount += 1
+                    // Include file with nil hash - will be skipped unless server doesn't have it
+                } else {
+                    hash = try? Self.hashFile(at: URL(fileURLWithPath: fullPath))
+                    hashCount += 1
+                }
             }
 
             files.append(LocalFileInfo(
@@ -373,6 +507,8 @@ actor SyncEngine {
                 contentHash: hash
             ))
         }
+
+        logger.info("Scan complete: hashed \(hashCount) files, skipped \(skipCount) unchanged files")
         return files
     }
 
@@ -391,7 +527,7 @@ actor SyncEngine {
                 continue
             }
 
-            // File no longer exists → mark as deleted
+            // File no longer exists -> mark as deleted
             guard let attrs = try? fm.attributesOfItem(atPath: changedPath) else {
                 files.append(LocalFileInfo(
                     relativePath: relativePath,
@@ -426,110 +562,27 @@ actor SyncEngine {
         return files
     }
 
-    // MARK: - Action Determination
+    // MARK: - Sync State Export/Restore
 
-    /// Full scan: compare all local vs all remote using server as the source of truth.
-    private func determineActions(local: [LocalFileInfo], remote: [RemoteFileInfo], mode: SyncTask.SyncMode, basePath: String) -> [SyncAction] {
-        var actions: [SyncAction] = []
-
-        // Build maps by relative path (files only)
-        let localByPath = Dictionary(local.filter { !$0.isDirectory }.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
-        let remoteByPath = Dictionary(remote.filter { !$0.isDir }.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
-
-        // Create empty directories on server
-        let localDirs = local.filter { $0.isDirectory }
-        let remoteDirPaths = Set(folderIDCache.keys)
-        for dir in localDirs {
-            if !remoteDirPaths.contains(dir.relativePath) {
-                actions.append(.createDirectory(dir.relativePath))
-            }
+    func exportSyncStates(taskID: String) -> [[String: String]] {
+        guard let states = try? db.getStates(taskID: taskID) else { return [] }
+        return states.values.map { state in
+            ["file_name": state.fileName, "content_hash": state.contentHash]
         }
-
-        // Local files: check against server
-        for (relPath, localFile) in localByPath {
-            if let remoteFile = remoteByPath[relPath] {
-                // Both exist — compare hashes
-                if localFile.contentHash != remoteFile.contentHash {
-                    // Different → upload (local wins, server keeps versions)
-                    actions.append(.upload(localFile.fullPath, relPath, remoteFile.id))
-                }
-                // Same hash → skip (already synced)
-            } else {
-                // Only local → upload
-                actions.append(.upload(localFile.fullPath, relPath, nil))
-            }
-        }
-
-        // Remote files not local (two-way only)
-        if mode == .twoWay {
-            let fm = FileManager.default
-            for (relPath, remoteFile) in remoteByPath {
-                if localByPath[relPath] == nil {
-                    let localPath = (basePath as NSString).appendingPathComponent(relPath)
-                    if fm.fileExists(atPath: localPath) {
-                        // File exists locally but wasn't scanned (maybe excluded) — skip
-                    } else if remoteFile.removedLocally == true {
-                        // Was marked as removed locally — don't re-download
-                    } else {
-                        // Not local, not removed → download
-                        actions.append(.download(remoteFile.id, localPath, relPath))
-                    }
-                }
-            }
-        }
-
-        return actions
     }
 
-    /// Incremental: only changed local + new remote. No known state — hash is the truth.
-    private func determineIncrementalActions(changedLocal: [LocalFileInfo], remote: [RemoteFileInfo], mode: SyncTask.SyncMode, basePath: String) -> [SyncAction] {
-        var actions: [SyncAction] = []
-        let remoteByPath = Dictionary(remote.map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
-
-        for localFile in changedLocal where !localFile.isDirectory {
-            let relPath = localFile.relativePath
-
-            // File deleted locally
-            if localFile.deletedLocally {
-                if mode == .twoWay, let remoteFile = remoteByPath[relPath] {
-                    actions.append(.markRemovedLocally(remoteFile.id, relPath))
-                }
-                continue
-            }
-
-            if let remoteFile = remoteByPath[relPath] {
-                // Both exist — compare hashes
-                if localFile.contentHash != remoteFile.contentHash {
-                    // Different hash → upload (local wins)
-                    actions.append(.upload(localFile.fullPath, relPath, remoteFile.id))
-                }
-            } else {
-                // Only local → upload
-                actions.append(.upload(localFile.fullPath, relPath, nil))
-            }
+    func restoreSyncStates(taskID: String, states: [[String: Any]]) throws {
+        for stateDict in states {
+            guard let fileName = stateDict["file_name"] as? String,
+                  let contentHash = stateDict["content_hash"] as? String else { continue }
+            try db.updateState(taskID: taskID, fileName: fileName, contentHash: contentHash)
         }
-
-        // New remote files not local → download (two-way only)
-        if mode == .twoWay {
-            let fm = FileManager.default
-            let localPaths = Set(changedLocal.map { $0.relativePath })
-            for (relPath, remoteFile) in remoteByPath {
-                if !localPaths.contains(relPath) {
-                    let localPath = (basePath as NSString).appendingPathComponent(relPath)
-                    if !fm.fileExists(atPath: localPath) && remoteFile.removedLocally != true {
-                        actions.append(.download(remoteFile.id, localPath, relPath))
-                    }
-                }
-            }
-        }
-
-        return actions
     }
 
     // MARK: - Fast Upload Helpers
 
     private func uploadChunked(fileURL: URL, filename: String, parentID: String, fileSize: Int64, onChunkUploaded: ((Int64) async -> Void)? = nil) async throws -> ChunkedUploadResult {
-        let chunkSize = 64 * 1024 * 1024  // 64 MB chunks — less overhead per chunk
+        let chunkSize = 64 * 1024 * 1024  // 64 MB chunks
 
         // 1. Init session
         let session = try await apiClient.initChunkedUpload(filename: filename, parentID: parentID, totalSize: fileSize, chunkSize: chunkSize)
@@ -538,7 +591,7 @@ actor SyncEngine {
         let status = try await apiClient.getUploadStatus(uploadID: session.uploadID)
         let receivedSet = Set(status.receivedChunks)
 
-        // 3. Upload missing chunks — dynamic parallel based on file size
+        // 3. Upload missing chunks
         let missingChunks = (0..<session.totalChunks).filter { !receivedSet.contains($0) }
         let chunkParallel = DynamicSemaphore.parallelismFor(fileSize: fileSize)
         let chunkSemaphore = DynamicSemaphore(initialLimit: chunkParallel)
@@ -597,7 +650,7 @@ actor SyncEngine {
             blockIndex += 1
         }
 
-        // 3. If more than 50% changed, full upload is faster — fall back
+        // 3. If more than 50% changed, full upload is faster
         let totalBlocks = blockIndex
         if newBlocks.count > totalBlocks / 2 { return false }
 
@@ -756,10 +809,6 @@ actor AsyncSemaphore {
 }
 
 /// Dynamic semaphore that adjusts concurrency based on file size.
-/// Small files: 2 parallel (overhead dominates)
-/// Medium files: 4 parallel
-/// Large files: 8 parallel
-/// Very large files: 16 parallel (maximize throughput)
 actor DynamicSemaphore {
     private var count: Int
     private var currentLimit: Int

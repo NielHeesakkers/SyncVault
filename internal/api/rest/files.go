@@ -85,6 +85,10 @@ type createFileRequest struct {
 }
 
 // handleCreateFile creates a new folder or empty file entry.
+// CreateFile already renames any existing file/folder with the same name before inserting.
+// If a duplicate error still occurs (unlikely race), we handle it gracefully:
+//   - For directories: find and return the existing active directory (idempotent).
+//   - For files: return 409 Conflict.
 func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
 
@@ -97,6 +101,24 @@ func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
 	f, err := s.db.CreateFile(req.ParentID, claims.UserID, req.Name, req.IsDir, 0, "", "")
 	if err != nil {
 		if errors.Is(err, metadata.ErrDuplicateFile) {
+			if req.IsDir {
+				// For directories: find and return the existing one (idempotent).
+				existing, findErr := s.db.FindFileByName(req.ParentID, claims.UserID, req.Name)
+				if findErr == nil && existing != nil {
+					if existing.DeletedAt.Valid {
+						_ = s.db.RestoreFile(existing.ID)
+						_ = s.db.UnmarkRemovedLocally(existing.ID)
+						restored, _ := s.db.GetFileByID(existing.ID)
+						if restored != nil {
+							writeJSON(w, http.StatusOK, toFileResponse(*restored))
+							return
+						}
+					}
+					writeJSON(w, http.StatusOK, toFileResponse(*existing))
+					return
+				}
+			}
+			// For files (or if we couldn't find the existing dir): return 409.
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "file already exists"})
 			return
 		}
@@ -730,7 +752,10 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 
 // handleCheckHashes accepts a list of content hashes and returns which ones already exist on the server.
 // This allows the client to skip uploading files that the server already has (deduplication).
+// Returns: {"existing": {"abc123": true, "def456": false, ...}}
 func (s *Server) handleCheckHashes(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+
 	var req struct {
 		Hashes []string `json:"hashes"`
 	}
@@ -740,11 +765,11 @@ func (s *Server) handleCheckHashes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(req.Hashes) == 0 {
-		writeJSON(w, http.StatusOK, map[string]interface{}{"existing": []string{}})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"existing": map[string]bool{}})
 		return
 	}
 
-	existing, err := s.db.CheckHashes(req.Hashes)
+	existing, err := s.db.CheckFileHashes(claims.UserID, req.Hashes)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not check hashes"})
 		return
@@ -755,9 +780,13 @@ func (s *Server) handleCheckHashes(w http.ResponseWriter, r *http.Request) {
 
 // handleFileTree returns a flat list of all files (recursively) under a given folder.
 // Used by the sync client to compare local vs remote without multiple API calls.
+// Accepts folder_id either as a URL path parameter ({id}) or as a query parameter.
 func (s *Server) handleFileTree(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
-	folderID := r.URL.Query().Get("folder_id")
+	folderID := chi.URLParam(r, "id")
+	if folderID == "" {
+		folderID = r.URL.Query().Get("folder_id")
+	}
 	if folderID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "folder_id required"})
 		return

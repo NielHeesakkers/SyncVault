@@ -424,8 +424,8 @@ class AppState: ObservableObject {
 
         // Proactively refresh token before it expires
         do {
-            // Test if token is still valid
-            let _ = try await client.healthCheck()
+            // Test if token is still valid (use authenticated endpoint, not public health)
+            let _ = try await client.listFiles(parentID: nil)
         } catch {
             logger.info(" Token check failed, re-authenticating...")
             if await client.reAuthenticate() {
@@ -472,9 +472,19 @@ class AppState: ObservableObject {
                 let engine = SyncEngine(apiClient: client, db: db)
 
                 // Get changed paths from FSEvents watcher (nil = full scan needed)
-                let changedPaths = fileWatchers[task.id]?.consumeChangedPaths()
+                var changedPaths = fileWatchers[task.id]?.consumeChangedPaths()
 
-                let result = try await engine.syncTask(task, changedPaths: changedPaths) { [weak self] progress in
+                // If no FSEvents changes but this could be a first sync or incomplete sync,
+                // force a full scan. An empty Set means "no changes" but nil means "full scan needed".
+                if let paths = changedPaths, paths.isEmpty {
+                    changedPaths = nil  // Force full scan -- FSEvents only tracks NEW changes
+                }
+
+                // Load last successful sync date for this task (used to skip hashing unchanged files)
+                let lastSyncKey = "lastSync_\(task.id.uuidString)"
+                let lastSyncDate = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
+
+                let result = try await engine.syncTask(task, changedPaths: changedPaths, lastSyncDate: lastSyncDate) { [weak self] progress in
                     await MainActor.run { [weak self] in
                         self?.syncProgress = progress
                         self?.syncQueue = progress.pendingFiles
@@ -482,6 +492,11 @@ class AppState: ObservableObject {
                 }
 
                 logger.info(" Result: \(result.uploaded) up, \(result.downloaded) down, \(result.deleted) del, \(result.conflicts) conflicts, \(result.errors) errors")
+
+                // Store last successful sync date (for optimized reconnect hashing)
+                if result.errors == 0 {
+                    UserDefaults.standard.set(Date(), forKey: lastSyncKey)
+                }
 
                 // Upload known state to server (for restore-to-new-Mac scenario)
                 let deviceID = getDeviceID()

@@ -32,6 +32,8 @@ var ErrFileNotFound = errors.New("metadata: file not found")
 var ErrDuplicateFile = errors.New("metadata: duplicate file name in parent")
 
 // CreateFile inserts a new file or directory record.
+// If a file/folder with the same name exists (active or soft-deleted), the old one is
+// renamed with a _DELETED_ timestamp suffix so the new record can be inserted cleanly.
 func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, contentHash, mimeType string) (*File, error) {
 	now := time.Now().UTC()
 	f := &File{
@@ -59,14 +61,16 @@ func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, 
 		isDirInt = 1
 	}
 
-	// If a file/folder with the same name exists (including soft-deleted), rename the old one to trash
-	trashSuffix := "_DELETED_" + f.CreatedAt.Format("2006-01-02_150405")
+	// Rename any existing file/folder with the same name (including soft-deleted) so the
+	// UNIQUE(parent_id, name, owner_id) constraint won't block the insert.
+	// Use a unique suffix with nanosecond precision + random component to avoid collisions.
+	trashSuffix := "_DELETED_" + f.CreatedAt.Format("20060102_150405") + "_" + f.ID[:8]
 	if parentID != "" {
-		d.db.Exec(`UPDATE files SET name = name || ?, deleted_at = COALESCE(deleted_at, ?) WHERE parent_id = ? AND owner_id = ? AND name = ?`,
-			trashSuffix, f.CreatedAt.Format(time.RFC3339Nano), parentID, ownerID, name)
+		d.db.Exec(`UPDATE files SET name = name || ?, deleted_at = COALESCE(deleted_at, ?), updated_at = ? WHERE parent_id = ? AND owner_id = ? AND name = ?`,
+			trashSuffix, f.CreatedAt.Format(time.RFC3339Nano), f.CreatedAt.Format(time.RFC3339Nano), parentID, ownerID, name)
 	} else {
-		d.db.Exec(`UPDATE files SET name = name || ?, deleted_at = COALESCE(deleted_at, ?) WHERE parent_id IS NULL AND owner_id = ? AND name = ?`,
-			trashSuffix, f.CreatedAt.Format(time.RFC3339Nano), ownerID, name)
+		d.db.Exec(`UPDATE files SET name = name || ?, deleted_at = COALESCE(deleted_at, ?), updated_at = ? WHERE parent_id IS NULL AND owner_id = ? AND name = ?`,
+			trashSuffix, f.CreatedAt.Format(time.RFC3339Nano), f.CreatedAt.Format(time.RFC3339Nano), ownerID, name)
 	}
 
 	_, err := d.db.Exec(
@@ -98,6 +102,23 @@ func (d *DB) GetFileByID(id string) (*File, error) {
 		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
 		 FROM files WHERE id = ?`, id,
 	)
+	return scanFile(row)
+}
+
+// FindFileByName finds a file by name, parent, and owner — including soft-deleted files.
+func (d *DB) FindFileByName(parentID, ownerID, name string) (*File, error) {
+	var row *sql.Row
+	if parentID == "" {
+		row = d.db.QueryRow(
+			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+			 FROM files WHERE parent_id IS NULL AND owner_id = ? AND name = ?`, ownerID, name,
+		)
+	} else {
+		row = d.db.QueryRow(
+			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+			 FROM files WHERE parent_id = ? AND owner_id = ? AND name = ?`, parentID, ownerID, name,
+		)
+	}
 	return scanFile(row)
 }
 
@@ -883,4 +904,44 @@ func (d *DB) CheckHashes(hashes []string) ([]string, error) {
 		existing = append(existing, h)
 	}
 	return existing, rows.Err()
+}
+
+// CheckFileHashes takes a list of content hashes and an ownerID, and returns a map of
+// hash -> exists for all requested hashes. Only non-deleted files owned by ownerID are considered.
+func (d *DB) CheckFileHashes(ownerID string, hashes []string) (map[string]bool, error) {
+	result := make(map[string]bool, len(hashes))
+	for _, h := range hashes {
+		result[h] = false
+	}
+	if len(hashes) == 0 {
+		return result, nil
+	}
+
+	// Build query with placeholders
+	placeholders := ""
+	args := make([]interface{}, 0, len(hashes)+1)
+	args = append(args, ownerID)
+	for i, h := range hashes {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args = append(args, h)
+	}
+
+	query := fmt.Sprintf("SELECT DISTINCT content_hash FROM files WHERE owner_id = ? AND content_hash IN (%s) AND deleted_at IS NULL", placeholders)
+	rows, err := d.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("metadata: check file hashes: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			return nil, err
+		}
+		result[h] = true
+	}
+	return result, rows.Err()
 }
