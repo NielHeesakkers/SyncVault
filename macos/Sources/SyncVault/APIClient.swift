@@ -305,6 +305,56 @@ actor APIClient {
         return try await post("/api/uploads/\(uploadID)/complete", body: [:] as [String: String])
     }
 
+    // MARK: - Direct Block Upload
+
+    /// Check which block hashes already exist on the server.
+    func checkBlocks(_ hashes: [String]) async throws -> [String] {
+        let body: [String: Any] = ["hashes": hashes]
+        let response: CheckHashesResponse = try await post("/api/blocks/check", body: body)
+        return response.existing
+    }
+
+    /// Upload a single block directly to storage. Nonisolated for parallel uploads.
+    nonisolated static func uploadBlock(baseURL: String, token: String, hash: String, data: Data) async throws {
+        var lastError: Error?
+        for attempt in 1...3 {
+            do {
+                var request = URLRequest(url: URL(string: "\(baseURL)/api/blocks/\(hash)")!)
+                request.httpMethod = "PUT"
+                request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                request.timeoutInterval = 86400
+                request.httpBody = data
+
+                let (_, response) = try await uploadSession.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+                    throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
+                }
+                return
+            } catch {
+                lastError = error
+                let nsError = error as NSError
+                if nsError.domain == NSURLErrorDomain && nsError.code == -1005 && attempt < 3 {
+                    try await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
+                    continue
+                }
+                throw error
+            }
+        }
+        throw lastError!
+    }
+
+    /// Create a file on the server from pre-uploaded blocks.
+    func createFileFromBlocks(filename: String, parentID: String, fileHash: String, blocks: [[String: Any]]) async throws -> ServerFile {
+        let body: [String: Any] = [
+            "filename": filename,
+            "parent_id": parentID,
+            "file_hash": fileHash,
+            "blocks": blocks
+        ]
+        return try await post("/api/files/from-blocks", body: body)
+    }
+
     // MARK: - Delta Sync
 
     func getFileBlocks(id: String) async throws -> BlocksResponse {

@@ -267,6 +267,22 @@ actor SyncEngine {
             return nil
         }.reduce(0, +)
 
+        // Pre-create all directories sequentially to avoid 409 race conditions
+        var allDirPaths = Set<String>()
+        for action in sortedActions {
+            switch action {
+            case .upload(_, let relativePath, _):
+                let parent = (relativePath as NSString).deletingLastPathComponent
+                if !parent.isEmpty && parent != "." { allDirPaths.insert(parent) }
+            case .createDirectory(let relativePath):
+                allDirPaths.insert(relativePath)
+            default: break
+            }
+        }
+        for dirPath in allDirPaths.sorted() {
+            let _ = try? await ensureRemoteDirectory(dirPath, rootID: task.remoteFolderID)
+        }
+
         let total = sortedActions.count
         let bytesUploaded = ActorCounter()
         let completed = ActorCounter()
@@ -310,27 +326,17 @@ actor SyncEngine {
                             let parentRelPath = (relativePath as NSString).deletingLastPathComponent
                             let parentID = try await self.ensureRemoteDirectory(parentRelPath, rootID: task.remoteFolderID)
 
-                            let uploadedHash: String
-                            if fileSize > 50 * 1024 * 1024 {
-                                // Large files: chunked upload (64MB pieces, resumable)
-                                let result = try await self.uploadChunked(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize) { chunkBytes in
-                                    await bytesUploaded.add(chunkBytes)
-                                    let curB = await bytesUploaded.value
-                                    await onProgress(SyncProgress(
-                                        currentFile: displayName, action: "Uploading",
-                                        bytesTransferred: curB, totalBytes: totalBytesToUpload,
-                                        filesCompleted: Int(await completed.value), filesTotal: total,
-                                        bytesPerSecond: Self.speed(bytes: curB, since: start),
-                                        pendingFiles: pending
-                                    ))
-                                }
-                                uploadedHash = result.contentHash
-                            } else {
-                                // Small files: single-shot upload
-                                let data = try Data(contentsOf: fileURL)
-                                let result = try await self.apiClient.uploadFile(data: data, filename: displayName, parentID: parentID)
-                                uploadedHash = result.contentHash ?? ""
-                                await bytesUploaded.add(fileSize)
+                            // Direct block upload: split into 4MB blocks, upload missing, create file
+                            let uploadedHash = try await self.uploadViaBlocks(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize) { blockBytes in
+                                await bytesUploaded.add(blockBytes)
+                                let curB = await bytesUploaded.value
+                                await onProgress(SyncProgress(
+                                    currentFile: displayName, action: "Uploading",
+                                    bytesTransferred: curB, totalBytes: totalBytesToUpload,
+                                    filesCompleted: Int(await completed.value), filesTotal: total,
+                                    bytesPerSecond: Self.speed(bytes: curB, since: start),
+                                    pendingFiles: pending
+                                ))
                             }
 
                             logger.info("Uploaded: \(relativePath) (\(fileSize) bytes, hash: \(uploadedHash))")
@@ -597,7 +603,89 @@ actor SyncEngine {
         }
     }
 
-    // MARK: - Fast Upload Helpers
+    // MARK: - Direct Block Upload
+
+    /// Upload a file by splitting it into 4 MB blocks, checking which exist, and uploading only missing ones.
+    /// No staging, no assembly — blocks go directly to content-addressable storage.
+    private func uploadViaBlocks(fileURL: URL, filename: String, parentID: String, fileSize: Int64, onBlockUploaded: ((Int64) async -> Void)? = nil) async throws -> String {
+        let blockSize = 4 * 1024 * 1024  // 4 MB — matches server storage block size
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { handle.closeFile() }
+
+        // 1. Split file into blocks, compute hashes
+        var fileHasher = SHA256()
+        var blocks: [(index: Int, hash: String, size: Int, offset: UInt64)] = []
+        var index = 0
+
+        while true {
+            let data = handle.readData(ofLength: blockSize)
+            if data.isEmpty { break }
+            fileHasher.update(data: data)
+            let blockHash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
+            blocks.append((index: index, hash: blockHash, size: data.count, offset: UInt64(index) * UInt64(blockSize)))
+            index += 1
+        }
+
+        let fileHash = fileHasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
+        logger.info("File \(filename): \(blocks.count) blocks, hash \(fileHash)")
+
+        // 2. Check which blocks the server already has
+        let allHashes = blocks.map { $0.hash }
+        let existingHashes = try await apiClient.checkBlocks(allHashes)
+        let existingSet = Set(existingHashes)
+        let missingBlocks = blocks.filter { !existingSet.contains($0.hash) }
+
+        // Report already-existing blocks as progress
+        let existingBytes = Int64(blocks.filter { existingSet.contains($0.hash) }.map { $0.size }.reduce(0, +))
+        if existingBytes > 0 {
+            await onBlockUploaded?(existingBytes)
+        }
+
+        logger.info("File \(filename): \(existingHashes.count) blocks exist, \(missingBlocks.count) to upload")
+
+        // 3. Upload missing blocks — 10 in parallel
+        if !missingBlocks.isEmpty {
+            let token = await apiClient.currentToken() ?? ""
+            let base = await apiClient.baseURL
+            let sem = DynamicSemaphore(initialLimit: 10)
+
+            try await withThrowingTaskGroup(of: Int64.self) { group in
+                for block in missingBlocks {
+                    group.addTask {
+                        await sem.wait()
+                        defer { Task { await sem.signal() } }
+
+                        let blockHandle = try FileHandle(forReadingFrom: fileURL)
+                        defer { blockHandle.closeFile() }
+                        blockHandle.seek(toFileOffset: block.offset)
+                        let data = blockHandle.readData(ofLength: block.size)
+
+                        try await APIClient.uploadBlock(baseURL: base, token: token, hash: block.hash, data: data)
+                        return Int64(data.count)
+                    }
+                }
+                for try await size in group {
+                    await onBlockUploaded?(size)
+                }
+            }
+        }
+
+        // 4. Create the file on the server from blocks (instant — no assembly needed)
+        let blockManifest: [[String: Any]] = blocks.map { b in
+            ["index": b.index, "hash": b.hash, "size": b.size]
+        }
+        let _ = try await apiClient.createFileFromBlocks(
+            filename: filename,
+            parentID: parentID,
+            fileHash: fileHash,
+            blocks: blockManifest
+        )
+
+        logger.info("Uploaded via blocks: \(filename) (\(fileSize) bytes, \(blocks.count) blocks)")
+        return fileHash
+    }
+
+    // MARK: - Legacy Chunked Upload
 
     /// Cache key for storing upload session IDs in UserDefaults.
     private func uploadCacheKey(filename: String, parentID: String, fileSize: Int64) -> String {

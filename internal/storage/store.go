@@ -44,6 +44,81 @@ func (s *Store) manifestPath(hash string) string {
 	return filepath.Join(s.dir, hash[:2], hash+".manifest")
 }
 
+// HasBlock returns true if a block with the given hash exists in storage.
+func (s *Store) HasBlock(hash string) bool {
+	_, err := os.Stat(s.chunkPath(hash))
+	return err == nil
+}
+
+// CheckBlocks returns which of the given hashes already exist in storage.
+func (s *Store) CheckBlocks(hashes []string) []string {
+	var existing []string
+	for _, h := range hashes {
+		if s.HasBlock(h) {
+			existing = append(existing, h)
+		}
+	}
+	return existing
+}
+
+// PutBlock stores a single block by its hash. Returns true if the block was newly written,
+// false if it already existed (deduplicated). Verifies the hash matches the data.
+func (s *Store) PutBlock(hash string, data []byte) (isNew bool, err error) {
+	// Verify hash
+	h := sha256.Sum256(data)
+	actual := hex.EncodeToString(h[:])
+	if actual != hash {
+		return false, fmt.Errorf("storage: hash mismatch: expected %s, got %s", hash, actual)
+	}
+
+	cp := s.chunkPath(hash)
+	if _, statErr := os.Stat(cp); statErr == nil {
+		return false, nil // Already exists — deduplicated
+	}
+
+	if err := os.MkdirAll(filepath.Dir(cp), 0755); err != nil {
+		return false, fmt.Errorf("storage: create block dir: %w", err)
+	}
+	if err := os.WriteFile(cp, data, 0644); err != nil {
+		return false, fmt.Errorf("storage: write block: %w", err)
+	}
+	return true, nil
+}
+
+// BlockEntry represents one block in a file manifest.
+type BlockEntry struct {
+	Index int    `json:"index"`
+	Hash  string `json:"hash"`
+	Size  int    `json:"size"`
+}
+
+// CreateManifest writes a manifest file for a file hash, linking it to its blocks.
+// All blocks must already exist in storage. Returns the total file size.
+func (s *Store) CreateManifest(fileHash string, blocks []BlockEntry) (int64, error) {
+	var totalSize int64
+	for _, b := range blocks {
+		if !s.HasBlock(b.Hash) {
+			return 0, fmt.Errorf("storage: missing block %s (index %d)", b.Hash, b.Index)
+		}
+		totalSize += int64(b.Size)
+	}
+
+	mp := s.manifestPath(fileHash)
+	if err := os.MkdirAll(filepath.Dir(mp), 0755); err != nil {
+		return 0, fmt.Errorf("storage: create manifest dir: %w", err)
+	}
+
+	var sb strings.Builder
+	for _, b := range blocks {
+		sb.WriteString(fmt.Sprintf("%d %s %d\n", b.Index, b.Hash, b.Size))
+	}
+	if err := os.WriteFile(mp, []byte(sb.String()), 0644); err != nil {
+		return 0, fmt.Errorf("storage: write manifest: %w", err)
+	}
+
+	return totalSize, nil
+}
+
 // Put streams data from r in 4 MB chunks, stores each chunk by its hash,
 // writes a manifest, and returns the overall file hash, total size, and any error.
 // Memory usage is O(chunkSize) regardless of file size.

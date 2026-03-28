@@ -94,11 +94,16 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/trash", s.handleListTrash)
 		r.Get("/api/changes", s.handleListChanges)
 
-		// Chunked uploads.
+		// Chunked uploads (legacy).
 		r.Post("/api/uploads/init", s.handleInitUpload)
 		r.Put("/api/uploads/{id}/chunks/{n}", s.handleUploadChunk)
 		r.Get("/api/uploads/{id}/status", s.handleUploadStatus)
 		r.Post("/api/uploads/{id}/complete", s.handleCompleteUpload)
+
+		// Direct block upload (preferred for large files).
+		r.Put("/api/blocks/{hash}", s.handlePutBlock)
+		r.Post("/api/blocks/check", s.handleCheckBlocks)
+		r.Post("/api/files/from-blocks", s.handleCreateFileFromBlocks)
 
 		// Delta sync.
 		r.Get("/api/files/{id}/blocks", s.handleGetBlocks)
