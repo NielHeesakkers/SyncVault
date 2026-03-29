@@ -110,7 +110,8 @@ class UpdaterService: ObservableObject {
         MOUNT_POINT=$(hdiutil attach "\(dmgPath.path)" -nobrowse -noverify | grep "/Volumes/" | awk -F'\\t' '{print $NF}')
         if [ -d "$MOUNT_POINT/SyncVault.app" ]; then
             rm -rf "/Applications/SyncVault.app"
-            cp -R "$MOUNT_POINT/SyncVault.app" "/Applications/"
+            ditto "$MOUNT_POINT/SyncVault.app" "/Applications/SyncVault.app"
+            xattr -cr "/Applications/SyncVault.app"
             hdiutil detach "$MOUNT_POINT" -quiet
             rm -f "\(dmgPath.path)"
             open "/Applications/SyncVault.app"

@@ -22,11 +22,13 @@ echo "→ Building..."
 cd "$SCRIPT_DIR"
 xcodebuild -scheme SyncVault -configuration Release -derivedDataPath build clean build 2>&1 | tail -3
 
-# 2. Fix Sparkle framework structure (remove unsealed symlinks)
+# 2. Fix Sparkle framework structure (remove unsealed symlinks + resource forks)
 echo "→ Fixing Sparkle framework structure..."
 rm -f "$SPARKLE/Autoupdate"
 rm -f "$SPARKLE/Updater.app"
 rm -f "$SPARKLE/XPCServices"
+# Remove ALL ._ resource fork files (Finder creates these, they break code signing)
+find "$APP" -name "._*" -delete 2>/dev/null || true
 
 # 3. Re-sign with Developer ID + timestamp + hardened runtime
 echo "→ Signing with Developer ID..."
@@ -43,10 +45,10 @@ echo "→ Verifying..."
 codesign --verify --deep --strict "$APP"
 spctl --assess --type execute --verbose "$APP" 2>&1
 
-# 5. Create ZIP with ditto
+# 5. Create ZIP with ditto (COPYFILE_DISABLE prevents ._ resource forks in zip)
 echo "→ Creating ZIP..."
 rm -f /tmp/SyncVault-$VERSION.zip
-ditto -c -k --keepParent "$APP" /tmp/SyncVault-$VERSION.zip
+COPYFILE_DISABLE=1 ditto -c -k --keepParent "$APP" /tmp/SyncVault-$VERSION.zip
 
 # 6. Notarize
 echo "→ Notarizing ZIP..."
@@ -56,8 +58,8 @@ xcrun notarytool submit /tmp/SyncVault-$VERSION.zip --keychain-profile "notaryto
 echo "→ Stapling..."
 xcrun stapler staple "$APP"
 rm -f /tmp/SyncVault-$VERSION.zip
-ditto -c -k --keepParent "$APP" /tmp/SyncVault-$VERSION.zip
-cp /tmp/SyncVault-$VERSION.zip ~/Desktop/SyncVault-$VERSION.zip
+COPYFILE_DISABLE=1 ditto -c -k --keepParent "$APP" /tmp/SyncVault-$VERSION.zip
+cp /tmp/SyncVault-$VERSION.zip "$SCRIPT_DIR/SyncVault-$VERSION.zip"
 
 # 8. Create and notarize DMG
 echo "→ Creating DMG..."
@@ -66,7 +68,7 @@ hdiutil create -volname "SyncVault" -srcfolder "$APP" -ov -format UDZO /tmp/Sync
 echo "→ Notarizing DMG..."
 xcrun notarytool submit /tmp/SyncVault-$VERSION.dmg --keychain-profile "notarytool" --wait
 xcrun stapler staple /tmp/SyncVault-$VERSION.dmg
-cp /tmp/SyncVault-$VERSION.dmg ~/Desktop/SyncVault-$VERSION.dmg
+cp /tmp/SyncVault-$VERSION.dmg "$SCRIPT_DIR/SyncVault-$VERSION.dmg"
 
 # 9. Sparkle signature
 echo "→ Sparkle signature:"
@@ -74,6 +76,6 @@ echo "→ Sparkle signature:"
 
 echo ""
 echo "=== Done! ==="
-echo "ZIP: ~/Desktop/SyncVault-$VERSION.zip"
-echo "DMG: ~/Desktop/SyncVault-$VERSION.dmg"
+echo "ZIP: $SCRIPT_DIR/SyncVault-$VERSION.zip"
+echo "DMG: $SCRIPT_DIR/SyncVault-$VERSION.dmg"
 echo "Update appcast.xml with the signature above, then commit and push."
