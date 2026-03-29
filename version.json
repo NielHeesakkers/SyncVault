@@ -1,8 +1,8 @@
 {
-  "version": "2.5.2",
+  "version": "2.5.5",
   "min_version": "1.0",
-  "release_date": "2026-03-27",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.2/SyncVault-2.5.2.dmg",
+  "release_date": "2026-03-28",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.5/SyncVault-2.5.5.dmg",
   "history": [
     {
       "version": "2.5.0",

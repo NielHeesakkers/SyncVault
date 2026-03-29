@@ -1,3 +1,13 @@
+## [2.5.5] — 2026-03-28
+
+macOS App:
+- Fixed "damaged app" error: proper ditto-based zip for code signing preservation
+- Zero-copy streaming upload: no temp files, 4MB memory buffer only
+
+Server:
+- Streaming Put(): 4MB block processing instead of loading full file in memory
+- Fixes OOM on chunked upload assembly for files >1GB
+
 ## [2.5.3] — 2026-03-27
 
 macOS App:
