@@ -1,9 +1,16 @@
 {
-  "version": "2.5.6",
+  "version": "2.5.7",
   "min_version": "1.0",
   "release_date": "2026-03-29",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.6/SyncVault-2.5.6.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.7/SyncVault-2.5.7.dmg",
   "history": [
+    {
+      "version": "2.5.7",
+      "date": "2026-03-29",
+      "changes": [
+        "Fix folder creation race condition \u2014 idempotent find-or-create for directories"
+      ]
+    },
     {
       "version": "2.5.6",
       "date": "2026-03-29",

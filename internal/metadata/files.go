@@ -32,10 +32,20 @@ var ErrFileNotFound = errors.New("metadata: file not found")
 var ErrDuplicateFile = errors.New("metadata: duplicate file name in parent")
 
 // CreateFile inserts a new file or directory record.
-// If a file/folder with the same name exists (active or soft-deleted), the old one is
-// renamed with a _DELETED_ timestamp suffix so the new record can be inserted cleanly.
+// For directories: idempotent find-or-create — if a non-deleted directory with the same
+// name already exists, it is returned directly (no rename, no conflict).
+// For files: any existing record with the same name is renamed with a _DELETED_ suffix.
 func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, contentHash, mimeType string) (*File, error) {
 	now := time.Now().UTC()
+
+	// For directories: check if an active one already exists and return it (idempotent).
+	if isDir {
+		existing, err := d.findActiveDir(parentID, ownerID, name)
+		if err == nil && existing != nil {
+			return existing, nil
+		}
+	}
+
 	f := &File{
 		ID:      uuid.New().String(),
 		OwnerID: ownerID,
@@ -63,7 +73,6 @@ func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, 
 
 	// Rename any existing file/folder with the same name (including soft-deleted) so the
 	// UNIQUE(parent_id, name, owner_id) constraint won't block the insert.
-	// Use a unique suffix with nanosecond precision + random component to avoid collisions.
 	trashSuffix := "_DELETED_" + f.CreatedAt.Format("20060102_150405") + "_" + f.ID[:8]
 	if parentID != "" {
 		d.db.Exec(`UPDATE files SET name = name || ?, deleted_at = COALESCE(deleted_at, ?), updated_at = ? WHERE parent_id = ? AND owner_id = ? AND name = ?`,
@@ -89,11 +98,36 @@ func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, 
 	)
 	if err != nil {
 		if isSQLiteConstraint(err) {
+			// Race: another thread created it between our check and insert.
+			// For directories, find and return it.
+			if isDir {
+				existing, findErr := d.findActiveDir(parentID, ownerID, name)
+				if findErr == nil && existing != nil {
+					return existing, nil
+				}
+			}
 			return nil, ErrDuplicateFile
 		}
 		return nil, fmt.Errorf("metadata: create file: %w", err)
 	}
 	return f, nil
+}
+
+// findActiveDir finds a non-deleted directory by name and parent.
+func (d *DB) findActiveDir(parentID, ownerID, name string) (*File, error) {
+	var row *sql.Row
+	if parentID == "" {
+		row = d.db.QueryRow(
+			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+			 FROM files WHERE parent_id IS NULL AND owner_id = ? AND name = ? AND is_dir = 1 AND deleted_at IS NULL`, ownerID, name,
+		)
+	} else {
+		row = d.db.QueryRow(
+			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+			 FROM files WHERE parent_id = ? AND owner_id = ? AND name = ? AND is_dir = 1 AND deleted_at IS NULL`, parentID, ownerID, name,
+		)
+	}
+	return scanFile(row)
 }
 
 // GetFileByID returns the file with the given ID (including soft-deleted).

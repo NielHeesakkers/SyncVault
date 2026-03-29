@@ -101,24 +101,6 @@ func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
 	f, err := s.db.CreateFile(req.ParentID, claims.UserID, req.Name, req.IsDir, 0, "", "")
 	if err != nil {
 		if errors.Is(err, metadata.ErrDuplicateFile) {
-			if req.IsDir {
-				// For directories: find and return the existing one (idempotent).
-				existing, findErr := s.db.FindFileByName(req.ParentID, claims.UserID, req.Name)
-				if findErr == nil && existing != nil {
-					if existing.DeletedAt.Valid {
-						_ = s.db.RestoreFile(existing.ID)
-						_ = s.db.UnmarkRemovedLocally(existing.ID)
-						restored, _ := s.db.GetFileByID(existing.ID)
-						if restored != nil {
-							writeJSON(w, http.StatusOK, toFileResponse(*restored))
-							return
-						}
-					}
-					writeJSON(w, http.StatusOK, toFileResponse(*existing))
-					return
-				}
-			}
-			// For files (or if we couldn't find the existing dir): return 409.
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "file already exists"})
 			return
 		}
