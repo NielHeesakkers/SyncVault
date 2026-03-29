@@ -7,11 +7,34 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings" // used by Get/Delete manifest parsing
+	"syscall"
+	"time"
 )
+
+// retryOnTooManyFiles retries f up to 5 times with increasing delay when
+// the error is EMFILE or ENFILE ("too many open files").
+func retryOnTooManyFiles(op string, f func() error) error {
+	for attempt := 0; attempt < 5; attempt++ {
+		err := f()
+		if err == nil {
+			return nil
+		}
+		if errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) ||
+			strings.Contains(err.Error(), "too many open files") {
+			delay := time.Duration(1<<uint(attempt)) * time.Second // 1s, 2s, 4s, 8s, 16s
+			log.Printf("storage: %s: too many open files, retry %d/5 in %v", op, attempt+1, delay)
+			time.Sleep(delay)
+			continue
+		}
+		return err
+	}
+	return fmt.Errorf("storage: %s: too many open files after 5 retries", op)
+}
 
 // ErrNotFound is returned when a file hash is not found in the store.
 var ErrNotFound = errors.New("storage: file not found")
@@ -63,6 +86,7 @@ func (s *Store) CheckBlocks(hashes []string) []string {
 
 // PutBlock stores a single block by its hash. Returns true if the block was newly written,
 // false if it already existed (deduplicated). Verifies the hash matches the data.
+// Retries on "too many open files" errors.
 func (s *Store) PutBlock(hash string, data []byte) (isNew bool, err error) {
 	// Verify hash
 	h := sha256.Sum256(data)
@@ -76,10 +100,17 @@ func (s *Store) PutBlock(hash string, data []byte) (isNew bool, err error) {
 		return false, nil // Already exists — deduplicated
 	}
 
-	if err := os.MkdirAll(filepath.Dir(cp), 0755); err != nil {
+	err = retryOnTooManyFiles("PutBlock mkdir", func() error {
+		return os.MkdirAll(filepath.Dir(cp), 0755)
+	})
+	if err != nil {
 		return false, fmt.Errorf("storage: create block dir: %w", err)
 	}
-	if err := os.WriteFile(cp, data, 0644); err != nil {
+
+	err = retryOnTooManyFiles("PutBlock write", func() error {
+		return os.WriteFile(cp, data, 0644)
+	})
+	if err != nil {
 		return false, fmt.Errorf("storage: write block: %w", err)
 	}
 	return true, nil
@@ -104,7 +135,9 @@ func (s *Store) CreateManifest(fileHash string, blocks []BlockEntry) (int64, err
 	}
 
 	mp := s.manifestPath(fileHash)
-	if err := os.MkdirAll(filepath.Dir(mp), 0755); err != nil {
+	if err := retryOnTooManyFiles("CreateManifest mkdir", func() error {
+		return os.MkdirAll(filepath.Dir(mp), 0755)
+	}); err != nil {
 		return 0, fmt.Errorf("storage: create manifest dir: %w", err)
 	}
 
@@ -112,7 +145,9 @@ func (s *Store) CreateManifest(fileHash string, blocks []BlockEntry) (int64, err
 	for _, b := range blocks {
 		sb.WriteString(fmt.Sprintf("%d %s %d\n", b.Index, b.Hash, b.Size))
 	}
-	if err := os.WriteFile(mp, []byte(sb.String()), 0644); err != nil {
+	if err := retryOnTooManyFiles("CreateManifest write", func() error {
+		return os.WriteFile(mp, []byte(sb.String()), 0644)
+	}); err != nil {
 		return 0, fmt.Errorf("storage: write manifest: %w", err)
 	}
 
@@ -147,14 +182,18 @@ func (s *Store) Put(r io.Reader) (fileHash string, size int64, err error) {
 			ch := sha256.Sum256(chunk)
 			chunkHash := hex.EncodeToString(ch[:])
 
-			// Store chunk (deduplicated)
+			// Store chunk (deduplicated) — with retry for "too many open files"
 			cp := s.chunkPath(chunkHash)
-			if err := os.MkdirAll(filepath.Dir(cp), 0755); err != nil {
-				return "", 0, fmt.Errorf("storage: create chunk dir: %w", err)
+			if mkErr := retryOnTooManyFiles("Put mkdir", func() error {
+				return os.MkdirAll(filepath.Dir(cp), 0755)
+			}); mkErr != nil {
+				return "", 0, fmt.Errorf("storage: create chunk dir: %w", mkErr)
 			}
 			if _, statErr := os.Stat(cp); os.IsNotExist(statErr) {
-				if err := os.WriteFile(cp, chunk, 0644); err != nil {
-					return "", 0, fmt.Errorf("storage: write chunk: %w", err)
+				if wErr := retryOnTooManyFiles("Put write", func() error {
+					return os.WriteFile(cp, chunk, 0644)
+				}); wErr != nil {
+					return "", 0, fmt.Errorf("storage: write chunk: %w", wErr)
 				}
 			}
 
@@ -191,7 +230,12 @@ func (s *Store) Put(r io.Reader) (fileHash string, size int64, err error) {
 // Get reads the manifest for fileHash, reassembles the chunks in order, and writes the data to w.
 func (s *Store) Get(fileHash string, w io.Writer) error {
 	mp := s.manifestPath(fileHash)
-	f, err := os.Open(mp)
+	var f *os.File
+	err := retryOnTooManyFiles("Get open manifest", func() error {
+		var openErr error
+		f, openErr = os.Open(mp)
+		return openErr
+	})
 	if err != nil {
 		if os.IsNotExist(err) {
 			return ErrNotFound
@@ -241,8 +285,12 @@ func (s *Store) Get(fileHash string, w io.Writer) error {
 
 	for _, e := range entries {
 		cp := s.chunkPath(e.hash)
-		data, err := os.ReadFile(cp)
-		if err != nil {
+		var data []byte
+		if err := retryOnTooManyFiles("Get read chunk", func() error {
+			var readErr error
+			data, readErr = os.ReadFile(cp)
+			return readErr
+		}); err != nil {
 			return fmt.Errorf("storage: read chunk %s: %w", e.hash, err)
 		}
 		if _, err := w.Write(data); err != nil {

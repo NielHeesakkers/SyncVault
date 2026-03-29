@@ -489,16 +489,16 @@ class AppState: ObservableObject {
                 // Get changed paths from FSEvents watcher (nil = full scan needed)
                 var changedPaths = fileWatchers[task.id]?.consumeChangedPaths()
 
-                // Empty set = no changes detected, skip this task.
-                // nil = first sync or reconnect, do full scan.
-                if let paths = changedPaths, paths.isEmpty {
-                    logger.info("  No changes for \(task.remoteFolderName), skipping")
-                    continue
-                }
-
                 // Load last successful sync date for this task (used to skip hashing unchanged files)
                 let lastSyncKey = "lastSync_\(task.id.uuidString)"
                 let lastSyncDate = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
+
+                // Empty FSEvents = no changes detected. Only skip if we've synced before.
+                // First sync (lastSyncDate == nil) must always do a full scan.
+                if let paths = changedPaths, paths.isEmpty, lastSyncDate != nil {
+                    logger.info("  No changes for \(task.remoteFolderName), skipping")
+                    continue
+                }
 
                 let result = try await engine.syncTask(task, changedPaths: changedPaths, lastSyncDate: lastSyncDate) { [weak self] progress in
                     await MainActor.run { [weak self] in
