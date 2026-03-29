@@ -76,8 +76,11 @@ class UpdaterService: ObservableObject {
         isDownloading = true
         logger.info("Downloading update v\(version) from \(dmgURL)")
 
-        let tempDir = FileManager.default.temporaryDirectory
-        let dmgPath = tempDir.appendingPathComponent("SyncVault-update.dmg")
+        // Use the shared Application Support directory (accessible outside sandbox too)
+        let updateDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("SyncVault/Updates")
+        try? FileManager.default.createDirectory(at: updateDir, withIntermediateDirectories: true)
+        let dmgPath = updateDir.appendingPathComponent("SyncVault-update.dmg")
         try? FileManager.default.removeItem(at: dmgPath)
 
         let task = URLSession.shared.downloadTask(with: url) { [weak self] tempURL, response, error in
@@ -93,7 +96,7 @@ class UpdaterService: ObservableObject {
                     try FileManager.default.moveItem(at: tempURL, to: dmgPath)
                     self?.installUpdate(dmgPath: dmgPath)
                 } catch {
-                    self?.showAlert(title: "Update Failed", message: "Could not save download.")
+                    self?.showAlert(title: "Update Failed", message: "Could not save download: \(error.localizedDescription)")
                 }
             }
         }
@@ -101,7 +104,8 @@ class UpdaterService: ObservableObject {
     }
 
     private func installUpdate(dmgPath: URL) {
-        let scriptPath = "/tmp/syncvault_update.sh"
+        // Write update script to the same directory as the DMG (outside sandbox)
+        let scriptPath = dmgPath.deletingLastPathComponent().appendingPathComponent("syncvault_update.sh").path
         let pid = ProcessInfo.processInfo.processIdentifier
         let script = """
         #!/bin/bash
@@ -125,7 +129,7 @@ class UpdaterService: ObservableObject {
             try script.write(toFile: scriptPath, atomically: true, encoding: .utf8)
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: "/bin/bash")
-            proc.arguments = ["-c", "chmod +x \(scriptPath) && nohup \(scriptPath) &>/dev/null &"]
+            proc.arguments = ["-c", "chmod +x '\(scriptPath)' && nohup '\(scriptPath)' &>/dev/null &"]
             try proc.run()
             proc.waitUntilExit()
 
