@@ -16,6 +16,7 @@ type createTaskRequest struct {
 	Name      string `json:"name"`
 	Type      string `json:"type"`
 	LocalPath string `json:"local_path"`
+	FolderID  string `json:"folder_id"` // optional: use existing folder instead of auto-creating
 }
 
 // taskResponse is the response returned when a task is created or listed.
@@ -118,53 +119,66 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		s.db.DeleteSyncTaskByName(claims.UserID, taskName)
 	}
 
-	// Find the user's root folder.
-	rootFolder, err := s.db.GetUserRootFolder(claims.UserID)
-	if err != nil {
-		if errors.Is(err, metadata.ErrRootFolderNotFound) {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "user root folder not found; cannot create task"})
+	var subFolder *metadata.File
+
+	if req.FolderID != "" {
+		// Use an existing folder — verify it exists and belongs to the user.
+		folder, err := s.db.GetFileByID(req.FolderID)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "folder not found"})
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not find user root folder"})
-		return
-	}
-
-	// Create or reuse the subfolder under the root folder.
-	// First check if a folder with this name already exists (active or soft-deleted) and reuse it.
-	// This avoids the rename-and-recreate path in CreateFile which would lose existing files.
-	subFolderName := folderNameForTask(req.Type, taskName)
-	var subFolder *metadata.File
-	existing, findErr := s.db.FindFileByName(rootFolder.ID, claims.UserID, subFolderName)
-	if findErr == nil && existing != nil {
-		// Folder exists — reuse it.
-		if existing.DeletedAt.Valid {
-			_ = s.db.RestoreFile(existing.ID)
-			_ = s.db.UnmarkRemovedLocally(existing.ID)
+		if folder.OwnerID != claims.UserID {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "folder does not belong to you"})
+			return
 		}
-		subFolder = existing
+		if !folder.IsDir {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "specified ID is not a folder"})
+			return
+		}
+		subFolder = folder
 	} else {
-		// Folder does not exist — create it.
-		created, createErr := s.db.CreateFile(rootFolder.ID, claims.UserID, subFolderName, true, 0, "", "")
-		if createErr != nil {
-			if errors.Is(createErr, metadata.ErrDuplicateFile) {
-				// Race: another request created it between our check and insert. Find and reuse.
-				existing2, findErr2 := s.db.FindFileByName(rootFolder.ID, claims.UserID, subFolderName)
-				if findErr2 == nil && existing2 != nil {
-					if existing2.DeletedAt.Valid {
-						_ = s.db.RestoreFile(existing2.ID)
-						_ = s.db.UnmarkRemovedLocally(existing2.ID)
+		// Auto-create a subfolder under the user's root folder (legacy behavior).
+		rootFolder, err := s.db.GetUserRootFolder(claims.UserID)
+		if err != nil {
+			if errors.Is(err, metadata.ErrRootFolderNotFound) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "user root folder not found; cannot create task"})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not find user root folder"})
+			return
+		}
+
+		subFolderName := folderNameForTask(req.Type, taskName)
+		existing, findErr := s.db.FindFileByName(rootFolder.ID, claims.UserID, subFolderName)
+		if findErr == nil && existing != nil {
+			if existing.DeletedAt.Valid {
+				_ = s.db.RestoreFile(existing.ID)
+				_ = s.db.UnmarkRemovedLocally(existing.ID)
+			}
+			subFolder = existing
+		} else {
+			created, createErr := s.db.CreateFile(rootFolder.ID, claims.UserID, subFolderName, true, 0, "", "")
+			if createErr != nil {
+				if errors.Is(createErr, metadata.ErrDuplicateFile) {
+					existing2, findErr2 := s.db.FindFileByName(rootFolder.ID, claims.UserID, subFolderName)
+					if findErr2 == nil && existing2 != nil {
+						if existing2.DeletedAt.Valid {
+							_ = s.db.RestoreFile(existing2.ID)
+							_ = s.db.UnmarkRemovedLocally(existing2.ID)
+						}
+						subFolder = existing2
+					} else {
+						writeJSON(w, http.StatusConflict, map[string]string{"error": "a folder with this name already exists"})
+						return
 					}
-					subFolder = existing2
 				} else {
-					writeJSON(w, http.StatusConflict, map[string]string{"error": "a folder with this name already exists"})
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create task folder"})
 					return
 				}
 			} else {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create task folder"})
-				return
+				subFolder = created
 			}
-		} else {
-			subFolder = created
 		}
 	}
 

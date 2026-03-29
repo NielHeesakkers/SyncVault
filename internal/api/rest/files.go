@@ -17,6 +17,7 @@ import (
 // fileResponse is the JSON representation of a file metadata entry.
 type fileResponse struct {
 	ID             string    `json:"id"`
+	ParentID       string    `json:"parent_id,omitempty"`
 	Name           string    `json:"name"`
 	IsDir          bool      `json:"is_dir"`
 	Size           int64     `json:"size"`
@@ -38,6 +39,9 @@ func toFileResponse(f metadata.File) fileResponse {
 		UpdatedAt:      f.UpdatedAt,
 		RemovedLocally: f.RemovedLocally,
 	}
+	if f.ParentID.Valid {
+		fr.ParentID = f.ParentID.String
+	}
 	if f.ContentHash.Valid {
 		fr.ContentHash = f.ContentHash.String
 	}
@@ -52,6 +56,7 @@ func toFileResponse(f metadata.File) fileResponse {
 func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
 	parentID := r.URL.Query().Get("parent_id")
+	dirsOnly := r.URL.Query().Get("dirs_only") == "true"
 
 	files, err := s.db.ListChildren(parentID)
 	if err != nil {
@@ -65,6 +70,9 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	var result []fileResponse
 	for _, f := range files {
 		if claims.Role != "admin" && parentID == "" && f.OwnerID != claims.UserID {
+			continue
+		}
+		if dirsOnly && !f.IsDir {
 			continue
 		}
 		result = append(result, toFileResponse(f))

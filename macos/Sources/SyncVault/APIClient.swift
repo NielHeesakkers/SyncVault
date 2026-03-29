@@ -38,6 +38,15 @@ actor APIClient {
         return response.files
     }
 
+    func listFolders(parentID: String? = nil) async throws -> [ServerFile] {
+        var path = "/api/files?dirs_only=true"
+        if let parentID = parentID {
+            path += "&parent_id=\(parentID)"
+        }
+        let response: FilesResponse = try await get(path)
+        return response.files
+    }
+
     func downloadFile(id: String) async throws -> Data {
         return try await getData("/api/files/\(id)/download")
     }

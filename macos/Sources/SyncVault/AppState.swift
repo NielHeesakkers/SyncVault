@@ -185,14 +185,17 @@ class AppState: ObservableObject {
     // MARK: - Sync Task Management
 
     func addSyncTask(localPath: String, mode: SyncTask.SyncMode) async throws {
+        try await addSyncTask(localPath: localPath, mode: mode, remoteFolderID: nil, remoteFolderName: nil, initialDirection: nil)
+    }
+
+    func addSyncTask(localPath: String, mode: SyncTask.SyncMode, remoteFolderID: String?, remoteFolderName: String?, initialDirection: String?) async throws {
         guard let client = apiClient else { throw APIError.unauthorized }
 
         // Save security-scoped bookmark for persistent access
         let url = URL(fileURLWithPath: localPath)
         saveBookmark(for: url)
 
-        // Use local folder name as remote folder name
-        let folderName = url.lastPathComponent
+        let folderName = remoteFolderName ?? url.lastPathComponent
         let taskType: String
         switch mode {
         case .twoWay: taskType = "sync"
@@ -200,22 +203,26 @@ class AppState: ObservableObject {
         case .onDemand: taskType = "ondemand"
         }
 
-        // Create task on server (this creates the remote folder automatically)
-        let body: [String: Any] = [
+        // Create task on server
+        var body: [String: Any] = [
             "name": folderName,
             "type": taskType,
             "local_path": localPath
         ]
+        if let folderID = remoteFolderID {
+            body["folder_id"] = folderID
+        }
         let response: TaskResponse = try await client.createTask(body: body)
 
         // Save locally
         var task = SyncTask(
             localPath: localPath,
             remoteFolderID: response.folderID,
-            remoteFolderName: folderName,
+            remoteFolderName: response.folderName.isEmpty ? folderName : response.folderName,
             mode: mode
         )
         task.serverTaskID = response.id
+        task.initialSyncDirection = initialDirection
         syncTasks.append(task)
         saveConfig()
 

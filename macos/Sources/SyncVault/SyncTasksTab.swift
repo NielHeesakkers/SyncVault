@@ -100,7 +100,8 @@ struct SyncTasksTab: View {
             .padding(.vertical, 10)
         }
         .sheet(isPresented: $showingAddSheet) {
-            AddSyncTaskView(appState: appState, isPresented: $showingAddSheet, initialMode: addMode)
+            AddSyncTaskWizardView(isPresented: $showingAddSheet, initialMode: addMode)
+                .environmentObject(appState)
         }
         .sheet(item: $taskToEdit) { task in
             EditSyncTaskView(appState: appState, task: task, isPresented: $taskToEdit)

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		9E43349D01E5444A886F2E63 /* AddSyncTaskWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6DF90DA86514CDAB9B47655 /* AddSyncTaskWizardView.swift */; };
+		06B2F1CF79404744AD12991C /* RemoteFolderBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBABE68F6A3A4698A39E98B2 /* RemoteFolderBrowserView.swift */; };
 		04A986495AC7098AE5BA1511 /* FileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3FDEA20918B30FA0CD901D /* FileWatcher.swift */; };
 		0FFD8C8FA4507AFAD81A2887 /* MenuBarIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32C695CE88C91D36E0FBB28 /* MenuBarIcon.swift */; };
 		1B4100C50A43336FD88467C9 /* SyncTasksTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F5B9CC449B3A42443B1E69 /* SyncTasksTab.swift */; };
@@ -66,6 +68,8 @@
 /* Begin PBXFileReference section */
 		0B5DF716BCC97ACDFA90DFF5 /* FileProviderEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderEnumerator.swift; sourceTree = "<group>"; };
 		1101721817B68D9FDCC83C38 /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
+		C6DF90DA86514CDAB9B47655 /* AddSyncTaskWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddSyncTaskWizardView.swift; sourceTree = "<group>"; };
+		FBABE68F6A3A4698A39E98B2 /* RemoteFolderBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFolderBrowserView.swift; sourceTree = "<group>"; };
 		1584B409E0C60E69FD3EE564 /* SyncDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncDatabase.swift; sourceTree = "<group>"; };
 		1D6A705710CD5005939F3450 /* FPAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FPAPIClient.swift; sourceTree = "<group>"; };
 		34330AC2DE1AF95341AE2396 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
@@ -162,6 +166,8 @@
 				399F63F3155D3C438B3B33DF /* SpeedGraphView.swift */,
 				1584B409E0C60E69FD3EE564 /* SyncDatabase.swift */,
 				1101721817B68D9FDCC83C38 /* SyncEngine.swift */,
+				C6DF90DA86514CDAB9B47655 /* AddSyncTaskWizardView.swift */,
+				FBABE68F6A3A4698A39E98B2 /* RemoteFolderBrowserView.swift */,
 				A21276B1C44E0B61C8955956 /* SyncTask.swift */,
 				75F5B9CC449B3A42443B1E69 /* SyncTasksTab.swift */,
 				76463197A091E21481CFD296 /* SyncVault.entitlements */,
@@ -302,6 +308,8 @@
 				3E590498FEC86B6AE280B494 /* SpeedGraphView.swift in Sources */,
 				57CFF9CFA5E9E6683AA05A36 /* SyncDatabase.swift in Sources */,
 				1DAD634F2B3829A9536687C1 /* SyncEngine.swift in Sources */,
+				9E43349D01E5444A886F2E63 /* AddSyncTaskWizardView.swift in Sources */,
+				06B2F1CF79404744AD12991C /* RemoteFolderBrowserView.swift in Sources */,
 				2B88568F36CADC4599DA338C /* SyncTask.swift in Sources */,
 				1B4100C50A43336FD88467C9 /* SyncTasksTab.swift in Sources */,
 				D586C1309BC88FB6D6A7559A /* SyncVaultApp.swift in Sources */,

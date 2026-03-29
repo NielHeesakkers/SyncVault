@@ -11,6 +11,7 @@ struct SyncTask: Codable, Identifiable {
     var intervalSeconds: Int  // 0 = continuous, -1 = manual
     var isEnabled: Bool
     var isTeamFolder: Bool
+    var initialSyncDirection: String?  // "download" or "upload", consumed after first sync
 
     enum SyncMode: String, Codable, CaseIterable {
         case twoWay = "two_way"
