@@ -82,9 +82,10 @@ struct MenuBarView: View {
                                 .scaleEffect(y: 0.6)
                             HStack {
                                 if progress.bytesPerSecond > 100 {
-                                    Text("↑ \(formatSpeed(progress.bytesPerSecond))")
+                                    let isDownload = progress.action.lowercased().contains("download")
+                                    Text("\(isDownload ? "↓" : "↑") \(formatSpeed(progress.bytesPerSecond))")
                                         .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                        .foregroundColor(.green)
+                                        .foregroundColor(isDownload ? .purple : .green)
                                 }
                                 Spacer()
                                 if progress.totalBytes > 0 {
