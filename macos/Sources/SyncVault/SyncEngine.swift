@@ -352,11 +352,8 @@ actor SyncEngine {
                                 pendingFiles: pending
                             ))
 
-                            let data = try await self.apiClient.downloadFile(id: fileID)
                             let url = URL(fileURLWithPath: localPath)
-                            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-                            try data.write(to: url)
-                            let size = Int64(data.count)
+                            let size = try await self.apiClient.downloadFileToDisk(id: fileID, destination: url)
                             await bytesUploaded.add(size)
                             logger.info("Downloaded: \(relativePath) (\(size) bytes)")
                             return .downloaded(displayName)
@@ -835,7 +832,7 @@ actor SyncEngine {
     static func hashFile(at url: URL) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
         defer { handle.closeFile() }
-        let chunkSize = 256 * 1024 * 1024
+        let chunkSize = 4 * 1024 * 1024
         var hasher = SHA256()
         while autoreleasepool(invoking: {
             let chunk = handle.readData(ofLength: chunkSize)

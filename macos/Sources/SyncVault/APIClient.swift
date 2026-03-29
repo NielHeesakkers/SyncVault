@@ -42,6 +42,21 @@ actor APIClient {
         return try await getData("/api/files/\(id)/download")
     }
 
+    /// Stream a file download directly to disk (avoids loading into memory).
+    func downloadFileToDisk(id: String, destination: URL) async throws -> Int64 {
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/\(id)/download")!)
+        addAuth(&request)
+        let (tempURL, response) = try await session.download(for: request)
+        try checkResponse(response)
+        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        try FileManager.default.moveItem(at: tempURL, to: destination)
+        let attrs = try FileManager.default.attributesOfItem(atPath: destination.path)
+        return attrs[.size] as? Int64 ?? 0
+    }
+
     func uploadFile(data: Data, filename: String, parentID: String?) async throws -> ServerFile {
         return try await uploadMultipart("/api/files/upload", fileData: data, filename: filename, parentID: parentID)
     }

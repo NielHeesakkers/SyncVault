@@ -11,6 +11,7 @@ let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionS
 class AppState: ObservableObject {
     @Published var isConnected = false
     @Published var isSyncing = false
+    private var syncPending = false
     @Published var isPaused = false
     @Published var syncProgress: SyncProgress?
     @Published var syncQueue: [String] = []
@@ -410,16 +411,23 @@ class AppState: ObservableObject {
         }
         guard !isSyncing else {
             logger.info(" Already syncing, skipping")
+            syncPending = true
             return
         }
 
         isSyncing = true
+        syncPending = false
         syncProgress = nil
         startSpeedTracking()
         defer {
             isSyncing = false
             syncProgress = nil
             stopSpeedTracking()
+            // Re-trigger if changes came in during sync
+            if syncPending {
+                syncPending = false
+                Task { await runSync() }
+            }
         }
 
         // Proactively refresh token before it expires
@@ -474,10 +482,11 @@ class AppState: ObservableObject {
                 // Get changed paths from FSEvents watcher (nil = full scan needed)
                 var changedPaths = fileWatchers[task.id]?.consumeChangedPaths()
 
-                // If no FSEvents changes but this could be a first sync or incomplete sync,
-                // force a full scan. An empty Set means "no changes" but nil means "full scan needed".
+                // Empty set = no changes detected, skip this task.
+                // nil = first sync or reconnect, do full scan.
                 if let paths = changedPaths, paths.isEmpty {
-                    changedPaths = nil  // Force full scan -- FSEvents only tracks NEW changes
+                    logger.info("  No changes for \(task.remoteFolderName), skipping")
+                    continue
                 }
 
                 // Load last successful sync date for this task (used to skip hashing unchanged files)
