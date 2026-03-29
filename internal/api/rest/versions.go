@@ -38,13 +38,7 @@ func toVersionResponse(v metadata.Version) versionResponse {
 func (s *Server) handleListVersions(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	// Ensure the file exists.
-	if _, err := s.db.GetFileByID(id); err != nil {
-		if errors.Is(err, metadata.ErrFileNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get file"})
+	if _, ok := s.checkFileOwnership(w, r, id); !ok {
 		return
 	}
 
@@ -73,14 +67,8 @@ func (s *Server) handleDownloadVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ensure the file exists.
-	f, err := s.db.GetFileByID(id)
-	if err != nil {
-		if errors.Is(err, metadata.ErrFileNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get file"})
+	f, ok := s.checkFileOwnership(w, r, id)
+	if !ok {
 		return
 	}
 
@@ -95,7 +83,7 @@ func (s *Server) handleDownloadVersion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, f.Name))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, sanitizeFilename(f.Name)))
 
 	if err := s.store.Get(v.ContentHash, w); err != nil {
 		// Headers already sent; nothing to do.
@@ -114,13 +102,7 @@ func (s *Server) handleRestoreVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ensure the file exists.
-	if _, err := s.db.GetFileByID(id); err != nil {
-		if errors.Is(err, metadata.ErrFileNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get file"})
+	if _, ok := s.checkFileOwnership(w, r, id); !ok {
 		return
 	}
 

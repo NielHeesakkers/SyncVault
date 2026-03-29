@@ -219,15 +219,11 @@ type updateFileRequest struct {
 func (s *Server) handleUpdateFile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	f, err := s.db.GetFileByID(id)
-	if err != nil {
-		if errors.Is(err, metadata.ErrFileNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get file"})
+	f, ok := s.checkFileOwnership(w, r, id)
+	if !ok {
 		return
 	}
+	_ = f
 
 	var req updateFileRequest
 	if err := readJSON(r, &req); err != nil {
@@ -272,6 +268,10 @@ func (s *Server) handleUpdateFile(w http.ResponseWriter, r *http.Request) {
 // handleDeleteFile handles DELETE /api/files/{id} — soft delete.
 func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+
+	if _, ok := s.checkFileOwnership(w, r, id); !ok {
+		return
+	}
 
 	if err := s.db.SoftDeleteFile(id); err != nil {
 		if errors.Is(err, metadata.ErrFileNotFound) {
@@ -667,6 +667,10 @@ func (s *Server) handleRestoreFolderAtTime(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleSetRemovedLocally(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
+	if _, ok := s.checkFileOwnership(w, r, id); !ok {
+		return
+	}
+
 	var req struct {
 		Removed bool `json:"removed"`
 	}
@@ -703,13 +707,8 @@ func (s *Server) handleSetRemovedLocally(w http.ResponseWriter, r *http.Request)
 func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	f, err := s.db.GetFileByID(id)
-	if err != nil {
-		if errors.Is(err, metadata.ErrFileNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get file"})
+	f, ok := s.checkFileOwnership(w, r, id)
+	if !ok {
 		return
 	}
 
@@ -724,7 +723,7 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", mimeType)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, f.Name))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, sanitizeFilename(f.Name)))
 
 	if err := s.store.Get(f.ContentHash.String, w); err != nil {
 		// Headers already sent; we can't write a JSON error at this point.

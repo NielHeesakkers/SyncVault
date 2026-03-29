@@ -15,7 +15,7 @@ import (
 func (s *Server) handlePutBlock(w http.ResponseWriter, r *http.Request) {
 	_ = auth.GetClaims(r.Context())
 	hash := chi.URLParam(r, "hash")
-	if len(hash) < 4 {
+	if !isHexHash(hash, 8) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid hash"})
 		return
 	}
@@ -99,6 +99,9 @@ func (s *Server) handleCreateFileFromBlocks(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create file metadata"})
 		return
 	}
+
+	// Create version record for history tracking
+	_, _ = s.db.CreateVersion(f.ID, 1, req.FileHash, "", totalSize, claims.UserID)
 
 	writeJSON(w, http.StatusCreated, toFileResponse(*f))
 }

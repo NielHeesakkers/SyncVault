@@ -2,6 +2,7 @@ package rest
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
@@ -209,7 +210,53 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// readJSON decodes the JSON body of r into v.
+// readJSON decodes the JSON body of r into v. Limits body to 10 MB.
 func readJSON(r *http.Request, v interface{}) error {
+	r.Body = http.MaxBytesReader(nil, r.Body, 10<<20)
 	return json.NewDecoder(r.Body).Decode(v)
+}
+
+// checkFileOwnership verifies the authenticated user owns the file (or is admin).
+// Returns the file and true if OK, or writes an error response and returns false.
+func (s *Server) checkFileOwnership(w http.ResponseWriter, r *http.Request, fileID string) (*metadata.File, bool) {
+	claims := auth.GetClaims(r.Context())
+	f, err := s.db.GetFileByID(fileID)
+	if err != nil {
+		if errors.Is(err, metadata.ErrFileNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
+		} else {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get file"})
+		}
+		return nil, false
+	}
+	if f.OwnerID != claims.UserID && claims.Role != "admin" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+		return nil, false
+	}
+	return f, true
+}
+
+// isHexHash returns true if s is a valid lowercase hex string of at least minLen characters.
+func isHexHash(s string, minLen int) bool {
+	if len(s) < minLen {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+// sanitizeFilename removes characters that could break Content-Disposition headers.
+func sanitizeFilename(name string) string {
+	var b []byte
+	for _, c := range []byte(name) {
+		if c == '"' || c == '\r' || c == '\n' || c == '\\' {
+			continue
+		}
+		b = append(b, c)
+	}
+	return string(b)
 }

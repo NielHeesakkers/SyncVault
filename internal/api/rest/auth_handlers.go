@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -54,16 +55,21 @@ func (s *Server) handleAutoLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return an HTML page that stores the tokens in localStorage and redirects to /files
+	// Return an HTML page that stores the tokens in localStorage and redirects to /files.
+	// Encode values as JSON to prevent XSS from malicious usernames.
+	userJSON, _ := json.Marshal(map[string]string{
+		"id": claims.UserID, "username": claims.Username, "role": claims.Role,
+	})
+	atJSON, _ := json.Marshal(accessToken)
+	rtJSON, _ := json.Marshal(refreshToken)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!DOCTYPE html><html><head><script>
-localStorage.setItem('access_token','%s');
-localStorage.setItem('refresh_token','%s');
-localStorage.setItem('user','%s');
+localStorage.setItem('access_token',%s);
+localStorage.setItem('refresh_token',%s);
+localStorage.setItem('user',JSON.stringify(%s));
 window.location.href='/files';
 </script></head><body>Redirecting...</body></html>`,
-		accessToken, refreshToken,
-		`{"id":"`+claims.UserID+`","username":"`+claims.Username+`","role":"`+claims.Role+`"}`)
+		atJSON, rtJSON, userJSON)
 }
 
 // handleLogin authenticates a user and returns a token pair.
