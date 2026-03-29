@@ -104,10 +104,17 @@ COPYFILE_DISABLE=1 ditto -c -k --keepParent "$APP" "build/SyncVault-$VERSION.zip
 xcrun notarytool submit "build/SyncVault-$VERSION.zip" \
     --keychain-profile "notarytool" --wait
 
-# Staple the app and re-create ZIP with stapled ticket
+# Staple the app, strip quarantine, and re-create ZIP with stapled ticket
 xcrun stapler staple "$APP"
+xattr -cr "$APP"
 rm -f "build/SyncVault-$VERSION.zip"
 COPYFILE_DISABLE=1 ditto -c -k --keepParent "$APP" "build/SyncVault-$VERSION.zip"
+
+# Install to /Applications
+rm -rf /Applications/SyncVault.app
+ditto "$APP" /Applications/SyncVault.app
+xattr -cr /Applications/SyncVault.app
+echo "Installed to /Applications"
 
 # 8. Create and notarize DMG
 echo "[8/10] Creating and notarizing DMG..."
