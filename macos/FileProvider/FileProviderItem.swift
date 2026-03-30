@@ -37,7 +37,7 @@ class FileProviderItem: NSObject, NSFileProviderItem {
         if isFolder {
             return [.allowsReading, .allowsContentEnumerating, .allowsAddingSubItems, .allowsRenaming, .allowsDeleting]
         }
-        return [.allowsReading, .allowsWriting, .allowsRenaming, .allowsReparenting, .allowsDeleting]
+        return [.allowsReading, .allowsWriting, .allowsRenaming, .allowsReparenting, .allowsDeleting, .allowsEvicting]
     }
 
     var documentSize: NSNumber? {

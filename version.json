@@ -1,9 +1,16 @@
 {
-  "version": "2.5.14",
+  "version": "2.5.15",
   "min_version": "1.0",
   "release_date": "2026-03-30",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.14/SyncVault-2.5.14.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.15/SyncVault-2.5.15.dmg",
   "history": [
+    {
+      "version": "2.5.15",
+      "date": "2026-03-30",
+      "changes": [
+        "On-demand sync: streaming download, auto re-auth, eviction support (pin/free)"
+      ]
+    },
     {
       "version": "2.5.14",
       "date": "2026-03-30",

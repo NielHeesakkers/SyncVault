@@ -646,8 +646,13 @@ class AppState: ObservableObject {
         sharedDefaults.set(folderID, forKey: "onDemandFolderID")
         sharedDefaults.set(serverURL, forKey: "serverURL")
 
+        // Share auth credentials with FileProvider extension for re-auth
         if let token = KeychainHelper.load(key: "access_token") {
             KeychainHelper.saveShared(key: "access_token", value: token)
+        }
+        KeychainHelper.saveShared(key: "fp_username", value: username)
+        if let password = KeychainHelper.load(key: "server_password") {
+            KeychainHelper.saveShared(key: "fp_password", value: password)
         }
 
         let domainIdentifier = NSFileProviderDomainIdentifier("com.syncvault.\(username)")

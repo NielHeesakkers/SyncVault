@@ -2,41 +2,39 @@ import Foundation
 import Security
 
 enum SharedConfig {
-    // App Group ID — must match entitlements
     static let appGroupID = "DE59N86W33.com.syncvault.shared"
+    private static let keychainService = "com.syncvault.shared"
+    private static let keychainAccessGroup = "DE59N86W33.com.syncvault.shared"
 
     static var sharedDefaults: UserDefaults {
         UserDefaults(suiteName: appGroupID)!
     }
 
     static func apiClient() throws -> FPAPIClient {
-        guard let url = sharedDefaults.string(forKey: "serverURL"),
-              !url.isEmpty else {
+        guard let url = sharedDefaults.string(forKey: "serverURL"), !url.isEmpty else {
             throw NSError(domain: "com.syncvault", code: 1,
-                         userInfo: [NSLocalizedDescriptionKey: "Server not configured. Open SyncVault app to set up."])
+                         userInfo: [NSLocalizedDescriptionKey: "Server not configured"])
         }
 
-        // Load token from shared keychain (written by main app via KeychainHelper.saveShared)
         let token = loadFromKeychain(key: "access_token")
-        return FPAPIClient(baseURL: url, token: token)
+        let username = loadFromKeychain(key: "fp_username")
+        let password = loadFromKeychain(key: "fp_password")
+
+        return FPAPIClient(baseURL: url, token: token, username: username, password: password)
     }
 
     static func onDemandFolderID() -> String {
         return sharedDefaults.string(forKey: "onDemandFolderID") ?? ""
     }
 
-    static func setOnDemandFolderID(_ id: String) {
-        sharedDefaults.set(id, forKey: "onDemandFolderID")
-    }
-
-    // MARK: - Inline keychain access (shared keychain accessible by app group)
+    // MARK: - Keychain
 
     static func loadFromKeychain(key: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
-            kSecAttrService as String: "com.syncvault.shared",
-            kSecAttrAccessGroup as String: "DE59N86W33.com.syncvault.shared",
+            kSecAttrService as String: keychainService,
+            kSecAttrAccessGroup as String: keychainAccessGroup,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -44,5 +42,19 @@ enum SharedConfig {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    static func saveToKeychain(key: String, value: String) {
+        let data = value.data(using: .utf8)!
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+            kSecAttrService as String: keychainService,
+            kSecAttrAccessGroup as String: keychainAccessGroup
+        ]
+        SecItemDelete(query as CFDictionary)
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        SecItemAdd(addQuery as CFDictionary, nil)
     }
 }

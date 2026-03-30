@@ -48,19 +48,13 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         Task {
             do {
                 let client = try SharedConfig.apiClient()
-                let data = try await client.downloadFile(id: itemIdentifier.rawValue)
-
-                // Write to temp file
-                let tempURL = FileManager.default.temporaryDirectory
-                    .appendingPathComponent(UUID().uuidString)
-                try data.write(to: tempURL)
-
-                let serverFile = try await client.getFile(id: itemIdentifier.rawValue)
+                let (tempURL, serverFile) = try await client.downloadFileToDisk(id: itemIdentifier.rawValue)
                 let item = FileProviderItem(serverFile: serverFile, isDownloaded: true)
-
+                logger.info("Downloaded: \(serverFile.name) (\(serverFile.size) bytes)")
                 completionHandler(tempURL, item, nil)
                 progress.completedUnitCount = 100
             } catch {
+                logger.error("Download failed for \(itemIdentifier.rawValue): \(error)")
                 completionHandler(nil, nil, error)
             }
         }

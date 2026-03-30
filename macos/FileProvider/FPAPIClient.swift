@@ -1,33 +1,50 @@
 import Foundation
 
-// Minimal API client for the File Provider Extension.
-// The extension runs in a separate process and cannot import the main app target,
-// so these types are kept self-contained here.
-
 actor FPAPIClient {
     let baseURL: String
     private var accessToken: String?
+    private let username: String?
+    private let password: String?
 
-    init(baseURL: String, token: String?) {
+    init(baseURL: String, token: String?, username: String? = nil, password: String? = nil) {
         self.baseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         self.accessToken = token
+        self.username = username
+        self.password = password
     }
 
-    func setToken(_ token: String) {
-        self.accessToken = token
-    }
+    // MARK: - API Methods
 
     func listFiles(parentID: String? = nil) async throws -> [FPServerFile] {
         var path = "/api/files"
         if let parentID = parentID {
             path += "?parent_id=\(parentID)"
         }
-        let response: FPFilesResponse = try await get(path)
+        let response: FPFilesResponse = try await getWithReauth(path)
         return response.files
     }
 
     func downloadFile(id: String) async throws -> Data {
-        return try await getData("/api/files/\(id)/download")
+        return try await getDataWithReauth("/api/files/\(id)/download")
+    }
+
+    /// Stream download directly to a temp file (no memory pressure)
+    func downloadFileToDisk(id: String) async throws -> (URL, FPServerFile) {
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/\(id)/download")!)
+        request.httpMethod = "GET"
+        addAuth(&request)
+        let (tempURL, response) = try await URLSession.shared.download(for: request)
+        if let http = response as? HTTPURLResponse, http.statusCode == 401 {
+            try await reAuthenticate()
+            addAuth(&request)
+            let (tempURL2, response2) = try await URLSession.shared.download(for: request)
+            try checkResponse(response2)
+            let file = try await getFile(id: id)
+            return (tempURL2, file)
+        }
+        try checkResponse(response)
+        let file = try await getFile(id: id)
+        return (tempURL, file)
     }
 
     func uploadFile(data: Data, filename: String, parentID: String?) async throws -> FPServerFile {
@@ -35,17 +52,17 @@ actor FPAPIClient {
     }
 
     func deleteFile(id: String) async throws {
-        try await delete("/api/files/\(id)")
+        try await deleteWithReauth("/api/files/\(id)")
     }
 
     func getChanges(since: Date) async throws -> FPChangesResponse {
         let formatter = ISO8601DateFormatter()
-        let sinceStr = formatter.string(from: since)
-        return try await get("/api/changes?since=\(sinceStr)")
+        let sinceStr = formatter.string(from: since).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        return try await getWithReauth("/api/changes?since=\(sinceStr)")
     }
 
     func getFile(id: String) async throws -> FPServerFile {
-        let files: FPFilesResponse = try await get("/api/files")
+        let files: FPFilesResponse = try await getWithReauth("/api/files")
         guard let file = files.files.first(where: { $0.id == id }) else {
             throw FPAPIError.serverError(404)
         }
@@ -62,7 +79,53 @@ actor FPAPIClient {
         let _: [String: String] = try await put("/api/files/\(id)", body: body)
     }
 
-    // MARK: - Private HTTP methods
+    // MARK: - Auto Re-Auth on 401
+
+    private func reAuthenticate() async throws {
+        guard let username = username, let password = password else {
+            throw FPAPIError.unauthorized
+        }
+        struct LoginResponse: Codable { let access_token: String; let refresh_token: String }
+        let body: [String: String] = ["username": username, "password": password]
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/auth/login")!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONDecoder().decode(LoginResponse.self, from: data)
+        self.accessToken = response.access_token
+        // Save new token to shared keychain for next time
+        SharedConfig.saveToKeychain(key: "access_token", value: response.access_token)
+    }
+
+    private func getWithReauth<T: Decodable>(_ path: String) async throws -> T {
+        do {
+            return try await get(path)
+        } catch FPAPIError.unauthorized {
+            try await reAuthenticate()
+            return try await get(path)
+        }
+    }
+
+    private func getDataWithReauth(_ path: String) async throws -> Data {
+        do {
+            return try await getData(path)
+        } catch FPAPIError.unauthorized {
+            try await reAuthenticate()
+            return try await getData(path)
+        }
+    }
+
+    private func deleteWithReauth(_ path: String) async throws {
+        do {
+            try await deleteRequest(path)
+        } catch FPAPIError.unauthorized {
+            try await reAuthenticate()
+            try await deleteRequest(path)
+        }
+    }
+
+    // MARK: - HTTP
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
         var request = URLRequest(url: URL(string: "\(baseURL)\(path)")!)
@@ -104,7 +167,7 @@ actor FPAPIClient {
         return try JSONDecoder().decode(T.self, from: data)
     }
 
-    private func delete(_ path: String) async throws {
+    private func deleteRequest(_ path: String) async throws {
         var request = URLRequest(url: URL(string: "\(baseURL)\(path)")!)
         request.httpMethod = "DELETE"
         addAuth(&request)
@@ -144,15 +207,9 @@ actor FPAPIClient {
     }
 
     private func checkResponse(_ response: URLResponse) throws {
-        guard let http = response as? HTTPURLResponse else {
-            throw FPAPIError.invalidResponse
-        }
-        if http.statusCode == 401 {
-            throw FPAPIError.unauthorized
-        }
-        if http.statusCode >= 400 {
-            throw FPAPIError.serverError(http.statusCode)
-        }
+        guard let http = response as? HTTPURLResponse else { throw FPAPIError.invalidResponse }
+        if http.statusCode == 401 { throw FPAPIError.unauthorized }
+        if http.statusCode >= 400 { throw FPAPIError.serverError(http.statusCode) }
     }
 }
 
@@ -182,27 +239,21 @@ struct FPServerFile: Codable {
     }
 }
 
-struct FPFilesResponse: Codable {
-    let files: [FPServerFile]
-}
+struct FPFilesResponse: Codable { let files: [FPServerFile] }
 
 struct FPChangesResponse: Codable {
     let changes: [FPServerFile]
     let serverTime: String
-
     enum CodingKeys: String, CodingKey {
         case changes
         case serverTime = "server_time"
     }
 }
 
-// MARK: - Errors
-
 enum FPAPIError: Error, LocalizedError {
     case unauthorized
     case serverError(Int)
     case invalidResponse
-
     var errorDescription: String? {
         switch self {
         case .unauthorized: return "Authentication failed"
