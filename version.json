@@ -1,9 +1,16 @@
 {
-  "version": "2.5.15",
+  "version": "2.5.16",
   "min_version": "1.0",
   "release_date": "2026-03-30",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.15/SyncVault-2.5.15.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.16/SyncVault-2.5.16.dmg",
   "history": [
+    {
+      "version": "2.5.16",
+      "date": "2026-03-30",
+      "changes": [
+        "Fix FileProvider: add GET /api/files/{id} endpoint, fix getFile 404 error"
+      ]
+    },
     {
       "version": "2.5.15",
       "date": "2026-03-30",

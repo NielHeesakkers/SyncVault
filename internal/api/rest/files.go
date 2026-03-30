@@ -223,6 +223,18 @@ type updateFileRequest struct {
 	ParentID string `json:"parent_id"`
 }
 
+// handleGetFile handles GET /api/files/{id} — get single file metadata.
+func (s *Server) handleGetFile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	f, ok := s.checkFileOwnership(w, r, id)
+	if !ok {
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toFileResponse(*f))
+}
+
 // handleUpdateFile handles PUT /api/files/{id} — rename or move.
 func (s *Server) handleUpdateFile(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")

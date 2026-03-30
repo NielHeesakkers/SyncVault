@@ -87,6 +87,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/files/history/dates", s.handleChangeDates)
 		r.Get("/api/files/history/download", s.handleDownloadFolderAtTime)
 		r.Post("/api/files/history/restore", s.handleRestoreFolderAtTime)
+		r.Get("/api/files/{id}", s.handleGetFile)
 		r.Put("/api/files/{id}", s.handleUpdateFile)
 		r.Put("/api/files/{id}/removed-locally", s.handleSetRemovedLocally)
 		r.Delete("/api/files/{id}", s.handleDeleteFile)
@@ -190,7 +191,7 @@ func (s *Server) setupRoutes() {
 	r.NotFound(ServeSPA().ServeHTTP)
 }
 
-const AppVersion = "2.5.15"
+const AppVersion = "2.5.16"
 
 // handleHealth returns a simple health check response.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

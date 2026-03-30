@@ -62,11 +62,7 @@ actor FPAPIClient {
     }
 
     func getFile(id: String) async throws -> FPServerFile {
-        let files: FPFilesResponse = try await getWithReauth("/api/files")
-        guard let file = files.files.first(where: { $0.id == id }) else {
-            throw FPAPIError.serverError(404)
-        }
-        return file
+        return try await getWithReauth("/api/files/\(id)")
     }
 
     func createFolder(name: String, parentID: String) async throws -> FPServerFile {
