@@ -20,6 +20,12 @@ enum InitialSyncDirection: String, CaseIterable {
     }
 }
 
+struct SubfolderItem: Identifiable {
+    let id: String
+    let name: String
+    var isIncluded: Bool = true
+}
+
 struct AddSyncTaskWizardView: View {
     @EnvironmentObject var appState: AppState
     @Binding var isPresented: Bool
@@ -34,6 +40,8 @@ struct AddSyncTaskWizardView: View {
     @State private var isCreating = false
     @State private var errorMessage: String?
     @State private var isCheckingContent = false
+    @State private var subfolders: [SubfolderItem] = []
+    @State private var isLoadingSubfolders = false
 
     init(isPresented: Binding<Bool>, initialMode: SyncTask.SyncMode) {
         self._isPresented = isPresented
@@ -120,6 +128,56 @@ struct AddSyncTaskWizardView: View {
                 }
             }
 
+            // Selective sync: subfolder exclusion
+            if !subfolders.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Exclude")
+                            .frame(width: 80, alignment: .trailing)
+                            .foregroundColor(.secondary)
+                        Text("Uncheck folders to exclude from sync")
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                    }
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach($subfolders) { $subfolder in
+                                HStack(spacing: 8) {
+                                    Toggle("", isOn: $subfolder.isIncluded)
+                                        .labelsHidden()
+                                        .toggleStyle(.checkbox)
+                                    Image(systemName: "folder.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.yellow)
+                                    Text(subfolder.name)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(subfolder.isIncluded ? .primary : .secondary)
+                                        .strikethrough(!subfolder.isIncluded, color: .secondary)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                    }
+                    .frame(maxHeight: 120)
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color(NSColor.separatorColor), lineWidth: 1)
+                    )
+                    .padding(.leading, 84)
+                }
+            } else if isLoadingSubfolders {
+                HStack {
+                    Spacer()
+                    ProgressView("Loading subfolders...")
+                    Spacer()
+                }
+            }
+
             // Initial direction picker
             if showDirectionPicker {
                 VStack(alignment: .leading, spacing: 8) {
@@ -192,6 +250,7 @@ struct AddSyncTaskWizardView: View {
         .frame(width: 540)
         .onChange(of: selectedFolderID) { _ in
             checkBothSidesContent()
+            loadSubfolders()
         }
         .onChange(of: localPath) { _ in
             checkBothSidesContent()
@@ -222,6 +281,29 @@ struct AddSyncTaskWizardView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             localPath = url.path
+        }
+    }
+
+    private func loadSubfolders() {
+        guard let folderID = selectedFolderID, let client = appState.apiClient else {
+            subfolders = []
+            return
+        }
+
+        isLoadingSubfolders = true
+        Task {
+            do {
+                let folders = try await client.listFolders(parentID: folderID)
+                await MainActor.run {
+                    subfolders = folders.map { SubfolderItem(id: $0.id, name: $0.name) }
+                    isLoadingSubfolders = false
+                }
+            } catch {
+                await MainActor.run {
+                    subfolders = []
+                    isLoadingSubfolders = false
+                }
+            }
         }
     }
 
@@ -276,6 +358,9 @@ struct AddSyncTaskWizardView: View {
         isCreating = true
         errorMessage = nil
 
+        // Build exclude patterns from unchecked subfolders
+        let excludedFolders = subfolders.filter { !$0.isIncluded }.map { "\($0.name)/*" }
+
         do {
             try await appState.addSyncTask(
                 localPath: localPath,
@@ -284,6 +369,11 @@ struct AddSyncTaskWizardView: View {
                 remoteFolderName: folderName,
                 initialDirection: initialDirection?.rawValue
             )
+            // Add excluded folder patterns to the newly created task
+            if !excludedFolders.isEmpty, var lastTask = appState.syncTasks.last {
+                lastTask.excludePatterns.append(contentsOf: excludedFolders)
+                appState.updateSyncTask(lastTask)
+            }
             isPresented = false
         } catch {
             errorMessage = error.localizedDescription

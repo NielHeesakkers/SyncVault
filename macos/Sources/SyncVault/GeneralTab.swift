@@ -4,6 +4,8 @@ struct GeneralTab: View {
     @ObservedObject var updaterService: UpdaterService
     @AppStorage("launchAtLogin") private var launchAtLogin = false
     @AppStorage("showNotifications") private var showNotifications = true
+    @AppStorage("uploadLimitMBps") private var uploadLimitMBps: Double = 0
+    @AppStorage("downloadLimitMBps") private var downloadLimitMBps: Double = 0
 
     var body: some View {
         Form {
@@ -51,6 +53,45 @@ struct GeneralTab: View {
                 Toggle("Show sync notifications", isOn: $showNotifications)
             } header: {
                 SectionHeader(title: "Notifications")
+            }
+
+            // MARK: - Bandwidth
+            Section {
+                HStack {
+                    Text("Upload limit")
+                    Spacer()
+                    TextField("0", value: $uploadLimitMBps, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                        .multilineTextAlignment(.trailing)
+                        .onChange(of: uploadLimitMBps) { _ in
+                            let bytes = uploadLimitMBps > 0 ? Int64(uploadLimitMBps * 1_000_000) : 0
+                            UserDefaults.standard.set(bytes, forKey: "uploadLimitBytesPerSecond")
+                        }
+                    Text("MB/s")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 12))
+                }
+                HStack {
+                    Text("Download limit")
+                    Spacer()
+                    TextField("0", value: $downloadLimitMBps, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                        .multilineTextAlignment(.trailing)
+                        .onChange(of: downloadLimitMBps) { _ in
+                            let bytes = downloadLimitMBps > 0 ? Int64(downloadLimitMBps * 1_000_000) : 0
+                            UserDefaults.standard.set(bytes, forKey: "downloadLimitBytesPerSecond")
+                        }
+                    Text("MB/s")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 12))
+                }
+                Text("Set to 0 for unlimited")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            } header: {
+                SectionHeader(title: "Bandwidth")
             }
 
             // MARK: - Updates

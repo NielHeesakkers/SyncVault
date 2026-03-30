@@ -10,10 +10,16 @@ actor SyncEngine {
     private var isRunning = false
     /// Cache of relative directory path -> server folder ID (built during sync)
     private var folderIDCache: [String: String] = [:]
+    /// Upload speed limit in bytes per second (0 = unlimited)
+    private let uploadLimitBytesPerSecond: Int64
+    /// Download speed limit in bytes per second (0 = unlimited)
+    private let downloadLimitBytesPerSecond: Int64
 
-    init(apiClient: APIClient, db: SyncDatabase) {
+    init(apiClient: APIClient, db: SyncDatabase, uploadLimitBytesPerSecond: Int64 = 0, downloadLimitBytesPerSecond: Int64 = 0) {
         self.apiClient = apiClient
         self.db = db
+        self.uploadLimitBytesPerSecond = uploadLimitBytesPerSecond
+        self.downloadLimitBytesPerSecond = downloadLimitBytesPerSecond
     }
 
     // MARK: - Main Sync Entry Point
@@ -94,8 +100,9 @@ actor SyncEngine {
             logger.info("Server already has \(existingHashes.count) of \(allHashes.count) unique hashes")
         }
 
-        // 5. Build actions
+        // 5. Build actions, tracking bytes of skipped (already-synced) files
         var actions: [SyncAction] = []
+        var skippedBytes: Int64 = 0
 
         // Create missing directories on server
         let remoteDirPaths = Set(folderIDCache.keys)
@@ -110,15 +117,18 @@ actor SyncEngine {
             guard let hash = localFile.contentHash else {
                 // File was skipped during hashing (unmodified since lastSync) and exists on server -> skip
                 if remoteByPath[relPath] != nil {
+                    skippedBytes += localFile.size
                     continue
                 }
                 // Not on server and no hash -> we need to hash it now
                 if let fullHash = try? Self.hashFile(at: URL(fileURLWithPath: localFile.fullPath)) {
                     if existingHashes.contains(fullHash) {
+                        skippedBytes += localFile.size
                         continue // Server already has this content
                     }
                     // Check if it matches the remote file at this path
                     if let remote = remoteByPath[relPath], remote.contentHash == fullHash {
+                        skippedBytes += localFile.size
                         continue // Same content at same path
                     }
                     actions.append(.upload(localFile.fullPath, relPath, remoteByPath[relPath]?.id))
@@ -130,6 +140,7 @@ actor SyncEngine {
             if let remote = remoteByPath[relPath] {
                 // File exists on server at same path
                 if remote.contentHash == hash {
+                    skippedBytes += localFile.size
                     continue // Same hash, already synced
                 }
                 // Different hash -> upload (local wins, server keeps versions)
@@ -160,10 +171,10 @@ actor SyncEngine {
             }
         }
 
-        logger.info("Actions: \(actions.count) (from full sync)")
+        logger.info("Actions: \(actions.count) (from full sync), skipped \(skippedBytes) bytes (already synced)")
 
         // 6. Execute actions
-        result = try await executeActions(actions, task: task, onProgress: onProgress)
+        result = try await executeActions(actions, task: task, skippedBytes: skippedBytes, onProgress: onProgress)
         return result
     }
 
@@ -234,7 +245,8 @@ actor SyncEngine {
     // MARK: - Action Execution
 
     /// Execute sync actions with parallel uploads, progress tracking, and error handling.
-    private func executeActions(_ actions: [SyncAction], task: SyncTask, onProgress: @Sendable @escaping (SyncProgress) async -> Void) async throws -> SyncResult {
+    /// skippedBytes: bytes of files that were already synced (hash matched) — used to show accurate progress.
+    private func executeActions(_ actions: [SyncAction], task: SyncTask, skippedBytes: Int64 = 0, onProgress: @Sendable @escaping (SyncProgress) async -> Void) async throws -> SyncResult {
         var result = SyncResult(uploaded: 0, downloaded: 0, deleted: 0, conflicts: 0, errors: 0, fileActivity: [])
 
         guard !actions.isEmpty else { return result }
@@ -259,13 +271,20 @@ actor SyncEngine {
             return false
         }
 
-        // Calculate total bytes to upload for accurate progress
-        let totalBytesToUpload: Int64 = sortedActions.compactMap { action -> Int64? in
-            if case .upload(let path, _, _) = action {
-                return (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? 0
+        // Calculate total bytes to transfer (uploads + downloads + skipped) for accurate progress
+        var totalBytesToUpload: Int64 = skippedBytes
+        for action in sortedActions {
+            switch action {
+            case .upload(let path, _, _):
+                totalBytesToUpload += (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? 0
+            case .download(_, _, _):
+                // Downloads also contribute to total transfer; size is unknown upfront,
+                // so estimate conservatively. Actual bytes will be added during download.
+                break
+            default:
+                break
             }
-            return nil
-        }.reduce(0, +)
+        }
 
         // Pre-create all directories sequentially to avoid 409 race conditions
         var allDirPaths = Set<String>()
@@ -284,7 +303,7 @@ actor SyncEngine {
         }
 
         let total = sortedActions.count
-        let bytesUploaded = ActorCounter()
+        let bytesUploaded = ActorCounter(initial: skippedBytes)
         let completed = ActorCounter()
         let start = Date()
         let names = sortedActions.map { $0.fileName }
@@ -645,6 +664,7 @@ actor SyncEngine {
             let token = await apiClient.currentToken() ?? ""
             let base = await apiClient.baseURL
             let sem = DynamicSemaphore(initialLimit: 10)
+            let uploadLimit = self.uploadLimitBytesPerSecond
 
             try await withThrowingTaskGroup(of: Int64.self) { group in
                 for block in missingBlocks {
@@ -657,7 +677,18 @@ actor SyncEngine {
                         blockHandle.seek(toFileOffset: block.offset)
                         let data = blockHandle.readData(ofLength: block.size)
 
+                        let blockStart = Date()
                         try await APIClient.uploadBlock(baseURL: base, token: token, hash: block.hash, data: data)
+
+                        // Rate limiting: sleep if we uploaded faster than the limit allows
+                        if uploadLimit > 0 {
+                            let expectedDuration = Double(data.count) / Double(uploadLimit)
+                            let elapsed = Date().timeIntervalSince(blockStart)
+                            if elapsed < expectedDuration {
+                                try await Task.sleep(nanoseconds: UInt64((expectedDuration - elapsed) * 1_000_000_000))
+                            }
+                        }
+
                         return Int64(data.count)
                     }
                 }
@@ -1029,6 +1060,10 @@ actor DynamicSemaphore {
 /// Thread-safe counter for use inside task groups.
 actor ActorCounter {
     private(set) var value: Int64 = 0
+
+    init(initial: Int64 = 0) {
+        self.value = initial
+    }
 
     func add(_ n: Int64) { value += n }
     func increment() { value += 1 }

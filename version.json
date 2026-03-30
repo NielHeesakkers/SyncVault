@@ -1,9 +1,16 @@
 {
-  "version": "2.5.10",
+  "version": "2.5.11",
   "min_version": "1.0",
-  "release_date": "2026-03-29",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.10/SyncVault-2.5.10.dmg",
+  "release_date": "2026-03-30",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.11/SyncVault-2.5.11.dmg",
   "history": [
+    {
+      "version": "2.5.11",
+      "date": "2026-03-30",
+      "changes": [
+        "Sync wizard with remote folder browser, auto-detect LAN/extern, bandwidth limiter, selective sync, progress tracking fix, speed graph, theme toggle"
+      ]
+    },
     {
       "version": "2.5.10",
       "date": "2026-03-29",

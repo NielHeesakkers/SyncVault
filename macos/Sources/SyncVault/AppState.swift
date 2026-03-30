@@ -29,6 +29,10 @@ class AppState: ObservableObject {
     @Published var serverURL: String = ""
     @Published var username: String = ""
 
+    // LAN/External URL auto-detection
+    @Published var lanURL: String = ""       // e.g. "http://192.168.1.2:4282"
+    @Published var externalURL: String = ""  // e.g. "https://sync.heesakkers.com"
+
     var menuBarIcon: String {
         if !isConnected { return "cloud.slash" }
         if isSyncing { return "arrow.triangle.2.circlepath.icloud" }
@@ -129,10 +133,12 @@ class AppState: ObservableObject {
         serverURL = config.serverURL
         username = config.username
         syncTasks = config.syncTasks
+        lanURL = config.lanURL ?? ""
+        externalURL = config.externalURL ?? ""
     }
 
     func saveConfig() {
-        let config = AppConfig(serverURL: serverURL, username: username, syncTasks: syncTasks)
+        let config = AppConfig(serverURL: serverURL, username: username, syncTasks: syncTasks, lanURL: lanURL, externalURL: externalURL)
         let configURL = Self.configDirectory.appendingPathComponent("config.json")
         try? FileManager.default.createDirectory(at: Self.configDirectory, withIntermediateDirectories: true)
         try? JSONEncoder().encode(config).write(to: configURL)
@@ -304,14 +310,11 @@ class AppState: ObservableObject {
 
     private func startSpeedTracking() {
         speedTimer?.invalidate()
+        // Record initial sample immediately
+        recordSpeedSample()
         speedTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                let speed = self.syncProgress?.bytesPerSecond ?? 0
-                self.speedHistory.append(speed)
-                if self.speedHistory.count > 60 {
-                    self.speedHistory.removeFirst(self.speedHistory.count - 60)
-                }
+                self?.recordSpeedSample()
             }
         }
     }
@@ -319,6 +322,16 @@ class AppState: ObservableObject {
     private func stopSpeedTracking() {
         speedTimer?.invalidate()
         speedTimer = nil
+        // Don't clear speedHistory — keep it for display until next sync starts
+    }
+
+    /// Record a speed sample from the current sync progress.
+    func recordSpeedSample() {
+        let speed = syncProgress?.bytesPerSecond ?? 0
+        speedHistory.append(speed)
+        if speedHistory.count > 60 {
+            speedHistory.removeFirst(speedHistory.count - 60)
+        }
     }
 
     // MARK: - Device ID
@@ -407,6 +420,42 @@ class AppState: ObservableObject {
         }
     }
 
+    // MARK: - LAN/External URL Detection
+
+    /// Detect the best URL to use: try LAN first (fast, 2s timeout), fall back to external.
+    func detectBestURL() async -> String {
+        if !lanURL.isEmpty {
+            // Try a quick health check on LAN
+            guard let url = URL(string: "\(lanURL)/api/health") else {
+                return externalURL.isEmpty ? lanURL : externalURL
+            }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 2
+            if let (_, response) = try? await URLSession.shared.data(for: request),
+               let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                return lanURL
+            }
+        }
+        return externalURL.isEmpty ? lanURL : externalURL
+    }
+
+    /// Update the API client's base URL to the best available URL.
+    private func updateAPIClientURL() async {
+        let bestURL = await detectBestURL()
+        if !bestURL.isEmpty && bestURL != serverURL {
+            logger.info("Switching to \(bestURL) (was \(self.serverURL))")
+            serverURL = bestURL
+            // Re-create API client with new URL while preserving auth
+            if let oldClient = apiClient {
+                let newClient = APIClient(baseURL: bestURL)
+                if let token = KeychainHelper.load(key: "access_token") {
+                    await newClient.setToken(token)
+                }
+                self.apiClient = newClient
+            }
+        }
+    }
+
     func runSync() async {
         guard let client = apiClient, isConnected else {
             logger.info(" Not connected, skipping")
@@ -422,9 +471,15 @@ class AppState: ObservableObject {
             return
         }
 
+        // Check if LAN is available and switch URL if needed
+        if !lanURL.isEmpty || !externalURL.isEmpty {
+            await updateAPIClientURL()
+        }
+
         isSyncing = true
         syncPending = false
         syncProgress = nil
+        speedHistory = []  // Clear speed history for fresh sync cycle
         startSpeedTracking()
         defer {
             isSyncing = false
@@ -484,7 +539,9 @@ class AppState: ObservableObject {
                     initSyncDatabase()
                     continue
                 }
-                let engine = SyncEngine(apiClient: client, db: db)
+                let uploadLimit = Int64(UserDefaults.standard.integer(forKey: "uploadLimitBytesPerSecond"))
+                let downloadLimit = Int64(UserDefaults.standard.integer(forKey: "downloadLimitBytesPerSecond"))
+                let engine = SyncEngine(apiClient: client, db: db, uploadLimitBytesPerSecond: uploadLimit, downloadLimitBytesPerSecond: downloadLimit)
 
                 // Get changed paths from FSEvents watcher (nil = full scan needed)
                 var changedPaths = fileWatchers[task.id]?.consumeChangedPaths()
