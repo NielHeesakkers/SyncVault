@@ -1,9 +1,16 @@
 {
-  "version": "2.5.12",
+  "version": "2.5.13",
   "min_version": "1.0",
   "release_date": "2026-03-30",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.12/SyncVault-2.5.12.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.13/SyncVault-2.5.13.dmg",
   "history": [
+    {
+      "version": "2.5.13",
+      "date": "2026-03-30",
+      "changes": [
+        "Atomic rename sync, change journal baseline fix, multi-client two-way sync"
+      ]
+    },
     {
       "version": "2.5.12",
       "date": "2026-03-30",

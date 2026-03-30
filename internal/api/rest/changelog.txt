@@ -1,3 +1,6 @@
+## [2.5.13] — 2026-03-30
+- Atomic rename sync, change journal baseline fix, multi-client two-way sync
+
 ## [2.5.12] — 2026-03-30
 - Change journal for correct rename/delete sync, two-way directory sync, periodic remote change detection
 

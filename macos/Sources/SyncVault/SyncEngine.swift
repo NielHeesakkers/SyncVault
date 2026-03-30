@@ -107,8 +107,15 @@ actor SyncEngine {
 
         // Load the change journal — what we knew about at last sync
         let journal = (try? db.getStates(taskID: task.id.uuidString)) ?? [:]
+        let journalIsEmpty = journal.isEmpty
         let localDirPaths = Set(localDirs.map { $0.relativePath })
         let remoteDirPaths = Set(folderIDCache.keys)
+
+        // If journal is empty (first run after update), populate it without any delete actions.
+        // This establishes the baseline — next sync will correctly detect changes.
+        if journalIsEmpty {
+            logger.info("Journal empty — populating baseline (no delete actions this cycle)")
+        }
 
         // Create missing directories on server (local dirs not on server)
         for dir in localDirs {
@@ -154,9 +161,12 @@ actor SyncEngine {
                 let existsLocally = remoteFile.isDir ? fm.fileExists(atPath: localPath) : localFileMap[relPath] != nil || fm.fileExists(atPath: localPath)
 
                 if !existsLocally {
-                    if journal[relPath] != nil {
+                    if !journalIsEmpty && journal[relPath] != nil {
                         // WAS in journal → we knew about it → we deleted it locally → delete from server
                         actions.append(.deleteRemote(remoteFile.id, relPath))
+                    } else if journalIsEmpty {
+                        // Journal empty (first run) → don't download, just record in journal
+                        // Skip — baseline will be set after this sync
                     } else {
                         // NOT in journal → new on server → download/create locally
                         if remoteFile.isDir {
@@ -169,24 +179,24 @@ actor SyncEngine {
                 }
             }
 
-            // Local entries not present on server
-            for (relPath, localFile) in localFileMap {
-                if remoteByPath[relPath] == nil {
-                    if journal[relPath] != nil {
-                        // WAS in journal → we knew about it → server deleted it → delete locally
-                        actions.append(.deleteLocal(localFile.fullPath, relPath))
+            // Local entries not present on server (only if journal has baseline)
+            if !journalIsEmpty {
+                for (relPath, localFile) in localFileMap {
+                    if remoteByPath[relPath] == nil {
+                        if journal[relPath] != nil {
+                            // WAS in journal → we knew about it → server deleted it → delete locally
+                            actions.append(.deleteLocal(localFile.fullPath, relPath))
+                        }
                     }
-                    // NOT in journal + not on server → already handled as upload above
                 }
-            }
 
-            // Local directories not on server
-            for dir in localDirs {
-                if remoteByPath[dir.relativePath] == nil && journal[dir.relativePath] != nil {
-                    // Directory was in journal but gone from server → delete locally
-                    let localPath = (basePath as NSString).appendingPathComponent(dir.relativePath)
-                    if fm.fileExists(atPath: localPath) {
-                        actions.append(.deleteLocal(localPath, dir.relativePath))
+                // Local directories not on server
+                for dir in localDirs {
+                    if remoteByPath[dir.relativePath] == nil && journal[dir.relativePath] != nil {
+                        let localPath = (basePath as NSString).appendingPathComponent(dir.relativePath)
+                        if fm.fileExists(atPath: localPath) {
+                            actions.append(.deleteLocal(localPath, dir.relativePath))
+                        }
                     }
                 }
             }
@@ -197,36 +207,36 @@ actor SyncEngine {
         // 6. Execute actions
         result = try await executeActions(actions, task: task, skippedBytes: skippedBytes, onProgress: onProgress)
 
-        // 7. Update change journal with current state after successful sync
-        if result.errors == 0 {
-            var journalEntries: [(relativePath: String, contentHash: String, isDir: Bool)] = []
-            // Add all local files
-            for (relPath, localFile) in localFileMap {
+        // 7. Update change journal: snapshot of everything that should exist
+        // This is the union of local + remote that survived this sync cycle
+        var journalEntries: [(relativePath: String, contentHash: String, isDir: Bool)] = []
+        let survivingPaths = Set<String>() // paths that were deleted this cycle
+
+        // Add all local files that still exist
+        for (relPath, localFile) in localFileMap {
+            let localPath = localFile.fullPath
+            if FileManager.default.fileExists(atPath: localPath) {
                 journalEntries.append((relPath, localFile.contentHash ?? "", false))
             }
-            // Add all local directories
-            for dir in localDirs {
+        }
+        // Add all local directories that still exist
+        for dir in localDirs {
+            let localPath = (basePath as NSString).appendingPathComponent(dir.relativePath)
+            if FileManager.default.fileExists(atPath: localPath) {
                 journalEntries.append((dir.relativePath, "", true))
             }
-            // Add downloaded files (new from server)
-            for (relPath, remote) in remoteByPath where !remote.isDir {
-                if localFileMap[relPath] == nil {
-                    let localPath = (basePath as NSString).appendingPathComponent(relPath)
-                    if FileManager.default.fileExists(atPath: localPath) {
-                        journalEntries.append((relPath, remote.contentHash ?? "", false))
-                    }
-                }
-            }
-            // Add created directories (new from server)
-            for (relPath, remote) in remoteByPath where remote.isDir {
-                let localPath = (basePath as NSString).appendingPathComponent(relPath)
-                if FileManager.default.fileExists(atPath: localPath) {
-                    journalEntries.append((relPath, "", true))
-                }
-            }
-            try? db.replaceAllStates(taskID: task.id.uuidString, files: journalEntries)
-            logger.info("Journal updated: \(journalEntries.count) entries")
         }
+        // Add remote items that exist locally (downloaded this cycle or existed before)
+        for (relPath, remote) in remoteByPath {
+            let localPath = (basePath as NSString).appendingPathComponent(relPath)
+            if FileManager.default.fileExists(atPath: localPath) {
+                if !journalEntries.contains(where: { $0.relativePath == relPath }) {
+                    journalEntries.append((relPath, remote.contentHash ?? "", remote.isDir))
+                }
+            }
+        }
+        try? db.replaceAllStates(taskID: task.id.uuidString, files: journalEntries)
+        logger.info("Journal updated: \(journalEntries.count) entries")
 
         return result
     }
@@ -250,26 +260,73 @@ actor SyncEngine {
             folderIDCache[file.relativePath] = file.id
         }
 
-        // 3. Build actions
+        // 3. Build actions — detect renames first, then handle remaining changes
         var actions: [SyncAction] = []
+        let journal = (try? db.getStates(taskID: task.id.uuidString)) ?? [:]
+
+        // Separate deleted and new paths to detect renames
+        var deletedPaths: [(relPath: String, localFile: LocalFileInfo)] = []
+        var newPaths: [(relPath: String, localFile: LocalFileInfo)] = []
+        var normalFiles: [(relPath: String, localFile: LocalFileInfo)] = []
 
         for localFile in changedFiles {
             let relPath = localFile.relativePath
-
-            // Deleted locally (file or directory)
             if localFile.deletedLocally {
-                if task.mode == .twoWay, let remoteFile = remoteByPath[relPath] {
-                    actions.append(.deleteRemote(remoteFile.id, relPath))
-                }
-                continue
+                deletedPaths.append((relPath, localFile))
+            } else if localFile.isDirectory && remoteByPath[relPath] == nil {
+                newPaths.append((relPath, localFile))
+            } else if !localFile.isDirectory && remoteByPath[relPath] == nil {
+                newPaths.append((relPath, localFile))
+            } else {
+                normalFiles.append((relPath, localFile))
             }
+        }
 
-            // Directory: create on server if missing
-            if localFile.isDirectory {
-                if remoteByPath[relPath] == nil {
-                    actions.append(.createDirectory(relPath))
+        // Detect renames: a deleted path that has a matching remote entry + a new path
+        var handledDeletes = Set<String>()
+        var handledNews = Set<String>()
+
+        for deleted in deletedPaths {
+            if let remoteFile = remoteByPath[deleted.relPath] {
+                // Find a matching new path (same type: dir↔dir or file↔file)
+                let isDir = remoteFile.isDir
+                if let matchIdx = newPaths.firstIndex(where: { newItem in
+                    !handledNews.contains(newItem.relPath) && newItem.localFile.isDirectory == isDir
+                }) {
+                    let newItem = newPaths[matchIdx]
+                    // This is a rename: old path → new path
+                    let newName = URL(fileURLWithPath: newItem.relPath).lastPathComponent
+                    actions.append(.renameRemote(remoteFile.id, newName, deleted.relPath, newItem.relPath))
+                    handledDeletes.insert(deleted.relPath)
+                    handledNews.insert(newItem.relPath)
+                    logger.info("Detected rename: \(deleted.relPath) → \(newItem.relPath)")
                 }
-                continue
+            }
+        }
+
+        // Handle remaining deletes (not part of a rename)
+        for deleted in deletedPaths where !handledDeletes.contains(deleted.relPath) {
+            if task.mode == .twoWay, let remoteFile = remoteByPath[deleted.relPath] {
+                actions.append(.deleteRemote(remoteFile.id, deleted.relPath))
+            }
+        }
+
+        // Handle remaining new paths (not part of a rename)
+        for newItem in newPaths where !handledNews.contains(newItem.relPath) {
+            if newItem.localFile.isDirectory {
+                actions.append(.createDirectory(newItem.relPath))
+            } else {
+                actions.append(.upload(newItem.localFile.fullPath, newItem.relPath, nil))
+            }
+        }
+
+        // Handle normal files (existing on both sides)
+        for item in normalFiles {
+            let relPath = item.relPath
+            let localFile = item.localFile
+
+            if localFile.isDirectory {
+                continue // Directory already exists on server
             }
 
             if let remoteFile = remoteByPath[relPath] {
@@ -453,6 +510,19 @@ actor SyncEngine {
                             try? self.db.removeState(taskID: task.id.uuidString, relativePath: relativePath)
                             try? self.db.removeStatesUnder(taskID: task.id.uuidString, pathPrefix: relativePath)
                             return .deletedLocal(displayName)
+
+                        case .renameRemote(let fileID, let newName, let oldRelPath, let newRelPath):
+                            // Atomic rename on server — no delete + create
+                            let parentRelPath = (newRelPath as NSString).deletingLastPathComponent
+                            let cachedParent = await self.folderIDCache[parentRelPath]
+                            let parentID = parentRelPath.isEmpty ? task.remoteFolderID : (cachedParent ?? task.remoteFolderID)
+                            try await self.apiClient.moveFile(id: fileID, name: newName, parentID: parentID)
+                            logger.info("Renamed on server: \(oldRelPath) → \(newRelPath)")
+                            // Update journal: remove old, add new
+                            try? self.db.removeState(taskID: task.id.uuidString, relativePath: oldRelPath)
+                            try? self.db.removeStatesUnder(taskID: task.id.uuidString, pathPrefix: oldRelPath)
+                            try? self.db.updateState(taskID: task.id.uuidString, relativePath: newRelPath, contentHash: "", isDir: true)
+                            return .uploaded(newName)
 
                         case .deleteLocal(let path, let relativePath):
                             try FileManager.default.removeItem(atPath: path)
@@ -1034,6 +1104,7 @@ enum SyncAction: CustomStringConvertible {
     case download(String, String, String)    // remoteFileID, localPath, relativePath
     case markRemovedLocally(String, String)  // remoteFileID, relativePath
     case deleteRemote(String, String)        // remoteFileID, relativePath — soft-delete on server
+    case renameRemote(String, String, String, String) // remoteFileID, newName, oldRelPath, newRelPath
     case deleteLocal(String, String)         // localPath, relativePath
     case conflict(String, String, String)    // localPath, remoteFileID, relativePath
     case createDirectory(String)             // relativePath
@@ -1044,6 +1115,7 @@ enum SyncAction: CustomStringConvertible {
         case .download(_, _, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .markRemovedLocally(_, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .deleteRemote(_, let p): return URL(fileURLWithPath: p).lastPathComponent
+        case .renameRemote(_, let name, _, _): return name
         case .deleteLocal(_, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .conflict(_, _, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .createDirectory(let p): return URL(fileURLWithPath: p).lastPathComponent
@@ -1056,6 +1128,7 @@ enum SyncAction: CustomStringConvertible {
         case .download(_, _, let p): return "download(\(p))"
         case .markRemovedLocally(_, let p): return "markRemovedLocally(\(p))"
         case .deleteRemote(_, let p): return "deleteRemote(\(p))"
+        case .renameRemote(_, let name, let old, _): return "rename(\(old) → \(name))"
         case .deleteLocal(_, let p): return "deleteLocal(\(p))"
         case .conflict(_, _, let p): return "conflict(\(p))"
         case .createDirectory(let p): return "createDir(\(p))"
