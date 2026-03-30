@@ -550,11 +550,21 @@ class AppState: ObservableObject {
                 let lastSyncKey = "lastSync_\(task.id.uuidString)"
                 let lastSyncDate = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
 
-                // Empty FSEvents = no changes detected. Only skip if we've synced before.
-                // First sync (lastSyncDate == nil) must always do a full scan.
+                // Empty FSEvents = no local changes. But we still need to check for
+                // remote changes periodically (files deleted/added by other clients).
+                // Do a full scan every 5th cycle even without local changes.
+                let syncCountKey = "syncCount_\(task.id.uuidString)"
+                let syncCount = UserDefaults.standard.integer(forKey: syncCountKey)
+                UserDefaults.standard.set(syncCount + 1, forKey: syncCountKey)
+
                 if let paths = changedPaths, paths.isEmpty, lastSyncDate != nil {
-                    logger.info("  No changes for \(task.remoteFolderName), skipping")
-                    continue
+                    if syncCount % 5 != 0 {
+                        logger.info("  No changes for \(task.remoteFolderName), skipping")
+                        continue
+                    }
+                    // Every 5th cycle: force full scan to detect remote changes
+                    logger.info("  Periodic full scan for \(task.remoteFolderName)")
+                    changedPaths = nil
                 }
 
                 let result = try await engine.syncTask(task, changedPaths: changedPaths, lastSyncDate: lastSyncDate) { [weak self] progress in

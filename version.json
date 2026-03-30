@@ -1,9 +1,16 @@
 {
-  "version": "2.5.11",
+  "version": "2.5.12",
   "min_version": "1.0",
   "release_date": "2026-03-30",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.11/SyncVault-2.5.11.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.12/SyncVault-2.5.12.dmg",
   "history": [
+    {
+      "version": "2.5.12",
+      "date": "2026-03-30",
+      "changes": [
+        "Change journal for correct rename/delete sync, two-way directory sync, periodic remote change detection"
+      ]
+    },
     {
       "version": "2.5.11",
       "date": "2026-03-30",

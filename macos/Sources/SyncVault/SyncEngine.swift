@@ -100,72 +100,93 @@ actor SyncEngine {
             logger.info("Server already has \(existingHashes.count) of \(allHashes.count) unique hashes")
         }
 
-        // 5. Build actions, tracking bytes of skipped (already-synced) files
+        // 5. Build actions using the change journal for correct delete/rename detection
         var actions: [SyncAction] = []
         var skippedBytes: Int64 = 0
+        let fm = FileManager.default
 
-        // Create missing directories on server
+        // Load the change journal — what we knew about at last sync
+        let journal = (try? db.getStates(taskID: task.id.uuidString)) ?? [:]
+        let localDirPaths = Set(localDirs.map { $0.relativePath })
         let remoteDirPaths = Set(folderIDCache.keys)
+
+        // Create missing directories on server (local dirs not on server)
         for dir in localDirs {
             if !remoteDirPaths.contains(dir.relativePath) {
                 actions.append(.createDirectory(dir.relativePath))
             }
         }
 
-        // Determine uploads: only files whose hash is NOT on the server
+        // Determine file uploads
         for (relPath, localFile) in localFileMap {
             guard let hash = localFile.contentHash else {
-                // File was skipped during hashing (unmodified since lastSync) and exists on server -> skip
                 if remoteByPath[relPath] != nil {
                     skippedBytes += localFile.size
                     continue
                 }
-                // Not on server and no hash -> we need to hash it now
                 if let fullHash = try? Self.hashFile(at: URL(fileURLWithPath: localFile.fullPath)) {
-                    if existingHashes.contains(fullHash) {
-                        skippedBytes += localFile.size
-                        continue // Server already has this content
-                    }
-                    // Check if it matches the remote file at this path
                     if let remote = remoteByPath[relPath], remote.contentHash == fullHash {
                         skippedBytes += localFile.size
-                        continue // Same content at same path
+                        continue
                     }
                     actions.append(.upload(localFile.fullPath, relPath, remoteByPath[relPath]?.id))
                 }
                 continue
             }
 
-            // Hash is available
             if let remote = remoteByPath[relPath] {
-                // File exists on server at same path
                 if remote.contentHash == hash {
                     skippedBytes += localFile.size
-                    continue // Same hash, already synced
+                    continue
                 }
-                // Different hash -> upload (local wins, server keeps versions)
                 actions.append(.upload(localFile.fullPath, relPath, remote.id))
             } else {
-                // File not on server at this path
-                if existingHashes.contains(hash) {
-                    // Content exists elsewhere on server but not at this path -> still upload
-                    // (the server will deduplicate storage internally)
-                    actions.append(.upload(localFile.fullPath, relPath, nil))
-                } else {
-                    // Completely new content -> upload
-                    actions.append(.upload(localFile.fullPath, relPath, nil))
-                }
+                actions.append(.upload(localFile.fullPath, relPath, nil))
             }
         }
 
-        // Two-way: download remote files not present locally
+        // Two-way sync: use journal for correct delete detection
         if task.mode == .twoWay {
-            let fm = FileManager.default
-            for (relPath, remoteFile) in remoteByPath where !remoteFile.isDir {
-                if localFileMap[relPath] == nil {
-                    let localPath = (basePath as NSString).appendingPathComponent(relPath)
-                    if !fm.fileExists(atPath: localPath) && !(remoteFile.removedLocally ?? false) {
-                        actions.append(.download(remoteFile.id, localPath, relPath))
+
+            // Remote entries not present locally
+            for (relPath, remoteFile) in remoteByPath {
+                let localPath = (basePath as NSString).appendingPathComponent(relPath)
+                let existsLocally = remoteFile.isDir ? fm.fileExists(atPath: localPath) : localFileMap[relPath] != nil || fm.fileExists(atPath: localPath)
+
+                if !existsLocally {
+                    if journal[relPath] != nil {
+                        // WAS in journal → we knew about it → we deleted it locally → delete from server
+                        actions.append(.deleteRemote(remoteFile.id, relPath))
+                    } else {
+                        // NOT in journal → new on server → download/create locally
+                        if remoteFile.isDir {
+                            try? fm.createDirectory(atPath: localPath, withIntermediateDirectories: true)
+                            logger.info("Created local directory: \(relPath)")
+                        } else if !(remoteFile.removedLocally ?? false) {
+                            actions.append(.download(remoteFile.id, localPath, relPath))
+                        }
+                    }
+                }
+            }
+
+            // Local entries not present on server
+            for (relPath, localFile) in localFileMap {
+                if remoteByPath[relPath] == nil {
+                    if journal[relPath] != nil {
+                        // WAS in journal → we knew about it → server deleted it → delete locally
+                        actions.append(.deleteLocal(localFile.fullPath, relPath))
+                    }
+                    // NOT in journal + not on server → already handled as upload above
+                }
+            }
+
+            // Local directories not on server
+            for dir in localDirs {
+                if remoteByPath[dir.relativePath] == nil && journal[dir.relativePath] != nil {
+                    // Directory was in journal but gone from server → delete locally
+                    let localPath = (basePath as NSString).appendingPathComponent(dir.relativePath)
+                    if fm.fileExists(atPath: localPath) {
+                        actions.append(.deleteLocal(localPath, dir.relativePath))
                     }
                 }
             }
@@ -175,6 +196,38 @@ actor SyncEngine {
 
         // 6. Execute actions
         result = try await executeActions(actions, task: task, skippedBytes: skippedBytes, onProgress: onProgress)
+
+        // 7. Update change journal with current state after successful sync
+        if result.errors == 0 {
+            var journalEntries: [(relativePath: String, contentHash: String, isDir: Bool)] = []
+            // Add all local files
+            for (relPath, localFile) in localFileMap {
+                journalEntries.append((relPath, localFile.contentHash ?? "", false))
+            }
+            // Add all local directories
+            for dir in localDirs {
+                journalEntries.append((dir.relativePath, "", true))
+            }
+            // Add downloaded files (new from server)
+            for (relPath, remote) in remoteByPath where !remote.isDir {
+                if localFileMap[relPath] == nil {
+                    let localPath = (basePath as NSString).appendingPathComponent(relPath)
+                    if FileManager.default.fileExists(atPath: localPath) {
+                        journalEntries.append((relPath, remote.contentHash ?? "", false))
+                    }
+                }
+            }
+            // Add created directories (new from server)
+            for (relPath, remote) in remoteByPath where remote.isDir {
+                let localPath = (basePath as NSString).appendingPathComponent(relPath)
+                if FileManager.default.fileExists(atPath: localPath) {
+                    journalEntries.append((relPath, "", true))
+                }
+            }
+            try? db.replaceAllStates(taskID: task.id.uuidString, files: journalEntries)
+            logger.info("Journal updated: \(journalEntries.count) entries")
+        }
+
         return result
     }
 
@@ -200,13 +253,21 @@ actor SyncEngine {
         // 3. Build actions
         var actions: [SyncAction] = []
 
-        for localFile in changedFiles where !localFile.isDirectory {
+        for localFile in changedFiles {
             let relPath = localFile.relativePath
 
-            // File deleted locally
+            // Deleted locally (file or directory)
             if localFile.deletedLocally {
                 if task.mode == .twoWay, let remoteFile = remoteByPath[relPath] {
-                    actions.append(.markRemovedLocally(remoteFile.id, relPath))
+                    actions.append(.deleteRemote(remoteFile.id, relPath))
+                }
+                continue
+            }
+
+            // Directory: create on server if missing
+            if localFile.isDirectory {
+                if remoteByPath[relPath] == nil {
+                    actions.append(.createDirectory(relPath))
                 }
                 continue
             }
@@ -359,6 +420,7 @@ actor SyncEngine {
                             }
 
                             logger.info("Uploaded: \(relativePath) (\(fileSize) bytes, hash: \(uploadedHash))")
+                            try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: uploadedHash, isDir: false)
                             return .uploaded(displayName)
 
                         case .download(let fileID, let localPath, let relativePath):
@@ -375,6 +437,7 @@ actor SyncEngine {
                             let size = try await self.apiClient.downloadFileToDisk(id: fileID, destination: url)
                             await bytesUploaded.add(size)
                             logger.info("Downloaded: \(relativePath) (\(size) bytes)")
+                            try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: "", isDir: false)
                             return .downloaded(displayName)
 
                         case .markRemovedLocally(let fileID, let relativePath):
@@ -383,9 +446,19 @@ actor SyncEngine {
                             logger.info("Marked removed locally: \(relativePath)")
                             return .markedRemoved(displayName)
 
+                        case .deleteRemote(let fileID, let relativePath):
+                            try await self.apiClient.deleteFile(id: fileID)
+                            let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
+                            logger.info("Deleted from server: \(relativePath)")
+                            try? self.db.removeState(taskID: task.id.uuidString, relativePath: relativePath)
+                            try? self.db.removeStatesUnder(taskID: task.id.uuidString, pathPrefix: relativePath)
+                            return .deletedLocal(displayName)
+
                         case .deleteLocal(let path, let relativePath):
                             try FileManager.default.removeItem(atPath: path)
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
+                            try? self.db.removeState(taskID: task.id.uuidString, relativePath: relativePath)
+                            try? self.db.removeStatesUnder(taskID: task.id.uuidString, pathPrefix: relativePath)
                             return .deletedLocal(displayName)
 
                         case .conflict(let localPath, let remoteID, let relativePath):
@@ -567,12 +640,25 @@ actor SyncEngine {
                 continue
             }
 
-            // File no longer exists -> mark as deleted
+            // Path no longer exists -> mark as deleted (could be file or directory)
             guard let attrs = try? fm.attributesOfItem(atPath: changedPath) else {
+                // We don't know if it was a file or dir — mark as deleted, the sync
+                // engine will match it against the remote tree to find the right entry
                 files.append(LocalFileInfo(
                     relativePath: relativePath,
                     fullPath: changedPath,
                     isDirectory: false,
+                    size: 0,
+                    modifiedAt: Date(),
+                    contentHash: nil,
+                    deletedLocally: true
+                ))
+                // Also check if there are remote children under this path (it was a directory)
+                // by adding it as a directory delete too
+                files.append(LocalFileInfo(
+                    relativePath: relativePath,
+                    fullPath: changedPath,
+                    isDirectory: true,
                     size: 0,
                     modifiedAt: Date(),
                     contentHash: nil,
@@ -607,7 +693,7 @@ actor SyncEngine {
     func exportSyncStates(taskID: String) -> [[String: String]] {
         guard let states = try? db.getStates(taskID: taskID) else { return [] }
         return states.values.map { state in
-            ["file_name": state.fileName, "content_hash": state.contentHash]
+            ["file_name": state.relativePath, "content_hash": state.contentHash]
         }
     }
 
@@ -615,7 +701,7 @@ actor SyncEngine {
         for stateDict in states {
             guard let fileName = stateDict["file_name"] as? String,
                   let contentHash = stateDict["content_hash"] as? String else { continue }
-            try db.updateState(taskID: taskID, fileName: fileName, contentHash: contentHash)
+            try db.updateState(taskID: taskID, relativePath: fileName, contentHash: contentHash, isDir: false)
         }
     }
 
@@ -947,6 +1033,7 @@ enum SyncAction: CustomStringConvertible {
     case upload(String, String, String?)     // localPath, relativePath, remoteFileID (nil = new file)
     case download(String, String, String)    // remoteFileID, localPath, relativePath
     case markRemovedLocally(String, String)  // remoteFileID, relativePath
+    case deleteRemote(String, String)        // remoteFileID, relativePath — soft-delete on server
     case deleteLocal(String, String)         // localPath, relativePath
     case conflict(String, String, String)    // localPath, remoteFileID, relativePath
     case createDirectory(String)             // relativePath
@@ -956,6 +1043,7 @@ enum SyncAction: CustomStringConvertible {
         case .upload(_, let p, _): return URL(fileURLWithPath: p).lastPathComponent
         case .download(_, _, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .markRemovedLocally(_, let p): return URL(fileURLWithPath: p).lastPathComponent
+        case .deleteRemote(_, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .deleteLocal(_, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .conflict(_, _, let p): return URL(fileURLWithPath: p).lastPathComponent
         case .createDirectory(let p): return URL(fileURLWithPath: p).lastPathComponent
@@ -967,6 +1055,7 @@ enum SyncAction: CustomStringConvertible {
         case .upload(_, let p, _): return "upload(\(p))"
         case .download(_, _, let p): return "download(\(p))"
         case .markRemovedLocally(_, let p): return "markRemovedLocally(\(p))"
+        case .deleteRemote(_, let p): return "deleteRemote(\(p))"
         case .deleteLocal(_, let p): return "deleteLocal(\(p))"
         case .conflict(_, _, let p): return "conflict(\(p))"
         case .createDirectory(let p): return "createDir(\(p))"

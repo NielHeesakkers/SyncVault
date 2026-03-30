@@ -701,6 +701,7 @@ struct RemoteTreeFile: Codable {
     let contentHash: String?
     let isDir: Bool
     let removedLocally: Bool?
+    let updatedAt: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, size
@@ -708,6 +709,7 @@ struct RemoteTreeFile: Codable {
         case contentHash = "content_hash"
         case isDir = "is_dir"
         case removedLocally = "removed_locally"
+        case updatedAt = "updated_at"
     }
 }
 

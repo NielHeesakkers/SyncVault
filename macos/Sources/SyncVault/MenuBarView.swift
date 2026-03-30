@@ -313,8 +313,8 @@ struct MenuBarView: View {
                 HStack {
                     Spacer()
                     Text("v\(appVersion)")
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundColor(Color(white: 0.35).opacity(0.7))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.secondary)
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 8)
