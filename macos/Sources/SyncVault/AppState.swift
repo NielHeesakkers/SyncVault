@@ -52,6 +52,30 @@ class AppState: ObservableObject {
         initSyncDatabase()
         // Try to auto-reconnect with saved credentials
         Task { await tryAutoConnect() }
+        // Re-authenticate after wake from sleep
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                logger.info("Wake from sleep — re-authenticating")
+                self.lastError = nil
+                if self.isConnected, let client = self.apiClient {
+                    if await client.reAuthenticate() {
+                        logger.info("Re-authenticated after wake")
+                    } else if let password = KeychainHelper.load(key: "server_password") {
+                        do {
+                            try await client.login(username: self.username, password: password)
+                            logger.info("Re-logged in after wake")
+                        } catch {
+                            logger.error("Re-login after wake failed: \(error)")
+                        }
+                    }
+                } else if !self.isConnected {
+                    await self.tryAutoConnect()
+                }
+            }
+        }
     }
 
     private func initSyncDatabase() {
@@ -508,11 +532,11 @@ class AppState: ObservableObject {
                         logger.info(" Re-logged in with stored credentials")
                     } catch {
                         logger.error(" Re-login failed: \(error)")
-                        lastError = "Session expired — please reconnect"
-                        isConnected = false
+                        // Don't disconnect — try again next cycle
                         return
                     }
                 } else {
+                    // No stored password — can't re-auth
                     lastError = "Session expired — please reconnect"
                     isConnected = false
                     return

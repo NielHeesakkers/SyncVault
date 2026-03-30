@@ -5,8 +5,6 @@ struct ConnectionTab: View {
     @State private var serverURL = ""
     @State private var username = ""
     @State private var password = ""
-    @State private var lanURL = ""
-    @State private var externalURL = ""
     @State private var isConnecting = false
     @State private var isTesting = false
     @State private var testResult: TestResult?
@@ -66,26 +64,6 @@ struct ConnectionTab: View {
                                 .disabled(appState.isConnected)
                                 .foregroundColor(appState.isConnected ? .secondary : .primary)
                         }
-                        insetDivider
-                        fieldRow(label: "LAN URL", systemImage: "wifi") {
-                            TextField("http://192.168.1.x:4282", text: $lanURL)
-                                .textFieldStyle(.plain)
-                                .foregroundColor(.primary)
-                                .onChange(of: lanURL) { _ in
-                                    appState.lanURL = lanURL
-                                    appState.saveConfig()
-                                }
-                        }
-                        insetDivider
-                        fieldRow(label: "External URL", systemImage: "globe") {
-                            TextField("https://sync.example.com", text: $externalURL)
-                                .textFieldStyle(.plain)
-                                .foregroundColor(.primary)
-                                .onChange(of: externalURL) { _ in
-                                    appState.externalURL = externalURL
-                                    appState.saveConfig()
-                                }
-                        }
                     }
                     .background(
                         RoundedRectangle(cornerRadius: 10)
@@ -113,18 +91,8 @@ struct ConnectionTab: View {
                             testResult = nil
                             Task {
                                 do {
-                                    // Auto-detect best URL: try LAN first, then external, then entered URL
-                                    var connectURL = serverURL
-                                    if !lanURL.isEmpty || !externalURL.isEmpty {
-                                        appState.lanURL = lanURL
-                                        appState.externalURL = externalURL
-                                        let bestURL = await appState.detectBestURL()
-                                        if !bestURL.isEmpty {
-                                            connectURL = bestURL
-                                        }
-                                    }
-                                    try await appState.connect(url: connectURL, username: username, password: password)
-                                    testResult = .success("Connected via \(connectURL.contains("192.168") || connectURL.contains("10.") || connectURL.contains("172.") ? "LAN" : "external")")
+                                    try await appState.connect(url: serverURL, username: username, password: password)
+                                    testResult = .success("Connected")
                                     hasStoredPassword = true
                                 } catch {
                                     testResult = .error(error.localizedDescription)
@@ -225,9 +193,11 @@ struct ConnectionTab: View {
         .onAppear {
             serverURL = appState.serverURL
             username = appState.username
-            lanURL = appState.lanURL
-            externalURL = appState.externalURL
             hasStoredPassword = KeychainHelper.load(key: "server_password") != nil
+            // Auto-test server connection if not connected and URL is filled
+            if !appState.isConnected && !serverURL.isEmpty && testResult == nil {
+                testServer()
+            }
         }
     }
 

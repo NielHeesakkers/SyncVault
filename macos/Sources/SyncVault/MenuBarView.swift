@@ -303,6 +303,15 @@ struct MenuBarView: View {
                         .padding(.vertical, 3)
                     }
                     .buttonStyle(.plain)
+                    .simultaneousGesture(TapGesture().onEnded {
+                        NSApp.activate(ignoringOtherApps: true)
+                        // Bring settings window to front if already open
+                        for window in NSApp.windows where window.title.contains("Settings") || window.title.contains("SyncVault") {
+                            if window.isVisible {
+                                window.makeKeyAndOrderFront(nil)
+                            }
+                        }
+                    })
 
                     actionRow(icon: "power", label: "Quit", color: Color(white: 0.5)) {
                         NSApplication.shared.terminate(nil)

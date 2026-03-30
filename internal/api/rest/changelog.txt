@@ -1,3 +1,6 @@
+## [2.5.14] — 2026-03-30
+- Settings window focus fix, remove LAN/external URL fields, auto-test server, auto re-auth after sleep
+
 ## [2.5.13] — 2026-03-30
 - Atomic rename sync, change journal baseline fix, multi-client two-way sync
 

@@ -1,9 +1,16 @@
 {
-  "version": "2.5.13",
+  "version": "2.5.14",
   "min_version": "1.0",
   "release_date": "2026-03-30",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.13/SyncVault-2.5.13.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.14/SyncVault-2.5.14.dmg",
   "history": [
+    {
+      "version": "2.5.14",
+      "date": "2026-03-30",
+      "changes": [
+        "Settings window focus fix, remove LAN/external URL fields, auto-test server, auto re-auth after sleep"
+      ]
+    },
     {
       "version": "2.5.13",
       "date": "2026-03-30",
