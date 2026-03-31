@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
@@ -749,6 +750,55 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		// Headers already sent; we can't write a JSON error at this point.
 		return
 	}
+}
+
+// handleUserActivity handles GET /api/activity?limit=N.
+// Returns activity log entries scoped to the authenticated user.
+func (s *Server) handleUserActivity(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	q := metadata.ActivityQuery{UserID: claims.UserID}
+
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
+			q.Limit = limit
+		}
+	}
+	if q.Limit <= 0 {
+		q.Limit = 20
+	}
+
+	entries, err := s.db.QueryActivity(q)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not query activity"})
+		return
+	}
+
+	if entries == nil {
+		entries = []metadata.ActivityEntry{}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"activity": entries})
+}
+
+// handleSearchFiles handles GET /api/files/search?q=<query>.
+// Returns files matching the search query for the authenticated user.
+func (s *Server) handleSearchFiles(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "query parameter 'q' is required"})
+		return
+	}
+	files, err := s.db.SearchFiles(claims.UserID, q)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "search failed"})
+		return
+	}
+	result := make([]fileResponse, 0, len(files))
+	for _, f := range files {
+		result = append(result, toFileResponse(f))
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"files": result})
 }
 
 // handleCheckHashes accepts a list of content hashes and returns which ones already exist on the server.

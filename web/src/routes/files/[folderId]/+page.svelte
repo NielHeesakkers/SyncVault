@@ -18,7 +18,10 @@
 		FileCode,
 		FileArchive,
 		Music,
-		Video
+		Video,
+		Search,
+		X,
+		Eye
 	} from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores';
@@ -83,6 +86,96 @@
 	let dragOver = $state(false);
 	let uploading = $state(false);
 	let fileInput: HTMLInputElement;
+
+	// Search state
+	let searchQuery = $state('');
+	let searchResults = $state<FileItem[]>([]);
+	let searching = $state(false);
+	let searchActive = $state(false);
+	let searchTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	// Preview state
+	let previewFile = $state<FileItem | null>(null);
+	let previewBlobUrl = $state<string | null>(null);
+	let previewLoading = $state(false);
+
+	function getPreviewType(file: FileItem): 'image' | 'pdf' | 'video' | 'audio' | 'none' {
+		const ext = file.name.split('.').pop()?.toLowerCase() || '';
+		if (['jpg','jpeg','png','gif','webp','svg','bmp','ico','tiff'].includes(ext)) return 'image';
+		if (['pdf'].includes(ext)) return 'pdf';
+		if (['mp4','mov','avi','mkv','webm'].includes(ext)) return 'video';
+		if (['mp3','wav','flac','aac','ogg','m4a'].includes(ext)) return 'audio';
+		return 'none';
+	}
+
+	async function openPreview(file: FileItem) {
+		previewFile = file;
+		const ptype = getPreviewType(file);
+		if (ptype === 'none') {
+			previewBlobUrl = null;
+			previewLoading = false;
+			return;
+		}
+		previewLoading = true;
+		try {
+			const token = localStorage.getItem('access_token');
+			const res = await fetch(`/api/files/${file.id}/download`, {
+				headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+			});
+			if (res.ok) {
+				const blob = await res.blob();
+				if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
+				previewBlobUrl = URL.createObjectURL(blob);
+			}
+		} catch {
+			// Silently fail
+		} finally {
+			previewLoading = false;
+		}
+	}
+
+	function closePreview() {
+		previewFile = null;
+		if (previewBlobUrl) {
+			URL.revokeObjectURL(previewBlobUrl);
+			previewBlobUrl = null;
+		}
+	}
+
+	function onSearchInput() {
+		if (searchTimeout) clearTimeout(searchTimeout);
+		if (!searchQuery.trim()) {
+			searchResults = [];
+			searchActive = false;
+			return;
+		}
+		searchTimeout = setTimeout(async () => {
+			searching = true;
+			searchActive = true;
+			try {
+				const res = await api.get(`/api/files/search?q=${encodeURIComponent(searchQuery.trim())}`);
+				if (res.ok) {
+					const data = await res.json();
+					const rawFiles = data.files || [];
+					searchResults = rawFiles.map((f: any) => ({
+						...f,
+						type: f.is_dir ? 'folder' : 'file'
+					}));
+				}
+			} catch {
+				// Silently fail
+			} finally {
+				searching = false;
+			}
+		}, 300);
+	}
+
+	function clearSearch() {
+		searchQuery = '';
+		searchResults = [];
+		searchActive = false;
+		if (searchTimeout) clearTimeout(searchTimeout);
+	}
 
 	onMount(() => {
 		loadFolder();
@@ -267,6 +360,54 @@
 	<div class="px-5 py-3.5 border-b flex items-center justify-between gap-4" style="background: var(--bg-elevated); border-color: var(--border);">
 		<BreadcrumbNav items={breadcrumbs} onclick={navigateToBreadcrumb} />
 		<div class="flex items-center gap-2 flex-shrink-0">
+			<!-- Search bar -->
+			<div class="relative">
+				<div class="flex items-center rounded-lg border transition-all duration-150" style="background: var(--bg-hover); border-color: var(--border);">
+					<Search size={14} class="ml-2.5 text-white/40 flex-shrink-0" />
+					<input
+						type="text"
+						bind:value={searchQuery}
+						oninput={onSearchInput}
+						placeholder="Search files..."
+						class="bg-transparent border-none text-sm text-white/80 placeholder:text-white/30 px-2 py-1.5 w-40 focus:w-56 transition-all duration-200 outline-none"
+					/>
+					{#if searchQuery}
+						<button onclick={clearSearch} class="mr-1.5 p-0.5 rounded hover:bg-white/10 transition-colors">
+							<X size={12} class="text-white/40" />
+						</button>
+					{/if}
+				</div>
+				{#if searchActive}
+					<div class="absolute top-full right-0 mt-1 w-80 max-h-80 overflow-auto rounded-xl border z-50" style="background: var(--bg-overlay); border-color: var(--border); box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+						{#if searching}
+							<div class="px-4 py-3 text-sm text-white/40 text-center">Searching...</div>
+						{:else if searchResults.length === 0}
+							<div class="px-4 py-3 text-sm text-white/40 text-center">No results found</div>
+						{:else}
+							{#each searchResults as result}
+								{@const fi = getFileIcon(result)}
+								<button
+									class="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-white/[0.04] transition-colors"
+									onclick={() => {
+										clearSearch();
+										if (result.type === 'folder') {
+											goto(`/files/${result.id}`);
+										} else {
+											openPreview(result);
+										}
+									}}
+								>
+									<svelte:component this={fi.icon} size={15} style="color: {fi.color};" />
+									<div class="flex-1 min-w-0">
+										<p class="text-sm text-white/75 truncate">{result.name}</p>
+										<p class="text-[10px]" style="color: var(--text-tertiary);">{result.type === 'folder' ? 'Folder' : formatBytes(result.size)}</p>
+									</div>
+								</button>
+							{/each}
+						{/if}
+					</div>
+				{/if}
+			</div>
 			{#if uploading}
 				<div class="flex items-center gap-2 text-sm text-blue-400">
 					<div class="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
@@ -342,7 +483,7 @@
 									if (item.type === 'folder') {
 										navigateToFolder(item);
 									} else {
-										selectedFile = selectedFile?.id === item.id ? null : item;
+										openPreview(item);
 									}
 								}}
 								oncontextmenu={(e) => openContextMenu(e, item)}
@@ -389,6 +530,9 @@
 		onclick={(e) => e.stopPropagation()}
 	>
 		{#if contextMenu.item.type === 'file'}
+			<button onclick={() => { openPreview(contextMenu!.item); closeContextMenu(); }} class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-white/70">
+				<Eye size={14} style="color: var(--text-tertiary);" /> Preview
+			</button>
 			<button onclick={() => { downloadFile(contextMenu!.item); }} class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-white/70">
 				<Download size={14} style="color: var(--text-tertiary);" /> Download
 			</button>
@@ -454,6 +598,97 @@
 		onconfirm={doDelete}
 		oncancel={() => { showDelete = false; deleteTarget = null; }}
 	/>
+{/if}
+
+{#if previewFile}
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 z-50 flex items-center justify-center"
+		style="background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);"
+		onclick={closePreview}
+	>
+		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<div
+			class="relative rounded-2xl border w-full max-w-3xl max-h-[85vh] overflow-auto mx-4"
+			style="background: var(--bg-elevated); border-color: var(--border); box-shadow: 0 16px 64px rgba(0,0,0,0.6);"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<!-- Preview header -->
+			<div class="flex items-center justify-between px-5 py-3.5 border-b" style="border-color: var(--border);">
+				<div class="flex items-center gap-3 min-w-0">
+					{@const pfi = getFileIcon(previewFile)}
+					<svelte:component this={pfi.icon} size={17} style="color: {pfi.color};" />
+					<span class="text-sm font-medium text-white/80 truncate">{previewFile.name}</span>
+				</div>
+				<div class="flex items-center gap-2 flex-shrink-0">
+					<button
+						onclick={() => { downloadFile(previewFile!); }}
+						class="flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5 transition-all duration-150 text-white/60 hover:text-white/80"
+						style="background: var(--bg-hover); border: 1px solid var(--border);"
+					>
+						<Download size={12} /> Download
+					</button>
+					<button
+						onclick={closePreview}
+						class="p-1.5 rounded-lg transition-colors text-white/40 hover:text-white/80 hover:bg-white/10"
+					>
+						<X size={16} />
+					</button>
+				</div>
+			</div>
+
+			<!-- Preview content -->
+			<div class="p-5">
+				{#if previewLoading}
+					<div class="flex items-center justify-center py-16">
+						<div class="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+					</div>
+				{:else if getPreviewType(previewFile) === 'image' && previewBlobUrl}
+					<div class="flex items-center justify-center">
+						<img src={previewBlobUrl} alt={previewFile.name} class="max-w-full max-h-[60vh] rounded-lg object-contain" />
+					</div>
+				{:else if getPreviewType(previewFile) === 'pdf' && previewBlobUrl}
+					<iframe src={previewBlobUrl} title={previewFile.name} class="w-full rounded-lg border" style="height: 60vh; border-color: var(--border);" ></iframe>
+				{:else if getPreviewType(previewFile) === 'video' && previewBlobUrl}
+					<div class="flex items-center justify-center">
+						<!-- svelte-ignore a11y_media_has_caption -->
+						<video src={previewBlobUrl} controls class="max-w-full max-h-[60vh] rounded-lg">
+							Your browser does not support the video element.
+						</video>
+					</div>
+				{:else if getPreviewType(previewFile) === 'audio' && previewBlobUrl}
+					<div class="flex items-center justify-center py-8">
+						<!-- svelte-ignore a11y_media_has_caption -->
+						<audio src={previewBlobUrl} controls class="w-full max-w-md">
+							Your browser does not support the audio element.
+						</audio>
+					</div>
+				{:else}
+					<!-- File info for non-previewable files -->
+					<div class="flex flex-col items-center justify-center py-12">
+						{@const ficon = getFileIcon(previewFile)}
+						<svelte:component this={ficon.icon} size={48} style="color: {ficon.color}; opacity: 0.6;" />
+						<h3 class="text-base font-semibold text-white/80 mt-4">{previewFile.name}</h3>
+						<div class="mt-3 space-y-1 text-center">
+							<p class="text-sm" style="color: var(--text-tertiary);">Size: {formatBytes(previewFile.size)}</p>
+							{#if previewFile.updated_at}
+								<p class="text-sm" style="color: var(--text-tertiary);">Modified: {formatDate(previewFile.updated_at)}</p>
+							{/if}
+							{#if previewFile.mime_type}
+								<p class="text-sm" style="color: var(--text-tertiary);">Type: {previewFile.mime_type}</p>
+							{/if}
+						</div>
+						<button
+							onclick={() => downloadFile(previewFile!)}
+							class="mt-5 flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg px-4 py-2 transition-all duration-150"
+						>
+							<Download size={14} /> Download File
+						</button>
+					</div>
+				{/if}
+			</div>
+		</div>
+	</div>
 {/if}
 
 <style>

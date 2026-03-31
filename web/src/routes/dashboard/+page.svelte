@@ -53,8 +53,26 @@
 			if (res.ok) {
 				const data = await res.json();
 				activity = data.events || data.activity || data || [];
+				if (!Array.isArray(activity)) activity = [];
 			}
 		} catch {}
+		// Fallback: if no activity, show recent file changes
+		if (activity.length === 0) {
+			try {
+				const since = new Date(Date.now() - 30 * 86400000).toISOString();
+				const res = await api.get(`/api/changes?since=${since}`);
+				if (res.ok) {
+					const data = await res.json();
+					const changes = data.changes || [];
+					activity = changes.slice(0, 10).map((c: any) => ({
+						action: c.deleted_at ? 'delete' : 'upload',
+						details: c.name,
+						resource: c.is_dir ? 'folder' : 'file',
+						created_at: c.updated_at
+					}));
+				}
+			} catch {}
+		}
 		activityLoading = false;
 
 		// Tasks
@@ -122,7 +140,12 @@
 	}
 
 	function getActivityLabel(event: any): string {
-		return event.message || event.description || `${event.action || event.event || 'Activity'}: ${event.file_name || event.target || ''}`;
+		if (event.message) return event.message;
+		if (event.description) return event.description;
+		if (event.details) return event.details;
+		const action = (event.action || event.event || 'Activity').replace(/_/g, ' ');
+		const target = event.file_name || event.resource || event.target || '';
+		return target ? `${action}: ${target}` : action;
 	}
 
 	function getTaskStatusColor(status: string): string {

@@ -1,3 +1,6 @@
+## [2.5.17] — 2026-03-31
+- Conflict detection, file search, preview modal, activity feed, Finder Sync Extension prep
+
 ## [2.5.16] — 2026-03-30
 - Fix FileProvider: add GET /api/files/{id} endpoint, fix getFile 404 error
 

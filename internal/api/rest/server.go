@@ -82,6 +82,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/files", s.handleListFiles)
 		r.Post("/api/files", s.handleCreateFile)
 		r.Post("/api/files/upload", s.handleUploadFile)
+		r.Get("/api/files/search", s.handleSearchFiles)
 		// History routes must be registered before {id} routes so they are not caught as an id param.
 		r.Get("/api/files/history", s.handleFilesAtTime)
 		r.Get("/api/files/history/dates", s.handleChangeDates)
@@ -95,6 +96,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/files/{id}/download", s.handleDownloadFile)
 		r.Get("/api/trash", s.handleListTrash)
 		r.Get("/api/changes", s.handleListChanges)
+		r.Get("/api/activity", s.handleUserActivity)
 
 		// Chunked uploads (legacy).
 		r.Post("/api/uploads/init", s.handleInitUpload)
@@ -191,7 +193,7 @@ func (s *Server) setupRoutes() {
 	r.NotFound(ServeSPA().ServeHTTP)
 }
 
-const AppVersion = "2.5.16"
+const AppVersion = "2.5.17"
 
 // handleHealth returns a simple health check response.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

@@ -979,3 +979,26 @@ func (d *DB) CheckFileHashes(ownerID string, hashes []string) (map[string]bool, 
 	}
 	return result, rows.Err()
 }
+
+// SearchFiles searches for files by name (case-insensitive LIKE match) for a given owner.
+// Returns up to 50 results ordered by name.
+func (d *DB) SearchFiles(ownerID, query string) ([]File, error) {
+	rows, err := d.db.Query(
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+		 FROM files WHERE owner_id = ? AND name LIKE ? AND deleted_at IS NULL ORDER BY name LIMIT 50`,
+		ownerID, "%"+query+"%",
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var files []File
+	for rows.Next() {
+		f, err := scanFileRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, *f)
+	}
+	return files, rows.Err()
+}

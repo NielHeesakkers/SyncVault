@@ -1,9 +1,16 @@
 {
-  "version": "2.5.16",
+  "version": "2.5.17",
   "min_version": "1.0",
-  "release_date": "2026-03-30",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.16/SyncVault-2.5.16.dmg",
+  "release_date": "2026-03-31",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.17/SyncVault-2.5.17.dmg",
   "history": [
+    {
+      "version": "2.5.17",
+      "date": "2026-03-31",
+      "changes": [
+        "Conflict detection, file search, preview modal, activity feed, Finder Sync Extension prep"
+      ]
+    },
     {
       "version": "2.5.16",
       "date": "2026-03-30",

@@ -10,14 +10,14 @@ import (
 
 // ActivityEntry represents a single entry in the activity log.
 type ActivityEntry struct {
-	ID         string
-	UserID     string
-	Action     string
-	Resource   string
-	ResourceID string
-	Details    string
-	IPAddress  string
-	CreatedAt  time.Time
+	ID         string    `json:"id"`
+	UserID     string    `json:"user_id,omitempty"`
+	Action     string    `json:"action"`
+	Resource   string    `json:"resource,omitempty"`
+	ResourceID string    `json:"resource_id,omitempty"`
+	Details    string    `json:"details,omitempty"`
+	IPAddress  string    `json:"ip_address,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // ActivityQuery holds the filter parameters for QueryActivity.

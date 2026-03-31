@@ -146,6 +146,25 @@ actor SyncEngine {
                     skippedBytes += localFile.size
                     continue
                 }
+                // Hashes differ — check journal for conflict detection (two-way only)
+                if task.mode == .twoWay, let journalEntry = journal[relPath] {
+                    let localChanged = (hash != journalEntry.contentHash)
+                    let remoteChanged = (remote.contentHash != journalEntry.contentHash)
+                    if localChanged && remoteChanged {
+                        // CONFLICT — both sides modified since last sync
+                        let localPath = localFile.fullPath
+                        actions.append(.conflict(localPath, remote.id, relPath))
+                        logger.info("Conflict detected: \(relPath) (local and remote both changed)")
+                        continue
+                    }
+                    if remoteChanged && !localChanged {
+                        // Only remote changed → download
+                        let localPath = (basePath as NSString).appendingPathComponent(relPath)
+                        actions.append(.download(remote.id, localPath, relPath))
+                        continue
+                    }
+                }
+                // Only local changed (or no journal entry / upload-only) → upload
                 actions.append(.upload(localFile.fullPath, relPath, remote.id))
             } else {
                 actions.append(.upload(localFile.fullPath, relPath, nil))
@@ -332,6 +351,25 @@ actor SyncEngine {
             if let remoteFile = remoteByPath[relPath] {
                 // Both exist - compare hashes
                 if localFile.contentHash != remoteFile.contentHash {
+                    // Check journal for conflict detection (two-way only)
+                    if task.mode == .twoWay, let journalEntry = journal[relPath],
+                       let localHash = localFile.contentHash {
+                        let localChanged = (localHash != journalEntry.contentHash)
+                        let remoteChanged = (remoteFile.contentHash != journalEntry.contentHash)
+                        if localChanged && remoteChanged {
+                            // CONFLICT — both sides modified since last sync
+                            actions.append(.conflict(localFile.fullPath, remoteFile.id, relPath))
+                            logger.info("Conflict detected (incremental): \(relPath)")
+                            continue
+                        }
+                        if remoteChanged && !localChanged {
+                            // Only remote changed → download
+                            let localPath = (basePath as NSString).appendingPathComponent(relPath)
+                            actions.append(.download(remoteFile.id, localPath, relPath))
+                            continue
+                        }
+                    }
+                    // Only local changed (or no journal entry) → upload
                     actions.append(.upload(localFile.fullPath, relPath, remoteFile.id))
                 }
             } else {
@@ -537,8 +575,10 @@ actor SyncEngine {
                             let url = URL(fileURLWithPath: localPath)
                             let conflictName = Self.conflictName(for: displayName)
                             let conflictPath = url.deletingLastPathComponent().appendingPathComponent(conflictName)
-                            try FileManager.default.moveItem(at: url, to: conflictPath)
-                            try data.write(to: url)
+                            // Save the remote version as the conflict file
+                            try data.write(to: conflictPath)
+                            // Keep local version in place — it will be uploaded normally
+                            logger.info("Conflict: saved remote as \(conflictName), keeping local \(displayName)")
                             return .conflict(displayName)
 
                         case .createDirectory(let relativePath):
