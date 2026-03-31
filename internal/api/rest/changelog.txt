@@ -1,3 +1,6 @@
+## [2.5.20] — 2026-03-31
+- Fix on-demand: cloud-only file states, domain re-registration, eviction support
+
 ## [2.5.19] — 2026-03-31
 - On-demand: remove local folder picker, auto CloudStorage path, monitored paths sync
 

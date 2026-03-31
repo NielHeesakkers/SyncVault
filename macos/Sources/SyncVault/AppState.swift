@@ -670,7 +670,15 @@ class AppState: ObservableObject {
             identifier: domainIdentifier,
             displayName: "SyncVault - \(username)"
         )
+
+        // Remove existing domain first to force clean re-enumeration
+        try? await NSFileProviderManager.remove(domain)
         try await NSFileProviderManager.add(domain)
+
+        // Signal the manager to re-enumerate from scratch
+        if let manager = NSFileProviderManager(for: domain) {
+            manager.signalEnumerator(for: .rootContainer) { _ in }
+        }
     }
 
     func removeOnDemandSync() async throws {

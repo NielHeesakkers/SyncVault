@@ -1,9 +1,16 @@
 {
-  "version": "2.5.19",
+  "version": "2.5.20",
   "min_version": "1.0",
   "release_date": "2026-03-31",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.19/SyncVault-2.5.19.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.20/SyncVault-2.5.20.dmg",
   "history": [
+    {
+      "version": "2.5.20",
+      "date": "2026-03-31",
+      "changes": [
+        "Fix on-demand: cloud-only file states, domain re-registration, eviction support"
+      ]
+    },
     {
       "version": "2.5.19",
       "date": "2026-03-31",

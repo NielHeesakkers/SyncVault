@@ -44,13 +44,22 @@ class FileProviderItem: NSObject, NSFileProviderItem {
         return NSNumber(value: fileSize)
     }
 
+    var contentModificationDate: Date? {
+        return modifiedDate
+    }
+
     var itemVersion: NSFileProviderItemVersion {
         let hash = (contentHashValue ?? id).data(using: .utf8) ?? Data()
         return NSFileProviderItemVersion(contentVersion: hash, metadataVersion: hash)
     }
 
-    // `downloaded` is a deprecated NSFileProviderItem property name; use `isDownloaded` instead.
+    // Tell macOS this file is NOT downloaded — it needs to be fetched on access
     var isDownloaded: Bool { itemIsDownloaded }
+
+    // Files should be downloadable on demand, not eagerly downloaded
+    var isUploaded: Bool { true }
+    var isUploading: Bool { false }
+    var isDownloading: Bool { false }
 
     init(serverFile: FPServerFile, isDownloaded: Bool = false) {
         self.id = serverFile.id
