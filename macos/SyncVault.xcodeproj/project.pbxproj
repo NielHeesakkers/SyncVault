@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		46FAB7C4074E49F8AF4F1A83 /* FinderSyncExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E50EB3802B450CBDD3FE2D /* FinderSyncExtension.swift */; };
 		9E43349D01E5444A886F2E63 /* AddSyncTaskWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6DF90DA86514CDAB9B47655 /* AddSyncTaskWizardView.swift */; };
 		06B2F1CF79404744AD12991C /* RemoteFolderBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBABE68F6A3A4698A39E98B2 /* RemoteFolderBrowserView.swift */; };
 		04A986495AC7098AE5BA1511 /* FileWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3FDEA20918B30FA0CD901D /* FileWatcher.swift */; };
@@ -66,6 +67,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		93E50EB3802B450CBDD3FE2D /* FinderSyncExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSyncExtension.swift; sourceTree = "<group>"; };
+		FA5A7CD502794F1F90D24151 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		DE42150166C4499CAC0E46E9 /* FinderSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FinderSync.entitlements; sourceTree = "<group>"; };
+		2B8E3FB6811340D8B878AAD7 /* SyncVaultFinderSync.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SyncVaultFinderSync.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		0B5DF716BCC97ACDFA90DFF5 /* FileProviderEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderEnumerator.swift; sourceTree = "<group>"; };
 		1101721817B68D9FDCC83C38 /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
 		C6DF90DA86514CDAB9B47655 /* AddSyncTaskWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddSyncTaskWizardView.swift; sourceTree = "<group>"; };
@@ -120,6 +125,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+
+		B31C3EF27F09450F8AC25422 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -129,6 +142,7 @@
 				1B55EA91C3C514282A6703E8 /* FileProvider */,
 				1D3A9D903F39470717591210 /* SyncVault */,
 				A979CBC3A7D0E595254DB862 /* Products */,
+				AF6C786E3880431DA5C4440C /* FinderSync */,
 			);
 			sourceTree = "<group>";
 		};
@@ -184,8 +198,20 @@
 			children = (
 				E2444AC314D23826B10AEA48 /* SyncVault.app */,
 				9CBA689C79C75E0DDD8D66D8 /* SyncVaultFileProvider.appex */,
+				2B8E3FB6811340D8B878AAD7 /* SyncVaultFinderSync.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+
+		AF6C786E3880431DA5C4440C /* FinderSync */ = {
+			isa = PBXGroup;
+			children = (
+				93E50EB3802B450CBDD3FE2D /* FinderSyncExtension.swift */,
+				FA5A7CD502794F1F90D24151 /* Info.plist */,
+				DE42150166C4499CAC0E46E9 /* FinderSync.entitlements */,
+			);
+			path = FinderSync;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -203,6 +229,7 @@
 			);
 			dependencies = (
 				2F25474016FD947F71C92F29 /* PBXTargetDependency */,
+				344D5D59C1B44100AD97D3A5 /* PBXTargetDependency */,
 			);
 			name = SyncVault;
 			packageProductDependencies = (
@@ -230,6 +257,23 @@
 			);
 			productName = SyncVaultFileProvider;
 			productReference = 9CBA689C79C75E0DDD8D66D8 /* SyncVaultFileProvider.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+
+		2D7F32ABCD58468F9A712AD6 /* SyncVaultFinderSync */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AE7CC15FE7354A40A7CE2F9C /* Build configuration list for PBXNativeTarget "SyncVaultFinderSync" */;
+			buildPhases = (
+				024862070F384A0F8DD38F3A /* Sources */,
+				B31C3EF27F09450F8AC25422 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SyncVaultFinderSync;
+			productName = SyncVaultFinderSync;
+			productReference = 2B8E3FB6811340D8B878AAD7 /* SyncVaultFinderSync.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -271,6 +315,7 @@
 			targets = (
 				419561C4616A8D8BCF8EE1E6 /* SyncVault */,
 				D19512B6D9728AC7937D4ED2 /* SyncVaultFileProvider */,
+				2D7F32ABCD58468F9A712AD6 /* SyncVaultFinderSync */,
 			);
 		};
 /* End PBXProject section */
@@ -318,6 +363,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+
+		024862070F384A0F8DD38F3A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				46FAB7C4074E49F8AF4F1A83 /* FinderSyncExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -325,6 +379,12 @@
 			isa = PBXTargetDependency;
 			target = D19512B6D9728AC7937D4ED2 /* SyncVaultFileProvider */;
 			targetProxy = C7BB9AE29541EB8A880B6F47 /* PBXContainerItemProxy */;
+		};
+
+		344D5D59C1B44100AD97D3A5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2D7F32ABCD58468F9A712AD6 /* SyncVaultFinderSync */;
+			targetProxy = 20E7577FE17446A79FB1EAE8 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -530,6 +590,51 @@
 			};
 			name = Release;
 		};
+
+		C856614C402C4E8F8F4B5428 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FinderSync/FinderSync.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = DE59N86W33;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FinderSync/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.syncvault.app.findersync;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		7B96EDE0E4FD4F41B59D4DF2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FinderSync/FinderSync.entitlements;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = DE59N86W33;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FinderSync/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				OTHER_CODE_SIGN_FLAGS = "--timestamp";
+				PRODUCT_BUNDLE_IDENTIFIER = com.syncvault.app.findersync;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -559,6 +664,16 @@
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
+		};
+
+		AE7CC15FE7354A40A7CE2F9C /* Build configuration list for PBXNativeTarget "SyncVaultFinderSync" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C856614C402C4E8F8F4B5428 /* Debug */,
+				7B96EDE0E4FD4F41B59D4DF2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 

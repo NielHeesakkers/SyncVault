@@ -1,9 +1,16 @@
 {
-  "version": "2.5.17",
+  "version": "2.5.18",
   "min_version": "1.0",
   "release_date": "2026-03-31",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.17/SyncVault-2.5.17.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.18/SyncVault-2.5.18.dmg",
   "history": [
+    {
+      "version": "2.5.18",
+      "date": "2026-03-31",
+      "changes": [
+        "Finder Sync Extension: overlay icons and context menu, release script updates"
+      ]
+    },
     {
       "version": "2.5.17",
       "date": "2026-03-31",

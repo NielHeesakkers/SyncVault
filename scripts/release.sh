@@ -71,8 +71,15 @@ ENT_FP="FileProvider/FileProvider.entitlements"
 
 cd macos
 xcodebuild -scheme SyncVault -configuration Release -derivedDataPath build clean build 2>&1 | tail -3
+xcodebuild -scheme SyncVaultFinderSync -configuration Release -derivedDataPath build build 2>&1 | tail -1
 
 APP="build/Build/Products/Release/SyncVault.app"
+
+# Embed FinderSync extension in app bundle
+if [ -d "build/Build/Products/Release/SyncVaultFinderSync.appex" ]; then
+    cp -R "build/Build/Products/Release/SyncVaultFinderSync.appex" "$APP/Contents/PlugIns/"
+    echo "Embedded FinderSync extension"
+fi
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
 
 # Fix Sparkle framework structure (remove unsealed symlinks + resource forks)
@@ -90,6 +97,9 @@ codesign --force --sign "$CERT" --timestamp --options runtime "$SPARKLE/Versions
 codesign --force --sign "$CERT" --timestamp --options runtime "$SPARKLE/Versions/B/Updater.app"
 codesign --force --sign "$CERT" --timestamp --options runtime "$SPARKLE"
 codesign --force --sign "$CERT" --timestamp --options runtime --entitlements "$ENT_FP" "$APP/Contents/PlugIns/SyncVaultFileProvider.appex"
+if [ -d "$APP/Contents/PlugIns/SyncVaultFinderSync.appex" ]; then
+    codesign --force --sign "$CERT" --timestamp --options runtime --entitlements "FinderSync/FinderSync.entitlements" "$APP/Contents/PlugIns/SyncVaultFinderSync.appex"
+fi
 codesign --force --sign "$CERT" --timestamp --options runtime --entitlements "$ENT_APP" "$APP"
 
 # Verify signature
