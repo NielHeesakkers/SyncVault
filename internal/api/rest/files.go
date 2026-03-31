@@ -838,6 +838,66 @@ func (s *Server) handleCheckHashes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"existing": existingList})
 }
 
+// handleLockFile handles POST /api/files/{id}/lock — lock a file for editing.
+func (s *Server) handleLockFile(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	id := chi.URLParam(r, "id")
+
+	var req struct {
+		Device string `json:"device"`
+	}
+	_ = readJSON(r, &req)
+
+	lock, err := s.db.LockFile(id, claims.UserID, claims.Username, req.Device)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"file_id":    lock.FileID,
+		"user_id":    lock.UserID,
+		"username":   lock.Username,
+		"device":     lock.Device,
+		"locked_at":  lock.LockedAt.Format(time.RFC3339),
+		"expires_at": lock.ExpiresAt.Format(time.RFC3339),
+	})
+}
+
+// handleUnlockFile handles DELETE /api/files/{id}/lock — unlock a file.
+func (s *Server) handleUnlockFile(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	id := chi.URLParam(r, "id")
+
+	if err := s.db.UnlockFile(id, claims.UserID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not unlock file"})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleGetFileLock handles GET /api/files/{id}/lock — check lock status.
+func (s *Server) handleGetFileLock(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	lock, err := s.db.GetFileLock(id)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"locked": false})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"locked":     true,
+		"file_id":    lock.FileID,
+		"user_id":    lock.UserID,
+		"username":   lock.Username,
+		"device":     lock.Device,
+		"locked_at":  lock.LockedAt.Format(time.RFC3339),
+		"expires_at": lock.ExpiresAt.Format(time.RFC3339),
+	})
+}
+
 // handleFileTree returns a flat list of all files (recursively) under a given folder.
 // Used by the sync client to compare local vs remote without multiple API calls.
 // Accepts folder_id either as a URL path parameter ({id}) or as a query parameter.

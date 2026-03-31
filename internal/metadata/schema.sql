@@ -186,6 +186,15 @@ CREATE TABLE IF NOT EXISTS file_blocks (
     PRIMARY KEY (file_id, version_num, block_index)
 );
 
+CREATE TABLE IF NOT EXISTS file_locks (
+    file_id    TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    username   TEXT NOT NULL,
+    device     TEXT NOT NULL DEFAULT '',
+    locked_at  TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_files_parent_id    ON files(parent_id);
 CREATE INDEX IF NOT EXISTS idx_files_owner_id     ON files(owner_id);

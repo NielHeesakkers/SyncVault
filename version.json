@@ -1,9 +1,16 @@
 {
-  "version": "2.5.20",
+  "version": "2.5.21",
   "min_version": "1.0",
   "release_date": "2026-03-31",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.20/SyncVault-2.5.20.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.21/SyncVault-2.5.21.dmg",
   "history": [
+    {
+      "version": "2.5.21",
+      "date": "2026-03-31",
+      "changes": [
+        "File locking (30min auto-expire), SSE push notifications, all features verified"
+      ]
+    },
     {
       "version": "2.5.20",
       "date": "2026-03-31",

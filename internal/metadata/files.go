@@ -1002,3 +1002,69 @@ func (d *DB) SearchFiles(ownerID, query string) ([]File, error) {
 	}
 	return files, rows.Err()
 }
+
+// FileLock represents an active lock on a file.
+type FileLock struct {
+	FileID    string
+	UserID    string
+	Username  string
+	Device    string
+	LockedAt  time.Time
+	ExpiresAt time.Time
+}
+
+// LockFile creates or refreshes a lock on a file. Returns an error if the file is locked by a different user.
+func (d *DB) LockFile(fileID, userID, username, device string) (*FileLock, error) {
+	// Check if already locked by someone else
+	existing, _ := d.GetFileLock(fileID)
+	if existing != nil && existing.UserID != userID && existing.ExpiresAt.After(time.Now()) {
+		return nil, fmt.Errorf("file locked by %s", existing.Username)
+	}
+
+	now := time.Now()
+	expires := now.Add(30 * time.Minute)
+
+	d.db.Exec("DELETE FROM file_locks WHERE file_id = ?", fileID)
+	_, err := d.db.Exec(
+		"INSERT INTO file_locks (file_id, user_id, username, device, locked_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+		fileID, userID, username, device, now.Format(time.RFC3339), expires.Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("metadata: lock file: %w", err)
+	}
+
+	return &FileLock{FileID: fileID, UserID: userID, Username: username, Device: device, LockedAt: now, ExpiresAt: expires}, nil
+}
+
+// UnlockFile removes a lock on a file for a given user.
+func (d *DB) UnlockFile(fileID, userID string) error {
+	_, err := d.db.Exec("DELETE FROM file_locks WHERE file_id = ? AND user_id = ?", fileID, userID)
+	return err
+}
+
+// GetFileLock returns the current lock on a file, or nil if not locked.
+// Expired locks are cleaned up automatically.
+func (d *DB) GetFileLock(fileID string) (*FileLock, error) {
+	// Clean expired first
+	d.db.Exec("DELETE FROM file_locks WHERE expires_at < ?", time.Now().Format(time.RFC3339))
+
+	row := d.db.QueryRow(
+		"SELECT file_id, user_id, username, device, locked_at, expires_at FROM file_locks WHERE file_id = ?",
+		fileID,
+	)
+	var lock FileLock
+	var lockedAt, expiresAt string
+	err := row.Scan(&lock.FileID, &lock.UserID, &lock.Username, &lock.Device, &lockedAt, &expiresAt)
+	if err != nil {
+		return nil, err
+	}
+	lock.LockedAt, _ = time.Parse(time.RFC3339, lockedAt)
+	lock.ExpiresAt, _ = time.Parse(time.RFC3339, expiresAt)
+	return &lock, nil
+}
+
+// GetChangesSince returns the count of files changed since the given timestamp for a user.
+// Used by SSE to notify clients of remote changes.
+func (d *DB) GetChangesSince(userID string, since time.Time) ([]File, error) {
+	return d.ListChangedFiles(since, userID)
+}

@@ -94,9 +94,17 @@ func (s *Server) setupRoutes() {
 		r.Delete("/api/files/{id}", s.handleDeleteFile)
 		r.Post("/api/files/{id}/restore", s.handleRestoreFile)
 		r.Get("/api/files/{id}/download", s.handleDownloadFile)
+		// File locking.
+		r.Post("/api/files/{id}/lock", s.handleLockFile)
+		r.Delete("/api/files/{id}/lock", s.handleUnlockFile)
+		r.Get("/api/files/{id}/lock", s.handleGetFileLock)
+
 		r.Get("/api/trash", s.handleListTrash)
 		r.Get("/api/changes", s.handleListChanges)
 		r.Get("/api/activity", s.handleUserActivity)
+
+		// Server-Sent Events for real-time push.
+		r.Get("/api/events", s.handleSSE)
 
 		// Chunked uploads (legacy).
 		r.Post("/api/uploads/init", s.handleInitUpload)
@@ -193,7 +201,7 @@ func (s *Server) setupRoutes() {
 	r.NotFound(ServeSPA().ServeHTTP)
 }
 
-const AppVersion = "2.5.20"
+const AppVersion = "2.5.21"
 
 // handleHealth returns a simple health check response.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

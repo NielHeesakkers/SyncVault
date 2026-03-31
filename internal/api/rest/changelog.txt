@@ -1,3 +1,6 @@
+## [2.5.21] — 2026-03-31
+- File locking (30min auto-expire), SSE push notifications, all features verified
+
 ## [2.5.20] — 2026-03-31
 - Fix on-demand: cloud-only file states, domain re-registration, eviction support
 
