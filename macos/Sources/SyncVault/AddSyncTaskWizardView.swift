@@ -115,16 +115,28 @@ struct AddSyncTaskWizardView: View {
                 }
             }
 
-            // Local folder picker
-            HStack {
-                Text("Local")
-                    .frame(width: 80, alignment: .trailing)
-                    .foregroundColor(.secondary)
-                TextField("Select local folder...", text: $localPath)
-                    .textFieldStyle(.roundedBorder)
-                    .disabled(true)
-                Button("Browse...") {
-                    selectLocalFolder()
+            // Local folder picker (not needed for on-demand — macOS manages the location)
+            if mode != .onDemand {
+                HStack {
+                    Text("Local")
+                        .frame(width: 80, alignment: .trailing)
+                        .foregroundColor(.secondary)
+                    TextField("Select local folder...", text: $localPath)
+                        .textFieldStyle(.roundedBorder)
+                        .disabled(true)
+                    Button("Browse...") {
+                        selectLocalFolder()
+                    }
+                }
+            } else {
+                HStack {
+                    Text("Local")
+                        .frame(width: 80, alignment: .trailing)
+                        .foregroundColor(.secondary)
+                    Text("~/Library/CloudStorage/SyncVault/")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 11))
+                    Spacer()
                 }
             }
 
@@ -266,7 +278,8 @@ struct AddSyncTaskWizardView: View {
     }
 
     private var canCreate: Bool {
-        guard selectedFolderID != nil, !localPath.isEmpty, !isCreating else { return false }
+        guard selectedFolderID != nil, !isCreating else { return false }
+        if mode != .onDemand && localPath.isEmpty { return false }
         if showDirectionPicker && initialDirection == nil { return false }
         return true
     }
@@ -308,6 +321,12 @@ struct AddSyncTaskWizardView: View {
     }
 
     private func checkBothSidesContent() {
+        // On-demand doesn't need direction picker
+        if mode == .onDemand {
+            showDirectionPicker = false
+            initialDirection = nil
+            return
+        }
         guard let folderID = selectedFolderID, !localPath.isEmpty,
               let client = appState.apiClient else {
             showDirectionPicker = false
@@ -362,8 +381,10 @@ struct AddSyncTaskWizardView: View {
         let excludedFolders = subfolders.filter { !$0.isIncluded }.map { "\($0.name)/*" }
 
         do {
+            // On-demand doesn't need a local path — macOS manages ~/Library/CloudStorage/
+            let taskLocalPath = mode == .onDemand ? "~/Library/CloudStorage/SyncVault" : localPath
             try await appState.addSyncTask(
-                localPath: localPath,
+                localPath: taskLocalPath,
                 mode: mode,
                 remoteFolderID: folderID,
                 remoteFolderName: folderName,

@@ -166,6 +166,16 @@ class AppState: ObservableObject {
         let configURL = Self.configDirectory.appendingPathComponent("config.json")
         try? FileManager.default.createDirectory(at: Self.configDirectory, withIntermediateDirectories: true)
         try? JSONEncoder().encode(config).write(to: configURL)
+
+        // Update monitored paths for Finder Sync Extension
+        let paths = syncTasks.map { $0.localPath }
+        let sharedDefaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
+        sharedDefaults?.set(paths, forKey: "monitoredPaths")
+        // Notify FinderSync extension that paths changed
+        DistributedNotificationCenter.default().postNotificationName(
+            NSNotification.Name("com.syncvault.monitoredPathsChanged"),
+            object: nil
+        )
     }
 
     static var configDirectory: URL {

@@ -1,9 +1,16 @@
 {
-  "version": "2.5.18",
+  "version": "2.5.19",
   "min_version": "1.0",
   "release_date": "2026-03-31",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.18/SyncVault-2.5.18.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.19/SyncVault-2.5.19.dmg",
   "history": [
+    {
+      "version": "2.5.19",
+      "date": "2026-03-31",
+      "changes": [
+        "On-demand: remove local folder picker, auto CloudStorage path, monitored paths sync"
+      ]
+    },
     {
       "version": "2.5.18",
       "date": "2026-03-31",
