@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 
@@ -48,7 +47,7 @@ func (s *Server) handleCheckBlocks(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Hashes []string `json:"hashes"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := readJSON(r, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
@@ -72,7 +71,7 @@ func (s *Server) handleCreateFileFromBlocks(w http.ResponseWriter, r *http.Reque
 		Blocks   []storage.BlockEntry `json:"blocks"`
 		MimeType string               `json:"mime_type"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := readJSON(r, &req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}

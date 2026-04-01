@@ -285,16 +285,18 @@ func (s *Store) Get(fileHash string, w io.Writer) error {
 
 	for _, e := range entries {
 		cp := s.chunkPath(e.hash)
-		var data []byte
-		if err := retryOnTooManyFiles("Get read chunk", func() error {
-			var readErr error
-			data, readErr = os.ReadFile(cp)
-			return readErr
+		var chunkFile *os.File
+		if err := retryOnTooManyFiles("Get open chunk", func() error {
+			var openErr error
+			chunkFile, openErr = os.Open(cp)
+			return openErr
 		}); err != nil {
 			return fmt.Errorf("storage: read chunk %s: %w", e.hash, err)
 		}
-		if _, err := w.Write(data); err != nil {
-			return fmt.Errorf("storage: write to output: %w", err)
+		_, copyErr := io.Copy(w, chunkFile)
+		chunkFile.Close()
+		if copyErr != nil {
+			return fmt.Errorf("storage: write to output: %w", copyErr)
 		}
 	}
 

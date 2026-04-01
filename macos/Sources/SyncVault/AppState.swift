@@ -45,6 +45,7 @@ class AppState: ObservableObject {
     private var notificationTimer: Timer?
     private var fileWatchers: [UUID: FileWatcher] = [:]  // per sync task
     private var syncDatabase: SyncDatabase?
+    private var wakeObserver: NSObjectProtocol?
 
     init() {
         loadConfig()
@@ -53,7 +54,7 @@ class AppState: ObservableObject {
         // Try to auto-reconnect with saved credentials
         Task { await tryAutoConnect() }
         // Re-authenticate after wake from sleep
-        NSWorkspace.shared.notificationCenter.addObserver(
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -75,6 +76,15 @@ class AppState: ObservableObject {
                     await self.tryAutoConnect()
                 }
             }
+        }
+    }
+
+    deinit {
+        syncTimer?.invalidate()
+        speedTimer?.invalidate()
+        notificationTimer?.invalidate()
+        if let observer = wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
     }
 

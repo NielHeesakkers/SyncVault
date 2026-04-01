@@ -62,6 +62,34 @@ func computeBlockSignatures(data []byte) []blockSignature {
 	return sigs
 }
 
+// computeBlockSignaturesFromReader computes block signatures by streaming from r,
+// reading one deltaBlockSize block at a time. Memory usage is O(deltaBlockSize).
+func computeBlockSignaturesFromReader(r io.Reader) ([]blockSignature, error) {
+	var sigs []blockSignature
+	buf := make([]byte, deltaBlockSize)
+	index := 0
+	for {
+		n, err := io.ReadFull(r, buf)
+		if n > 0 {
+			block := buf[:n]
+			sh := sha256.Sum256(block)
+			sigs = append(sigs, blockSignature{
+				Index:      index,
+				WeakHash:   computeWeakHash(block),
+				StrongHash: hex.EncodeToString(sh[:]),
+			})
+			index++
+		}
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return sigs, nil
+}
+
 // handleGetBlocks handles GET /api/files/{id}/blocks.
 // Returns the block signatures for the latest version of the file.
 func (s *Server) handleGetBlocks(w http.ResponseWriter, r *http.Request) {
@@ -112,14 +140,31 @@ func (s *Server) handleGetBlocks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Compute block signatures on-the-fly from stored content.
-	var buf bytes.Buffer
-	if err := s.store.Get(f.ContentHash.String, &buf); err != nil {
+	// Compute block signatures on-the-fly from stored content (streaming — O(blockSize) memory).
+	pr, pw := io.Pipe()
+	sigsCh := make(chan struct {
+		sigs []blockSignature
+		err  error
+	}, 1)
+	go func() {
+		sigs, err := computeBlockSignaturesFromReader(pr)
+		sigsCh <- struct {
+			sigs []blockSignature
+			err  error
+		}{sigs, err}
+	}()
+	if err := s.store.Get(f.ContentHash.String, pw); err != nil {
+		pw.CloseWithError(err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not read file content"})
 		return
 	}
-
-	sigs := computeBlockSignatures(buf.Bytes())
+	pw.Close()
+	sigResult := <-sigsCh
+	if sigResult.err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not compute block signatures"})
+		return
+	}
+	sigs := sigResult.sigs
 
 	// Cache the signatures.
 	dbBlocks := make([]metadata.FileBlock, len(sigs))

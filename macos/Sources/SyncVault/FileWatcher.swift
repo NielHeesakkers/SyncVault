@@ -65,6 +65,8 @@ final class FileWatcher {
 
     /// Stop watching.
     func stop() {
+        debounceWorkItem?.cancel()
+        debounceWorkItem = nil
         guard let stream = stream else { return }
         FSEventStreamStop(stream)
         FSEventStreamInvalidate(stream)

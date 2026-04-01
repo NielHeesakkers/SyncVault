@@ -571,12 +571,11 @@ actor SyncEngine {
 
                         case .conflict(let localPath, let remoteID, let relativePath):
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
-                            let data = try await self.apiClient.downloadFile(id: remoteID)
                             let url = URL(fileURLWithPath: localPath)
                             let conflictName = Self.conflictName(for: displayName)
                             let conflictPath = url.deletingLastPathComponent().appendingPathComponent(conflictName)
-                            // Save the remote version as the conflict file
-                            try data.write(to: conflictPath)
+                            // Stream the remote version directly to disk (avoids loading entire file into memory)
+                            let _ = try await self.apiClient.downloadFileToDisk(id: remoteID, destination: conflictPath)
                             // Keep local version in place — it will be uploaded normally
                             logger.info("Conflict: saved remote as \(conflictName), keeping local \(displayName)")
                             return .conflict(displayName)

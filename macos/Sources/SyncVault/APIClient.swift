@@ -9,8 +9,8 @@ actor APIClient {
     init(baseURL: String) {
         self.baseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 86400
-        config.timeoutIntervalForResource = 86400
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 300
         config.httpMaximumConnectionsPerHost = 6
         self.session = URLSession(configuration: config)
     }
@@ -54,6 +54,7 @@ actor APIClient {
     /// Stream a file download directly to disk (avoids loading into memory).
     func downloadFileToDisk(id: String, destination: URL) async throws -> Int64 {
         var request = URLRequest(url: URL(string: "\(baseURL)/api/files/\(id)/download")!)
+        request.timeoutInterval = 86400 // Large file downloads need extended timeout
         addAuth(&request)
         let (tempURL, response) = try await session.download(for: request)
         try checkResponse(response)
@@ -390,7 +391,7 @@ actor APIClient {
         var request = URLRequest(url: URL(string: "\(baseURL)/api/files/\(fileID)/delta")!)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 0
+        request.timeoutInterval = 86400 // Delta uploads may be large
         addAuth(&request)
 
         var body = Data()

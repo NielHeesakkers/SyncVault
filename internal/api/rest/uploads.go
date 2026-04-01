@@ -228,7 +228,6 @@ func (s *Server) handleCompleteUpload(w http.ResponseWriter, r *http.Request) {
 	pr, pw := io.Pipe()
 
 	go func() {
-		var writeErr error
 		for i := 0; i < sess.TotalChunks; i++ {
 			cp := s.chunkPath(uploadID, i)
 			f, err := os.Open(cp)
@@ -243,7 +242,7 @@ func (s *Server) handleCompleteUpload(w http.ResponseWriter, r *http.Request) {
 			}
 			f.Close()
 		}
-		pw.CloseWithError(writeErr)
+		pw.Close()
 	}()
 
 	contentHash, size, err := s.store.Put(pr)
