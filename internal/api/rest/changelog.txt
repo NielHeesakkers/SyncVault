@@ -1,3 +1,6 @@
+## [2.5.24] — 2026-04-01
+- Beautiful HTML email templates with branded layout
+
 ## [2.5.23] — 2026-04-01
 - Fix SMTP TLS for port 465, forgot password sidebar fix, integration tests
 

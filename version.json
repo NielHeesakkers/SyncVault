@@ -1,9 +1,16 @@
 {
-  "version": "2.5.23",
+  "version": "2.5.24",
   "min_version": "1.0",
   "release_date": "2026-04-01",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.23/SyncVault-2.5.23.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.24/SyncVault-2.5.24.dmg",
   "history": [
+    {
+      "version": "2.5.24",
+      "date": "2026-04-01",
+      "changes": [
+        "Beautiful HTML email templates with branded layout"
+      ]
+    },
     {
       "version": "2.5.23",
       "date": "2026-04-01",
