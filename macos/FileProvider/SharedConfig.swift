@@ -44,6 +44,40 @@ enum SharedConfig {
         return String(data: data, encoding: .utf8)
     }
 
+    // MARK: - Progress sharing (extension → app)
+
+    static func setProgress(action: String, filename: String, bytesTransferred: Int64, totalBytes: Int64) {
+        let defaults = sharedDefaults
+        defaults.set(action, forKey: "fp_progress_action")
+        defaults.set(filename, forKey: "fp_progress_filename")
+        defaults.set(bytesTransferred, forKey: "fp_progress_bytes")
+        defaults.set(totalBytes, forKey: "fp_progress_total")
+        defaults.set(Date().timeIntervalSince1970, forKey: "fp_progress_timestamp")
+    }
+
+    static func clearProgress() {
+        let defaults = sharedDefaults
+        defaults.removeObject(forKey: "fp_progress_action")
+        defaults.removeObject(forKey: "fp_progress_filename")
+        defaults.removeObject(forKey: "fp_progress_bytes")
+        defaults.removeObject(forKey: "fp_progress_total")
+        defaults.removeObject(forKey: "fp_progress_timestamp")
+    }
+
+    static func getProgress() -> (action: String, filename: String, bytes: Int64, total: Int64, timestamp: Double)? {
+        let defaults = sharedDefaults
+        guard let action = defaults.string(forKey: "fp_progress_action"),
+              let filename = defaults.string(forKey: "fp_progress_filename") else { return nil }
+        let bytes = Int64(defaults.integer(forKey: "fp_progress_bytes"))
+        let total = Int64(defaults.integer(forKey: "fp_progress_total"))
+        let timestamp = defaults.double(forKey: "fp_progress_timestamp")
+        // Stale if older than 30 seconds
+        if Date().timeIntervalSince1970 - timestamp > 30 { return nil }
+        return (action, filename, bytes, total, timestamp)
+    }
+
+    // MARK: - Keychain
+
     static func saveToKeychain(key: String, value: String) {
         let data = value.data(using: .utf8)!
         let query: [String: Any] = [

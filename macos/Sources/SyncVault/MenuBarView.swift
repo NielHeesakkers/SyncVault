@@ -112,6 +112,20 @@ struct MenuBarView: View {
                             }
                         }
 
+                        // FileProvider on-demand progress
+                        if let fpStatus = appState.fpProgress {
+                            HStack(spacing: 6) {
+                                Image(systemName: "icloud.and.arrow.up")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.blue)
+                                Text(fpStatus)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                        }
+
                         if let error = appState.lastError {
                             HStack(spacing: 6) {
                                 Image(systemName: "exclamationmark.triangle.fill")

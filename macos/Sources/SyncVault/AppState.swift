@@ -14,9 +14,11 @@ class AppState: ObservableObject {
     private var syncPending = false
     @Published var isPaused = false
     @Published var syncProgress: SyncProgress?
+    @Published var fpProgress: String?  // FileProvider on-demand progress (e.g. "Uploading photo.jpg")
     @Published var syncQueue: [String] = []
     @Published var speedHistory: [Double] = []  // last 60 samples (10 min at 10s intervals)
     private var speedTimer: Timer?
+    private var fpProgressTimer: Timer?
     @Published var lastError: String?
     @Published var recentActivity: [ActivityItem] = []
     @Published var syncTasks: [SyncTask] = []
@@ -315,6 +317,13 @@ class AppState: ObservableObject {
     func startSyncLoop() {
         stopSyncLoop()
 
+        // Poll FileProvider on-demand progress every 2 seconds
+        fpProgressTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.checkFileProviderProgress()
+            }
+        }
+
         // Start file watchers for each sync task
         for task in syncTasks where task.isEnabled && task.mode != .onDemand {
             let watcher = FileWatcher(path: task.localPath)
@@ -343,6 +352,9 @@ class AppState: ObservableObject {
     func stopSyncLoop() {
         syncTimer?.invalidate()
         syncTimer = nil
+        fpProgressTimer?.invalidate()
+        fpProgressTimer = nil
+        fpProgress = nil
         // Stop all file watchers
         for (_, watcher) in fileWatchers {
             watcher.stop()
@@ -369,13 +381,31 @@ class AppState: ObservableObject {
         // Don't clear speedHistory — keep it for display until next sync starts
     }
 
-    /// Record a speed sample from the current sync progress.
+    /// Record a speed sample from the current sync progress and check FileProvider progress.
     func recordSpeedSample() {
         let speed = syncProgress?.bytesPerSecond ?? 0
         speedHistory.append(speed)
         if speedHistory.count > 60 {
             speedHistory.removeFirst(speedHistory.count - 60)
         }
+        // Poll FileProvider on-demand progress from shared UserDefaults
+        checkFileProviderProgress()
+    }
+
+    private func checkFileProviderProgress() {
+        let defaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
+        guard let action = defaults?.string(forKey: "fp_progress_action"),
+              let filename = defaults?.string(forKey: "fp_progress_filename") else {
+            fpProgress = nil
+            return
+        }
+        let timestamp = defaults?.double(forKey: "fp_progress_timestamp") ?? 0
+        // Stale if older than 30 seconds
+        if Date().timeIntervalSince1970 - timestamp > 30 {
+            fpProgress = nil
+            return
+        }
+        fpProgress = "\(action) \(filename)"
     }
 
     // MARK: - Device ID

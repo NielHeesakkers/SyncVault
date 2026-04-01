@@ -1,9 +1,16 @@
 {
-  "version": "2.5.26",
+  "version": "2.5.27",
   "min_version": "1.0",
   "release_date": "2026-04-01",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.26/SyncVault-2.5.26.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.27/SyncVault-2.5.27.dmg",
   "history": [
+    {
+      "version": "2.5.27",
+      "date": "2026-04-01",
+      "changes": [
+        "Show FileProvider on-demand upload/download progress in menu bar"
+      ]
+    },
     {
       "version": "2.5.26",
       "date": "2026-04-01",

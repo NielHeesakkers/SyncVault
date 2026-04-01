@@ -1,3 +1,6 @@
+## [2.5.27] — 2026-04-01
+- Show FileProvider on-demand upload/download progress in menu bar
+
 ## [2.5.26] — 2026-04-01
 - Fix on-demand large file upload: streaming from disk instead of loading into memory
 

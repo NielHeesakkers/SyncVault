@@ -48,9 +48,12 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         Task {
             do {
                 let client = try SharedConfig.apiClient()
+                SharedConfig.setProgress(action: "Downloading", filename: itemIdentifier.rawValue, bytesTransferred: 0, totalBytes: 0)
                 let (tempURL, serverFile) = try await client.downloadFileToDisk(id: itemIdentifier.rawValue)
                 let item = FileProviderItem(serverFile: serverFile, isDownloaded: true)
                 logger.info("Downloaded: \(serverFile.name) (\(serverFile.size) bytes)")
+                SharedConfig.setProgress(action: "Downloaded", filename: serverFile.name, bytesTransferred: serverFile.size, totalBytes: serverFile.size)
+                SharedConfig.clearProgress()
                 completionHandler(tempURL, item, nil)
                 progress.completedUnitCount = 100
             } catch {
@@ -90,9 +93,10 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
                     let fileSize = (attrs[.size] as? Int64) ?? 0
 
+                    SharedConfig.setProgress(action: "Uploading", filename: itemTemplate.filename, bytesTransferred: 0, totalBytes: fileSize)
+
                     let result: FPServerFile
                     if fileSize < 50 * 1024 * 1024 {
-                        // Small files: load into memory (fast)
                         let data = try Data(contentsOf: url)
                         result = try await client.uploadFile(
                             data: data,
@@ -100,13 +104,14 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                             parentID: parentID
                         )
                     } else {
-                        // Large files: stream upload from disk
                         result = try await client.uploadFileFromDisk(
                             fileURL: url,
                             filename: itemTemplate.filename,
                             parentID: parentID
                         )
                     }
+                    SharedConfig.setProgress(action: "Uploaded", filename: itemTemplate.filename, bytesTransferred: fileSize, totalBytes: fileSize)
+                    SharedConfig.clearProgress()
                     let item = FileProviderItem(serverFile: result, isDownloaded: true)
                     completionHandler(item, [], false, nil)
                 } else {
