@@ -1,3 +1,6 @@
+## [2.5.23] — 2026-04-01
+- Fix SMTP TLS for port 465, forgot password sidebar fix, integration tests
+
 ## [2.5.22] — 2026-04-01
 - Memory and CPU optimizations: streaming storage reads, request body limits, timer cleanup, reduced timeouts
 

@@ -91,25 +91,40 @@ func (s *Service) TestConnection() SMTPTestResult {
 
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)
 
-	// Test TCP connection with timeout
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
-	if err != nil {
-		result.Error = fmt.Sprintf("Cannot connect to %s — %v", addr, err)
-		return result
-	}
+	var client *smtp.Client
 
-	// Test SMTP handshake
-	client, err := smtp.NewClient(conn, s.host)
-	if err != nil {
-		conn.Close()
-		result.Error = fmt.Sprintf("SMTP handshake failed: %v", err)
-		return result
+	if s.port == 465 {
+		// Port 465: implicit TLS
+		tlsConn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", addr, &tls.Config{ServerName: s.host})
+		if err != nil {
+			result.Error = fmt.Sprintf("TLS connection to %s failed: %v", addr, err)
+			return result
+		}
+		client, err = smtp.NewClient(tlsConn, s.host)
+		if err != nil {
+			tlsConn.Close()
+			result.Error = fmt.Sprintf("SMTP handshake failed: %v", err)
+			return result
+		}
+	} else {
+		// Port 587: plaintext + STARTTLS
+		conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+		if err != nil {
+			result.Error = fmt.Sprintf("Cannot connect to %s — %v", addr, err)
+			return result
+		}
+		client, err = smtp.NewClient(conn, s.host)
+		if err != nil {
+			conn.Close()
+			result.Error = fmt.Sprintf("SMTP handshake failed: %v", err)
+			return result
+		}
 	}
 	defer client.Close()
 
 	// Test authentication
-	auth := smtp.PlainAuth("", s.user, s.password, s.host)
-	if err := client.Auth(auth); err != nil {
+	smtpAuth := smtp.PlainAuth("", s.user, s.password, s.host)
+	if err := client.Auth(smtpAuth); err != nil {
 		result.Error = fmt.Sprintf("Authentication failed: %v", err)
 		return result
 	}

@@ -27,7 +27,7 @@
 
 	let { children } = $props();
 
-	const publicRoutes = ['/login'];
+	const publicRoutes = ['/login', '/forgot-password', '/reset-password'];
 	let isPublic = $derived(publicRoutes.some((r) => $page.url.pathname.startsWith(r)));
 	let userMenuOpen = $state(false);
 	let user = $derived($currentUser);
