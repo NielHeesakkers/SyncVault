@@ -55,6 +55,47 @@ actor FPAPIClient {
         try await deleteWithReauth("/api/files/\(id)")
     }
 
+    /// Stream upload a file from disk without loading into memory
+    func uploadFileFromDisk(fileURL: URL, filename: String, parentID: String?) async throws -> FPServerFile {
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/upload")!)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 86400
+        addAuth(&request)
+
+        // Build multipart body as temp file to avoid memory pressure
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let output = try FileHandle(forWritingTo: { FileManager.default.createFile(atPath: tempURL.path, contents: nil); return tempURL }())
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        // Write parent_id part
+        if let parentID = parentID {
+            output.write("--\(boundary)\r\nContent-Disposition: form-data; name=\"parent_id\"\r\n\r\n\(parentID)\r\n".data(using: .utf8)!)
+        }
+
+        // Write file header
+        output.write("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+
+        // Stream file content in 4MB chunks
+        let input = try FileHandle(forReadingFrom: fileURL)
+        defer { input.closeFile() }
+        while true {
+            let chunk = input.readData(ofLength: 4 * 1024 * 1024)
+            if chunk.isEmpty { break }
+            output.write(chunk)
+        }
+
+        // Write footer
+        output.write("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        output.closeFile()
+
+        // Upload the temp file
+        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: tempURL)
+        try checkResponse(response)
+        return try JSONDecoder().decode(FPServerFile.self, from: data)
+    }
+
     func getChanges(since: Date) async throws -> FPChangesResponse {
         let formatter = ISO8601DateFormatter()
         let sinceStr = formatter.string(from: since).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""

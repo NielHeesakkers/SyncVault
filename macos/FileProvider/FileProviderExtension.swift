@@ -86,13 +86,27 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     let item = FileProviderItem(serverFile: result)
                     completionHandler(item, [], false, nil)
                 } else if let url = url {
-                    // Upload file
-                    let data = try Data(contentsOf: url)
-                    let result = try await client.uploadFile(
-                        data: data,
-                        filename: itemTemplate.filename,
-                        parentID: parentID
-                    )
+                    // Upload file — stream from disk for large files
+                    let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+                    let fileSize = (attrs[.size] as? Int64) ?? 0
+
+                    let result: FPServerFile
+                    if fileSize < 50 * 1024 * 1024 {
+                        // Small files: load into memory (fast)
+                        let data = try Data(contentsOf: url)
+                        result = try await client.uploadFile(
+                            data: data,
+                            filename: itemTemplate.filename,
+                            parentID: parentID
+                        )
+                    } else {
+                        // Large files: stream upload from disk
+                        result = try await client.uploadFileFromDisk(
+                            fileURL: url,
+                            filename: itemTemplate.filename,
+                            parentID: parentID
+                        )
+                    }
                     let item = FileProviderItem(serverFile: result, isDownloaded: true)
                     completionHandler(item, [], false, nil)
                 } else {

@@ -1,9 +1,16 @@
 {
-  "version": "2.5.25",
+  "version": "2.5.26",
   "min_version": "1.0",
   "release_date": "2026-04-01",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.25/SyncVault-2.5.25.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.26/SyncVault-2.5.26.dmg",
   "history": [
+    {
+      "version": "2.5.26",
+      "date": "2026-04-01",
+      "changes": [
+        "Fix on-demand large file upload: streaming from disk instead of loading into memory"
+      ]
+    },
     {
       "version": "2.5.25",
       "date": "2026-04-01",

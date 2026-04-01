@@ -1,3 +1,6 @@
+## [2.5.26] — 2026-04-01
+- Fix on-demand large file upload: streaming from disk instead of loading into memory
+
 ## [2.5.25] — 2026-04-01
 - Fix password reset flow: token invalidation, base_url in reset link, sidebar hidden on public pages
 
