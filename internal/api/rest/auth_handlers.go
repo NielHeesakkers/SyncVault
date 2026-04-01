@@ -301,6 +301,11 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Invalidate all existing sessions — old password is no longer valid
+	if err := s.db.InvalidateTokens(userID); err != nil {
+		log.Printf("password reset: could not invalidate tokens: %v", err)
+	}
+
 	if err := s.db.MarkPasswordResetUsed(req.Token); err != nil {
 		log.Printf("password reset: could not mark token used: %v", err)
 	}

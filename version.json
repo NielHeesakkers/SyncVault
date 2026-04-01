@@ -1,9 +1,16 @@
 {
-  "version": "2.5.24",
+  "version": "2.5.25",
   "min_version": "1.0",
   "release_date": "2026-04-01",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.24/SyncVault-2.5.24.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.25/SyncVault-2.5.25.dmg",
   "history": [
+    {
+      "version": "2.5.25",
+      "date": "2026-04-01",
+      "changes": [
+        "Fix password reset flow: token invalidation, base_url in reset link, sidebar hidden on public pages"
+      ]
+    },
     {
       "version": "2.5.24",
       "date": "2026-04-01",

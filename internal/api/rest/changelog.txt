@@ -1,3 +1,6 @@
+## [2.5.25] — 2026-04-01
+- Fix password reset flow: token invalidation, base_url in reset link, sidebar hidden on public pages
+
 ## [2.5.24] — 2026-04-01
 - Beautiful HTML email templates with branded layout
 
