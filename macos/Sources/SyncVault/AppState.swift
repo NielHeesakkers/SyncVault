@@ -418,18 +418,20 @@ class AppState: ObservableObject {
         let bytes = Int64(defaults?.integer(forKey: "fp_progress_bytes") ?? 0)
         let total = Int64(defaults?.integer(forKey: "fp_progress_total") ?? 0)
 
-        // Calculate speed
+        // Calculate speed — only during actual network transfer
         let now = Date()
-        if let lastTime = fpLastTime, bytes > fpLastBytes {
+        let isTransferring = action == "Uploading" || action == "Downloading"
+        if isTransferring, let lastTime = fpLastTime, bytes > fpLastBytes {
             let elapsed = now.timeIntervalSince(lastTime)
             if elapsed > 0 {
                 fpSpeed = Double(bytes - fpLastBytes) / elapsed
-                // Feed into speed history for the graph
                 speedHistory.append(fpSpeed)
                 if speedHistory.count > 60 {
                     speedHistory.removeFirst(speedHistory.count - 60)
                 }
             }
+        } else if !isTransferring {
+            fpSpeed = 0
         }
         fpLastBytes = bytes
         fpLastTime = now

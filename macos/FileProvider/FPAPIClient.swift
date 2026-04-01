@@ -324,9 +324,10 @@ struct FPServerFile: Codable {
     let size: Int64
     let contentHash: String?
     let mimeType: String?
-    let createdAt: String
-    let updatedAt: String
+    let createdAt: String?
+    let updatedAt: String?
     let deletedAt: String?
+    let removedLocally: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, name, size
@@ -337,6 +338,7 @@ struct FPServerFile: Codable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case deletedAt = "deleted_at"
+        case removedLocally = "removed_locally"
     }
 }
 

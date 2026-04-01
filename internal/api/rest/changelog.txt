@@ -1,3 +1,6 @@
+## [2.5.31] — 2026-04-01
+- Fix FileProvider JSON decode: optional fields, removedLocally bool, menu bar icon shows on-demand activity
+
 ## [2.5.30] — 2026-04-01
 - FileProvider block upload: no temp files, direct to server, dedup, real progress per block
 

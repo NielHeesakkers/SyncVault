@@ -71,7 +71,11 @@ class FileProviderItem: NSObject, NSFileProviderItem {
         self.itemIsDownloaded = isDownloaded
 
         let formatter = ISO8601DateFormatter()
-        self.modifiedDate = formatter.date(from: serverFile.updatedAt) ?? Date()
+        if let updatedAt = serverFile.updatedAt {
+            self.modifiedDate = formatter.date(from: updatedAt) ?? Date()
+        } else {
+            self.modifiedDate = Date()
+        }
 
         super.init()
     }
