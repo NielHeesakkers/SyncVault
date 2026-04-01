@@ -1,9 +1,16 @@
 {
-  "version": "2.5.29",
+  "version": "2.5.30",
   "min_version": "1.0",
   "release_date": "2026-04-01",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.29/SyncVault-2.5.29.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.30/SyncVault-2.5.30.dmg",
   "history": [
+    {
+      "version": "2.5.30",
+      "date": "2026-04-01",
+      "changes": [
+        "FileProvider block upload: no temp files, direct to server, dedup, real progress per block"
+      ]
+    },
     {
       "version": "2.5.29",
       "date": "2026-04-01",

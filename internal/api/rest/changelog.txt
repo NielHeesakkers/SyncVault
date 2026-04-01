@@ -1,3 +1,6 @@
+## [2.5.30] — 2026-04-01
+- FileProvider block upload: no temp files, direct to server, dedup, real progress per block
+
 ## [2.5.29] — 2026-04-01
 - Fix on-demand progress: show real network speed, not local disk speed; show transfer graph during on-demand
 

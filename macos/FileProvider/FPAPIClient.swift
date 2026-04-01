@@ -1,4 +1,5 @@
 import Foundation
+import CommonCrypto
 
 actor FPAPIClient {
     let baseURL: String
@@ -55,50 +56,108 @@ actor FPAPIClient {
         try await deleteWithReauth("/api/files/\(id)")
     }
 
-    /// Stream upload a file from disk without loading into memory
+    /// Upload a file via block upload — same protocol as the sync engine.
+    /// No temp files, no memory pressure, with real network progress.
+    /// 1. Split file into 4MB blocks, compute SHA-256 per block
+    /// 2. Check which blocks server already has (dedup)
+    /// 3. Upload only missing blocks
+    /// 4. Create file on server from blocks
     func uploadFileFromDisk(fileURL: URL, filename: String, parentID: String?) async throws -> FPServerFile {
-        let boundary = UUID().uuidString
-        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/upload")!)
-        request.httpMethod = "POST"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 86400
-        addAuth(&request)
-
-        // Build multipart body as temp file to avoid memory pressure
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let output = try FileHandle(forWritingTo: { FileManager.default.createFile(atPath: tempURL.path, contents: nil); return tempURL }())
-        defer { try? FileManager.default.removeItem(at: tempURL) }
-
-        // Write parent_id part
-        if let parentID = parentID {
-            output.write("--\(boundary)\r\nContent-Disposition: form-data; name=\"parent_id\"\r\n\r\n\(parentID)\r\n".data(using: .utf8)!)
-        }
-
-        // Write file header
-        output.write("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
-
-        // Stream file content in 4MB chunks (to temp file)
-        let input = try FileHandle(forReadingFrom: fileURL)
-        defer { input.closeFile() }
+        let blockSize = 4 * 1024 * 1024
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { handle.closeFile() }
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? 0
-        SharedConfig.setProgress(action: "Preparing", filename: filename, bytesTransferred: 0, totalBytes: fileSize)
+
+        SharedConfig.setProgress(action: "Hashing", filename: filename, bytesTransferred: 0, totalBytes: fileSize)
+
+        // 1. Split into blocks, compute hashes
+        var fileHasher = CC_SHA256_CTX()
+        CC_SHA256_Init(&fileHasher)
+        var blocks: [(index: Int, hash: String, size: Int)] = []
+        var index = 0
+        var hashed: Int64 = 0
+
         while true {
-            let chunk = input.readData(ofLength: 4 * 1024 * 1024)
-            if chunk.isEmpty { break }
-            output.write(chunk)
+            let data = handle.readData(ofLength: blockSize)
+            if data.isEmpty { break }
+            data.withUnsafeBytes { CC_SHA256_Update(&fileHasher, $0.baseAddress, CC_LONG(data.count)) }
+            let blockHash = sha256Hex(data)
+            blocks.append((index: index, hash: blockHash, size: data.count))
+            index += 1
+            hashed += Int64(data.count)
+            if index % 10 == 0 {
+                SharedConfig.setProgress(action: "Hashing", filename: filename, bytesTransferred: hashed, totalBytes: fileSize)
+            }
         }
 
-        // Write footer
-        output.write("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-        output.closeFile()
+        var digest = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        CC_SHA256_Final(&digest, &fileHasher)
+        let fileHash = digest.map { String(format: "%02x", $0) }.joined()
 
-        // Upload the temp file to server — track with delegate for real network speed
-        SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: 0, totalBytes: fileSize)
-        let delegate = UploadProgressDelegate(filename: filename, totalBytes: fileSize)
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-        let (data, response) = try await session.upload(for: request, fromFile: tempURL)
-        try checkResponse(response)
-        return try JSONDecoder().decode(FPServerFile.self, from: data)
+        // 2. Check which blocks server already has
+        SharedConfig.setProgress(action: "Checking", filename: filename, bytesTransferred: 0, totalBytes: fileSize)
+        let allHashes = blocks.map { $0.hash }
+        let existingHashes = try await checkBlocks(allHashes)
+        let existingSet = Set(existingHashes)
+        let missingBlocks = blocks.filter { !existingSet.contains($0.hash) }
+
+        let existingBytes = Int64(blocks.filter { existingSet.contains($0.hash) }.map { $0.size }.reduce(0, +))
+
+        // 3. Upload missing blocks with progress
+        var uploaded: Int64 = existingBytes
+        if !missingBlocks.isEmpty {
+            let token = self.accessToken ?? ""
+            for block in missingBlocks {
+                let blockHandle = try FileHandle(forReadingFrom: fileURL)
+                defer { blockHandle.closeFile() }
+                blockHandle.seek(toFileOffset: UInt64(block.index) * UInt64(blockSize))
+                let data = blockHandle.readData(ofLength: block.size)
+
+                var req = URLRequest(url: URL(string: "\(baseURL)/api/blocks/\(block.hash)")!)
+                req.httpMethod = "PUT"
+                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                req.httpBody = data
+                req.timeoutInterval = 300
+
+                let (_, resp) = try await URLSession.shared.data(for: req)
+                try checkResponse(resp)
+
+                uploaded += Int64(data.count)
+                SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: uploaded, totalBytes: fileSize)
+            }
+        }
+
+        // 4. Create file on server from blocks
+        SharedConfig.setProgress(action: "Finalizing", filename: filename, bytesTransferred: fileSize, totalBytes: fileSize)
+        let blockManifest: [[String: Any]] = blocks.map { b in
+            ["index": b.index, "hash": b.hash, "size": b.size]
+        }
+        let body: [String: Any] = [
+            "filename": filename,
+            "parent_id": parentID ?? "",
+            "file_hash": fileHash,
+            "blocks": blockManifest
+        ]
+        let result: FPServerFile = try await post("/api/files/from-blocks", body: body)
+        SharedConfig.clearProgress()
+        return result
+    }
+
+    // MARK: - Block operations
+
+    func checkBlocks(_ hashes: [String]) async throws -> [String] {
+        struct CheckResponse: Codable { let existing: [String] }
+        let body: [String: Any] = ["hashes": hashes]
+        let response: CheckResponse = try await post("/api/blocks/check", body: body)
+        return response.existing
+    }
+
+    // MARK: - SHA-256 helper
+
+    private func sha256Hex(_ data: Data) -> String {
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        data.withUnsafeBytes { CC_SHA256($0.baseAddress, CC_LONG(data.count), &hash) }
+        return hash.map { String(format: "%02x", $0) }.joined()
     }
 
     func getChanges(since: Date) async throws -> FPChangesResponse {
@@ -289,22 +348,6 @@ struct FPChangesResponse: Codable {
     enum CodingKeys: String, CodingKey {
         case changes
         case serverTime = "server_time"
-    }
-}
-
-// MARK: - Upload Progress Delegate
-
-class UploadProgressDelegate: NSObject, URLSessionTaskDelegate {
-    let filename: String
-    let totalBytes: Int64
-
-    init(filename: String, totalBytes: Int64) {
-        self.filename = filename
-        self.totalBytes = totalBytes
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
-        SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: totalBytesSent, totalBytes: totalBytesExpectedToSend > 0 ? totalBytesExpectedToSend : totalBytes)
     }
 }
 
