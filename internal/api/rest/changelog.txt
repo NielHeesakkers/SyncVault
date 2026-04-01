@@ -1,3 +1,6 @@
+## [2.5.29] — 2026-04-01
+- Fix on-demand progress: show real network speed, not local disk speed; show transfer graph during on-demand
+
 ## [2.5.28] — 2026-04-01
 - On-demand progress: 0.5s polling, live speed, bytes transferred, speed history graph
 

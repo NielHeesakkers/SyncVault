@@ -192,10 +192,10 @@ struct MenuBarView: View {
                     }
 
                     // MARK: - Speed Graph
-                    if appState.isSyncing && !appState.speedHistory.isEmpty {
+                    if !appState.speedHistory.isEmpty && (appState.isSyncing || appState.fpProgress != nil) {
                         subtleDivider
                         sectionView {
-                            menuSectionHeader("Sync Speed")
+                            menuSectionHeader("Transfer Speed")
                             SpeedGraphView(history: appState.speedHistory)
                                 .frame(height: 40)
                         }

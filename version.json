@@ -1,9 +1,16 @@
 {
-  "version": "2.5.28",
+  "version": "2.5.29",
   "min_version": "1.0",
   "release_date": "2026-04-01",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.28/SyncVault-2.5.28.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.29/SyncVault-2.5.29.dmg",
   "history": [
+    {
+      "version": "2.5.29",
+      "date": "2026-04-01",
+      "changes": [
+        "Fix on-demand progress: show real network speed, not local disk speed; show transfer graph during on-demand"
+      ]
+    },
     {
       "version": "2.5.28",
       "date": "2026-04-01",

@@ -77,25 +77,26 @@ actor FPAPIClient {
         // Write file header
         output.write("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
 
-        // Stream file content in 4MB chunks with progress reporting
+        // Stream file content in 4MB chunks (to temp file)
         let input = try FileHandle(forReadingFrom: fileURL)
         defer { input.closeFile() }
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? 0
-        var written: Int64 = 0
+        SharedConfig.setProgress(action: "Preparing", filename: filename, bytesTransferred: 0, totalBytes: fileSize)
         while true {
             let chunk = input.readData(ofLength: 4 * 1024 * 1024)
             if chunk.isEmpty { break }
             output.write(chunk)
-            written += Int64(chunk.count)
-            SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: written, totalBytes: fileSize)
         }
 
         // Write footer
         output.write("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         output.closeFile()
 
-        // Upload the temp file
-        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: tempURL)
+        // Upload the temp file to server — track with delegate for real network speed
+        SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: 0, totalBytes: fileSize)
+        let delegate = UploadProgressDelegate(filename: filename, totalBytes: fileSize)
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        let (data, response) = try await session.upload(for: request, fromFile: tempURL)
         try checkResponse(response)
         return try JSONDecoder().decode(FPServerFile.self, from: data)
     }
@@ -288,6 +289,22 @@ struct FPChangesResponse: Codable {
     enum CodingKeys: String, CodingKey {
         case changes
         case serverTime = "server_time"
+    }
+}
+
+// MARK: - Upload Progress Delegate
+
+class UploadProgressDelegate: NSObject, URLSessionTaskDelegate {
+    let filename: String
+    let totalBytes: Int64
+
+    init(filename: String, totalBytes: Int64) {
+        self.filename = filename
+        self.totalBytes = totalBytes
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+        SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: totalBytesSent, totalBytes: totalBytesExpectedToSend > 0 ? totalBytesExpectedToSend : totalBytes)
     }
 }
 
