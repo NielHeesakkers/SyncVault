@@ -15,6 +15,9 @@ class AppState: ObservableObject {
     @Published var isPaused = false
     @Published var syncProgress: SyncProgress?
     @Published var fpProgress: String?  // FileProvider on-demand progress (e.g. "Uploading photo.jpg")
+    @Published var fpSpeed: Double = 0  // bytes per second
+    private var fpLastBytes: Int64 = 0
+    private var fpLastTime: Date?
     @Published var syncQueue: [String] = []
     @Published var speedHistory: [Double] = []  // last 60 samples (10 min at 10s intervals)
     private var speedTimer: Timer?
@@ -317,8 +320,8 @@ class AppState: ObservableObject {
     func startSyncLoop() {
         stopSyncLoop()
 
-        // Poll FileProvider on-demand progress every 2 seconds
-        fpProgressTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+        // Poll FileProvider on-demand progress every 0.5 seconds
+        fpProgressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.checkFileProviderProgress()
             }
@@ -396,16 +399,49 @@ class AppState: ObservableObject {
         let defaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
         guard let action = defaults?.string(forKey: "fp_progress_action"),
               let filename = defaults?.string(forKey: "fp_progress_filename") else {
-            fpProgress = nil
+            if fpProgress != nil {
+                fpProgress = nil
+                fpSpeed = 0
+                fpLastBytes = 0
+                fpLastTime = nil
+            }
             return
         }
         let timestamp = defaults?.double(forKey: "fp_progress_timestamp") ?? 0
-        // Stale if older than 30 seconds
         if Date().timeIntervalSince1970 - timestamp > 30 {
             fpProgress = nil
+            fpSpeed = 0
+            fpLastBytes = 0
+            fpLastTime = nil
             return
         }
-        fpProgress = "\(action) \(filename)"
+        let bytes = Int64(defaults?.integer(forKey: "fp_progress_bytes") ?? 0)
+        let total = Int64(defaults?.integer(forKey: "fp_progress_total") ?? 0)
+
+        // Calculate speed
+        let now = Date()
+        if let lastTime = fpLastTime, bytes > fpLastBytes {
+            let elapsed = now.timeIntervalSince(lastTime)
+            if elapsed > 0 {
+                fpSpeed = Double(bytes - fpLastBytes) / elapsed
+                // Feed into speed history for the graph
+                speedHistory.append(fpSpeed)
+                if speedHistory.count > 60 {
+                    speedHistory.removeFirst(speedHistory.count - 60)
+                }
+            }
+        }
+        fpLastBytes = bytes
+        fpLastTime = now
+
+        // Format progress string
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        if total > 0 {
+            fpProgress = "\(action) \(filename) — \(formatter.string(fromByteCount: bytes)) / \(formatter.string(fromByteCount: total))"
+        } else {
+            fpProgress = "\(action) \(filename)"
+        }
     }
 
     // MARK: - Device ID

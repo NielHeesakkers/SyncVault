@@ -1,9 +1,16 @@
 {
-  "version": "2.5.27",
+  "version": "2.5.28",
   "min_version": "1.0",
   "release_date": "2026-04-01",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.27/SyncVault-2.5.27.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.28/SyncVault-2.5.28.dmg",
   "history": [
+    {
+      "version": "2.5.28",
+      "date": "2026-04-01",
+      "changes": [
+        "On-demand progress: 0.5s polling, live speed, bytes transferred, speed history graph"
+      ]
+    },
     {
       "version": "2.5.27",
       "date": "2026-04-01",

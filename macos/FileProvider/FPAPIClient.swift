@@ -77,13 +77,17 @@ actor FPAPIClient {
         // Write file header
         output.write("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
 
-        // Stream file content in 4MB chunks
+        // Stream file content in 4MB chunks with progress reporting
         let input = try FileHandle(forReadingFrom: fileURL)
         defer { input.closeFile() }
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? 0
+        var written: Int64 = 0
         while true {
             let chunk = input.readData(ofLength: 4 * 1024 * 1024)
             if chunk.isEmpty { break }
             output.write(chunk)
+            written += Int64(chunk.count)
+            SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: written, totalBytes: fileSize)
         }
 
         // Write footer

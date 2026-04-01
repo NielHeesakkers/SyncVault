@@ -114,15 +114,25 @@ struct MenuBarView: View {
 
                         // FileProvider on-demand progress
                         if let fpStatus = appState.fpProgress {
-                            HStack(spacing: 6) {
-                                Image(systemName: "icloud.and.arrow.up")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.blue)
-                                Text(fpStatus)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "icloud.and.arrow.up")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.blue)
+                                    Text(fpStatus)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
+                                if appState.fpSpeed > 100 {
+                                    HStack(spacing: 4) {
+                                        Text("↑ \(formatSpeed(appState.fpSpeed))")
+                                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                            .foregroundColor(.green)
+                                        Spacer()
+                                    }
+                                }
                             }
                         }
 
