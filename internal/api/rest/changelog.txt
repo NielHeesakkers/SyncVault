@@ -1,3 +1,6 @@
+## [2.5.32] — 2026-04-02
+- FileProvider: always use block upload, fix 500 errors on multipart upload
+
 ## [2.5.31] — 2026-04-01
 - Fix FileProvider JSON decode: optional fields, removedLocally bool, menu bar icon shows on-demand activity
 

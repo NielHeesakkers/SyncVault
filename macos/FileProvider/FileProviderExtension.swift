@@ -95,21 +95,12 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
                     SharedConfig.setProgress(action: "Uploading", filename: itemTemplate.filename, bytesTransferred: 0, totalBytes: fileSize)
 
-                    let result: FPServerFile
-                    if fileSize < 50 * 1024 * 1024 {
-                        let data = try Data(contentsOf: url)
-                        result = try await client.uploadFile(
-                            data: data,
-                            filename: itemTemplate.filename,
-                            parentID: parentID
-                        )
-                    } else {
-                        result = try await client.uploadFileFromDisk(
-                            fileURL: url,
-                            filename: itemTemplate.filename,
-                            parentID: parentID
-                        )
-                    }
+                    // Always use block upload — reliable, resumable, no memory pressure
+                    let result = try await client.uploadFileFromDisk(
+                        fileURL: url,
+                        filename: itemTemplate.filename,
+                        parentID: parentID
+                    )
                     SharedConfig.setProgress(action: "Uploaded", filename: itemTemplate.filename, bytesTransferred: fileSize, totalBytes: fileSize)
                     SharedConfig.clearProgress()
                     let item = FileProviderItem(serverFile: result, isDownloaded: true)
@@ -148,12 +139,12 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 }
 
                 if changedFields.contains(.contents), let url = newContents {
-                    // Re-upload contents
-                    let data = try Data(contentsOf: url)
-                    let _ = try await client.uploadFile(
-                        data: data,
+                    // Re-upload via block upload — reliable, no memory pressure
+                    let parentID = item.parentItemIdentifier == .rootContainer ? SharedConfig.onDemandFolderID() : item.parentItemIdentifier.rawValue
+                    let _ = try await client.uploadFileFromDisk(
+                        fileURL: url,
                         filename: item.filename,
-                        parentID: item.parentItemIdentifier == .rootContainer ? SharedConfig.onDemandFolderID() : item.parentItemIdentifier.rawValue
+                        parentID: parentID
                     )
                 }
 

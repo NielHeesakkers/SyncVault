@@ -1,9 +1,16 @@
 {
-  "version": "2.5.31",
+  "version": "2.5.32",
   "min_version": "1.0",
-  "release_date": "2026-04-01",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.31/SyncVault-2.5.31.dmg",
+  "release_date": "2026-04-02",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.32/SyncVault-2.5.32.dmg",
   "history": [
+    {
+      "version": "2.5.32",
+      "date": "2026-04-02",
+      "changes": [
+        "FileProvider: always use block upload, fix 500 errors on multipart upload"
+      ]
+    },
     {
       "version": "2.5.31",
       "date": "2026-04-01",
