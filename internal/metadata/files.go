@@ -279,16 +279,35 @@ func (d *DB) RestoreFile(id string) error {
 }
 
 // PurgeUserTrash permanently deletes all soft-deleted files for the given user.
+// Deletes files first (no children), then folders (leaf-first via repeated passes).
 func (d *DB) PurgeUserTrash(ownerID string) (int64, error) {
+	// First delete non-directory files (no FK dependencies)
 	res, err := d.db.Exec(
-		`DELETE FROM files WHERE owner_id=? AND deleted_at IS NOT NULL`,
+		`DELETE FROM files WHERE owner_id=? AND deleted_at IS NOT NULL AND is_dir=0`,
 		ownerID,
 	)
 	if err != nil {
-		return 0, fmt.Errorf("metadata: purge user trash: %w", err)
+		return 0, fmt.Errorf("metadata: purge user trash files: %w", err)
 	}
-	n, _ := res.RowsAffected()
-	return n, nil
+	total, _ := res.RowsAffected()
+
+	// Then repeatedly delete leaf directories until none remain
+	for i := 0; i < 50; i++ {
+		res, err = d.db.Exec(
+			`DELETE FROM files WHERE owner_id=? AND deleted_at IS NOT NULL AND is_dir=1
+			 AND id NOT IN (SELECT DISTINCT parent_id FROM files WHERE parent_id IS NOT NULL)`,
+			ownerID,
+		)
+		if err != nil {
+			return total, fmt.Errorf("metadata: purge user trash dirs: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		total += n
+		if n == 0 {
+			break
+		}
+	}
+	return total, nil
 }
 
 // PermanentlyDeleteFile removes a single file from the database entirely.
