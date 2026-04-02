@@ -616,9 +616,11 @@
 			<!-- Preview header -->
 			<div class="flex items-center justify-between px-5 py-3.5 border-b" style="border-color: var(--border);">
 				<div class="flex items-center gap-3 min-w-0">
-					{@const pfi = getFileIcon(previewFile)}
-					<svelte:component this={pfi.icon} size={17} style="color: {pfi.color};" />
-					<span class="text-sm font-medium text-white/80 truncate">{previewFile.name}</span>
+					{#if previewFile}
+						{@const pfi = getFileIcon(previewFile)}
+						<svelte:component this={pfi.icon} size={17} style="color: {pfi.color};" />
+						<span class="text-sm font-medium text-white/80 truncate">{previewFile.name}</span>
+					{/if}
 				</div>
 				<div class="flex items-center gap-2 flex-shrink-0">
 					<button
@@ -666,9 +668,11 @@
 				{:else}
 					<!-- File info for non-previewable files -->
 					<div class="flex flex-col items-center justify-center py-12">
+						{#if previewFile}
 						{@const ficon = getFileIcon(previewFile)}
 						<svelte:component this={ficon.icon} size={48} style="color: {ficon.color}; opacity: 0.6;" />
 						<h3 class="text-base font-semibold text-white/80 mt-4">{previewFile.name}</h3>
+						{/if}
 						<div class="mt-3 space-y-1 text-center">
 							<p class="text-sm" style="color: var(--text-tertiary);">Size: {formatBytes(previewFile.size)}</p>
 							{#if previewFile.updated_at}
