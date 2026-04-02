@@ -722,6 +722,109 @@ class AppState: ObservableObject {
                 lastError = "Sync error: \(error.localizedDescription)"
             }
         }
+
+        // After two-way sync, handle on-demand bulk uploads
+        await syncOnDemandFiles(client)
+    }
+
+    // MARK: - On-Demand Bulk Upload
+
+    /// Scans the on-demand CloudStorage folder and uploads any files not yet on the server.
+    /// This runs after the two-way sync and catches files that the FileProvider failed to upload.
+    private func syncOnDemandFiles(_ client: APIClient) async {
+        // Find on-demand tasks
+        let onDemandTasks = syncTasks.filter { $0.isEnabled && $0.mode == .onDemand }
+        guard !onDemandTasks.isEmpty else { return }
+
+        for task in onDemandTasks {
+            let cloudPath = NSHomeDirectory() + "/Library/CloudStorage/SyncVault-SyncVault-\(username)"
+            guard FileManager.default.fileExists(atPath: cloudPath) else { continue }
+
+            do {
+                // Get server file tree
+                let remoteTree = try await client.getFileTree(folderID: task.remoteFolderID)
+                let remoteNames = Set(remoteTree.filter { !$0.isDir }.map { $0.name })
+                let remoteDirs = Set(remoteTree.filter { $0.isDir }.map { $0.relativePath })
+
+                // Build folder ID cache from remote tree
+                var folderCache: [String: String] = [:]
+                for f in remoteTree where f.isDir {
+                    folderCache[f.relativePath] = f.id
+                }
+
+                // Scan local files
+                let fm = FileManager.default
+                guard let enumerator = fm.enumerator(atPath: cloudPath) else { continue }
+
+                var toUpload: [(fullPath: String, relativePath: String, parentRelPath: String)] = []
+
+                while let relPath = enumerator.nextObject() as? String {
+                    let fullPath = (cloudPath as NSString).appendingPathComponent(relPath)
+                    let name = URL(fileURLWithPath: relPath).lastPathComponent
+                    if name.hasPrefix(".") || name == ".DS_Store" { continue }
+
+                    guard let attrs = try? fm.attributesOfItem(atPath: fullPath) else { continue }
+                    let isDir = attrs[.type] as? FileAttributeType == .typeDirectory
+
+                    if isDir {
+                        // Create missing directories on server
+                        if folderCache[relPath] == nil {
+                            let parentRel = (relPath as NSString).deletingLastPathComponent
+                            let parentID = parentRel.isEmpty ? task.remoteFolderID : (folderCache[parentRel] ?? task.remoteFolderID)
+                            do {
+                                let folder = try await client.createFolder(name: name, parentID: parentID)
+                                folderCache[relPath] = folder.id
+                                logger.info("On-demand: created dir \(relPath)")
+                            } catch {
+                                // Folder might already exist
+                            }
+                        }
+                    } else {
+                        // Check if file needs uploading by checking relative path in remote tree
+                        let remoteMatch = remoteTree.first { $0.relativePath == relPath && !$0.isDir }
+                        if remoteMatch == nil {
+                            let parentRel = (relPath as NSString).deletingLastPathComponent
+                            toUpload.append((fullPath, relPath, parentRel))
+                        }
+                    }
+                }
+
+                if toUpload.isEmpty {
+                    logger.info("On-demand: all \(remoteNames.count) files synced")
+                    continue
+                }
+
+                logger.info("On-demand: \(toUpload.count) files to upload")
+
+                // Upload missing files via block upload (same as sync engine)
+                guard let db = syncDatabase else { continue }
+                let engine = SyncEngine(apiClient: client, db: db)
+
+                for (i, item) in toUpload.prefix(50).enumerated() {
+                    let fileURL = URL(fileURLWithPath: item.fullPath)
+                    let name = fileURL.lastPathComponent
+                    let parentID = item.parentRelPath.isEmpty ? task.remoteFolderID : (folderCache[item.parentRelPath] ?? task.remoteFolderID)
+
+                    do {
+                        let attrs = try fm.attributesOfItem(atPath: item.fullPath)
+                        let fileSize = (attrs[.size] as? Int64) ?? 0
+
+                        fpProgress = "Uploading \(name) (\(i+1)/\(min(toUpload.count, 50)))"
+
+                        let _ = try await engine.uploadViaBlocksPublic(
+                            fileURL: fileURL, filename: name, parentID: parentID, fileSize: fileSize
+                        )
+                        logger.info("On-demand uploaded: \(item.relativePath) (\(fileSize) bytes)")
+                    } catch {
+                        logger.error("On-demand upload failed: \(item.relativePath): \(error)")
+                    }
+                }
+
+                fpProgress = nil
+            } catch {
+                logger.error("On-demand sync error: \(error)")
+            }
+        }
     }
 
     // MARK: - On-Demand Sync (File Provider)

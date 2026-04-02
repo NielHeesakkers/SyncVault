@@ -1,9 +1,16 @@
 {
-  "version": "2.5.34",
+  "version": "2.5.35",
   "min_version": "1.0",
   "release_date": "2026-04-02",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.34/SyncVault-2.5.34.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.35/SyncVault-2.5.35.dmg",
   "history": [
+    {
+      "version": "2.5.35",
+      "date": "2026-04-02",
+      "changes": [
+        "On-demand bulk upload: app scans CloudStorage and uploads missing files via block upload"
+      ]
+    },
     {
       "version": "2.5.34",
       "date": "2026-04-02",

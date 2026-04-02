@@ -816,6 +816,11 @@ actor SyncEngine {
 
     // MARK: - Direct Block Upload
 
+    /// Public wrapper for on-demand bulk upload from AppState
+    func uploadViaBlocksPublic(fileURL: URL, filename: String, parentID: String, fileSize: Int64) async throws -> String {
+        return try await uploadViaBlocks(fileURL: fileURL, filename: filename, parentID: parentID, fileSize: fileSize)
+    }
+
     /// Upload a file by splitting it into 4 MB blocks, checking which exist, and uploading only missing ones.
     /// No staging, no assembly — blocks go directly to content-addressable storage.
     private func uploadViaBlocks(fileURL: URL, filename: String, parentID: String, fileSize: Int64, onBlockUploaded: ((Int64) async -> Void)? = nil) async throws -> String {
