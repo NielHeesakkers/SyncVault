@@ -723,8 +723,33 @@ class AppState: ObservableObject {
             }
         }
 
-        // After two-way sync, handle on-demand bulk uploads
+        // After two-way sync, check on-demand and reimport if needed
         await syncOnDemandFiles(client)
+        // Trigger reimport to pick up any stuck items
+        await resetOnDemandDomain()
+    }
+
+    /// Reset the on-demand FileProvider domain and reimport all items.
+    func resetOnDemandDomain() async {
+        guard isConnected else { return }
+        let onDemandTasks = syncTasks.filter { $0.isEnabled && $0.mode == .onDemand }
+        for task in onDemandTasks {
+            do {
+                let domainID = NSFileProviderDomainIdentifier("com.syncvault.\(username)")
+                let domain = NSFileProviderDomain(identifier: domainID, displayName: "SyncVault - \(username)")
+                if let manager = NSFileProviderManager(for: domain) {
+                    // Reimport all items — forces macOS to re-discover and re-upload everything
+                    try await manager.reimportItems(below: .rootContainer)
+                    logger.info("On-demand: reimport triggered for \(task.remoteFolderName)")
+                } else {
+                    // Fallback: remove and re-add domain
+                    try await setupOnDemandSync(folderID: task.remoteFolderID)
+                    logger.info("On-demand domain reset for \(task.remoteFolderName)")
+                }
+            } catch {
+                logger.error("On-demand domain reset failed: \(error)")
+            }
+        }
     }
 
     // MARK: - On-Demand Bulk Upload
@@ -737,8 +762,25 @@ class AppState: ObservableObject {
         guard !onDemandTasks.isEmpty else { return }
 
         for task in onDemandTasks {
-            let cloudPath = NSHomeDirectory() + "/Library/CloudStorage/SyncVault-SyncVault-\(username)"
-            guard FileManager.default.fileExists(atPath: cloudPath) else { continue }
+            // Find CloudStorage path — try multiple approaches since sandboxed apps have different home dirs
+            let possiblePaths = [
+                FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/CloudStorage/SyncVault-SyncVault-\(username)").path,
+                NSHomeDirectory() + "/Library/CloudStorage/SyncVault-SyncVault-\(username)",
+                "/Users/\(NSUserName())/Library/CloudStorage/SyncVault-SyncVault-\(username)",
+            ]
+            var cloudPath: String?
+            for p in possiblePaths {
+                logger.info("On-demand: trying path \(p)")
+                if FileManager.default.fileExists(atPath: p) {
+                    cloudPath = p
+                    break
+                }
+            }
+            guard let cloudPath = cloudPath else {
+                logger.info("On-demand: CloudStorage path not found")
+                continue
+            }
+            logger.info("On-demand: found at \(cloudPath)")
 
             do {
                 // Get server file tree
@@ -789,8 +831,13 @@ class AppState: ObservableObject {
                     }
                 }
 
+                let remoteFileCount = remoteTree.filter { !$0.isDir }.count
+                let localScanned = toUpload.count + remoteFileCount
+
+                logger.info("On-demand: scanned local, found \(toUpload.count) to upload + \(remoteFileCount) already on server")
+
                 if toUpload.isEmpty {
-                    logger.info("On-demand: all \(remoteNames.count) files synced")
+                    logger.info("On-demand: all synced (\(remoteFileCount) on server)")
                     continue
                 }
 
