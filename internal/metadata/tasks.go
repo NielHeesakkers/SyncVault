@@ -27,9 +27,6 @@ var ErrTaskNotFound = errors.New("metadata: sync task not found")
 // ErrDuplicateTask is returned when a task with the same name already exists for the user.
 var ErrDuplicateTask = errors.New("metadata: duplicate task name for user")
 
-// ErrOnDemandExists is returned when a user already has an ondemand task.
-var ErrOnDemandExists = errors.New("metadata: user already has an ondemand task")
-
 // ErrRootFolderNotFound is returned when a user's root folder cannot be found.
 var ErrRootFolderNotFound = errors.New("metadata: user root folder not found")
 
@@ -53,19 +50,12 @@ func (d *DB) GetUserRootFolder(userID string) (*File, error) {
 
 // CreateSyncTask inserts a new sync task record and returns it.
 func (d *DB) CreateSyncTask(userID, folderID, name, taskType, localPath string) (*SyncTask, error) {
-	// Enforce at most one ondemand task per user.
+	// For ondemand tasks, replace any existing one (user wants to start fresh).
 	if taskType == "ondemand" {
-		var count int
-		err := d.db.QueryRow(
-			`SELECT COUNT(*) FROM sync_tasks WHERE user_id = ? AND type = 'ondemand'`,
+		d.db.Exec(
+			`DELETE FROM sync_tasks WHERE user_id = ? AND type = 'ondemand'`,
 			userID,
-		).Scan(&count)
-		if err != nil {
-			return nil, fmt.Errorf("metadata: check ondemand tasks: %w", err)
-		}
-		if count > 0 {
-			return nil, ErrOnDemandExists
-		}
+		)
 	}
 
 	t := &SyncTask{

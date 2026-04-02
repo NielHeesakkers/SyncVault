@@ -100,21 +100,39 @@ func TestCreateSyncTask_Duplicate(t *testing.T) {
 	}
 }
 
-func TestCreateSyncTask_OnDemandLimitedToOne(t *testing.T) {
+func TestCreateSyncTask_OnDemandReplacesExisting(t *testing.T) {
 	db := openTestDB(t)
 	u := mustCreateUser(t, db, "ondemanduser")
 	root, _ := db.CreateFile("", u.ID, u.Username, true, 0, "", "")
 	f1, _ := db.CreateFile(root.ID, u.ID, "OnDemand", true, 0, "", "")
 	f2, _ := db.CreateFile(root.ID, u.ID, "OnDemand2", true, 0, "", "")
 
-	_, err := db.CreateSyncTask(u.ID, f1.ID, "OnDemand", "ondemand", "")
+	task1, err := db.CreateSyncTask(u.ID, f1.ID, "OnDemand", "ondemand", "")
 	if err != nil {
 		t.Fatalf("first ondemand task: %v", err)
 	}
 
-	_, err = db.CreateSyncTask(u.ID, f2.ID, "OnDemand", "ondemand", "")
-	if !errors.Is(err, ErrOnDemandExists) {
-		t.Errorf("expected ErrOnDemandExists for second ondemand task, got %v", err)
+	task2, err := db.CreateSyncTask(u.ID, f2.ID, "OnDemand", "ondemand", "")
+	if err != nil {
+		t.Fatalf("second ondemand task should succeed (replace): %v", err)
+	}
+	if task2.ID == task1.ID {
+		t.Errorf("second task should have a new ID")
+	}
+
+	// Verify only one ondemand task remains.
+	tasks, err := db.ListSyncTasks(u.ID)
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	ondemandCount := 0
+	for _, tk := range tasks {
+		if tk.Type == "ondemand" {
+			ondemandCount++
+		}
+	}
+	if ondemandCount != 1 {
+		t.Errorf("expected 1 ondemand task, got %d", ondemandCount)
 	}
 }
 

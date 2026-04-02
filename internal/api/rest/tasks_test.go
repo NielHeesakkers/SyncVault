@@ -181,8 +181,8 @@ func TestHandleCreateTask_OnDemand(t *testing.T) {
 	}
 }
 
-// TestHandleCreateTask_OnDemand_LimitedToOne verifies that a second ondemand task returns 409.
-func TestHandleCreateTask_OnDemand_LimitedToOne(t *testing.T) {
+// TestHandleCreateTask_OnDemand_ReplacesExisting verifies that a second ondemand task replaces the first.
+func TestHandleCreateTask_OnDemand_ReplacesExisting(t *testing.T) {
 	env := newTestEnv(t)
 	_, token := createUserWithRootFolder(t, env, "ondemandlimituser")
 
@@ -201,10 +201,18 @@ func TestHandleCreateTask_OnDemand_LimitedToOne(t *testing.T) {
 	if rr1.Code != http.StatusCreated {
 		t.Fatalf("first ondemand task: status = %d, want 201; body = %s", rr1.Code, rr1.Body.String())
 	}
+	var resp1 taskResponse
+	json.NewDecoder(rr1.Body).Decode(&resp1)
 
 	rr2 := makeReq()
-	if rr2.Code != http.StatusConflict {
-		t.Errorf("second ondemand task: status = %d, want 409; body = %s", rr2.Code, rr2.Body.String())
+	if rr2.Code != http.StatusCreated {
+		t.Errorf("second ondemand task (replace): status = %d, want 201; body = %s", rr2.Code, rr2.Body.String())
+	}
+	var resp2 taskResponse
+	json.NewDecoder(rr2.Body).Decode(&resp2)
+
+	if resp2.ID == resp1.ID {
+		t.Errorf("second task should have a new ID, got same: %s", resp2.ID)
 	}
 }
 

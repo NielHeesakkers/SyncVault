@@ -185,12 +185,6 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	// Create the sync task record.
 	task, err := s.db.CreateSyncTask(claims.UserID, subFolder.ID, taskName, req.Type, req.LocalPath)
 	if err != nil {
-		if errors.Is(err, metadata.ErrOnDemandExists) {
-			// Roll back the folder we just created.
-			_ = s.db.SoftDeleteFile(subFolder.ID)
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "user already has an ondemand task"})
-			return
-		}
 		if errors.Is(err, metadata.ErrDuplicateTask) {
 			// Roll back the folder we just created.
 			_ = s.db.SoftDeleteFile(subFolder.ID)
