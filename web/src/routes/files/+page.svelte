@@ -635,11 +635,9 @@
 											<button onclick={(e) => { e.stopPropagation(); restoreFolder(file); }} title="Restore folder" class="action-btn">
 												<RotateCcw size={13} /> Restore
 											</button>
-											{#if currentFolderId}
-												<button onclick={(e) => { e.stopPropagation(); openDeleteFolder(file); }} title="Delete folder" class="action-btn action-btn-red">
-													<Trash2 size={13} /> Delete
-												</button>
-											{/if}
+											<button onclick={(e) => { e.stopPropagation(); openDeleteFolder(file); }} title="Delete folder" class="action-btn action-btn-red">
+												<Trash2 size={13} /> Delete
+											</button>
 										{:else}
 											<button onclick={(e) => { e.stopPropagation(); openShare(file); }} title="Share file" class="action-btn action-btn-purple">
 												<Share2 size={13} /> Share
@@ -649,6 +647,9 @@
 											</button>
 											<button onclick={(e) => { e.stopPropagation(); restoreVersion(file); }} title="Restore to current" class="action-btn">
 												<RotateCcw size={13} /> Restore
+											</button>
+											<button onclick={(e) => { e.stopPropagation(); openDeleteFolder(file); }} title="Delete file" class="action-btn action-btn-red">
+												<Trash2 size={13} /> Delete
 											</button>
 										{/if}
 									</div>
@@ -704,6 +705,9 @@
 											</button>
 											<button onclick={(e) => { e.stopPropagation(); downloadFolder(file); }} title="Download" class="action-btn action-btn-blue">
 												<Download size={13} /> Download
+											</button>
+											<button onclick={(e) => { e.stopPropagation(); openDeleteFolder(file); }} title="Delete" class="action-btn action-btn-red">
+												<Trash2 size={13} /> Delete
 											</button>
 										</div>
 									</td>
