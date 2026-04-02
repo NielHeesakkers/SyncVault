@@ -100,6 +100,8 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/files/{id}/lock", s.handleGetFileLock)
 
 		r.Get("/api/trash", s.handleListTrash)
+		r.Delete("/api/trash", s.handlePurgeTrash)
+		r.Delete("/api/trash/{id}", s.handlePermanentlyDeleteFile)
 		r.Get("/api/changes", s.handleListChanges)
 		r.Get("/api/activity", s.handleUserActivity)
 

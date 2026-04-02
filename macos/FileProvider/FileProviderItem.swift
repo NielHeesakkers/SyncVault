@@ -53,6 +53,10 @@ class FileProviderItem: NSObject, NSFileProviderItem {
         return NSFileProviderItemVersion(contentVersion: hash, metadataVersion: hash)
     }
 
+    // Accept extended attributes (resource forks, FinderInfo, etc.) so Finder
+    // doesn't reject copies with "name is too long or invalid characters" error.
+    var extendedAttributes: [String: Data] { [:] }
+
     // Tell macOS this file is NOT downloaded — it needs to be fetched on access
     var isDownloaded: Bool { itemIsDownloaded }
 

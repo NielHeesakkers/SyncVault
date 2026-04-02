@@ -26,12 +26,19 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 let client = try SharedConfig.apiClient()
                 if identifier == .rootContainer {
                     completionHandler(FileProviderItem.rootContainer(), nil)
+                } else if identifier == .trashContainer {
+                    // macOS asks for trash container — we don't support server-side trash in FileProvider
+                    completionHandler(nil, NSError(domain: NSFileProviderErrorDomain, code: NSFileProviderError.noSuchItem.rawValue))
+                } else if identifier == .workingSet {
+                    // Working set container — not applicable
+                    completionHandler(nil, NSError(domain: NSFileProviderErrorDomain, code: NSFileProviderError.noSuchItem.rawValue))
                 } else {
                     let serverFile = try await client.getFile(id: identifier.rawValue)
                     completionHandler(FileProviderItem(serverFile: serverFile), nil)
                 }
                 progress.completedUnitCount = 1
             } catch {
+                logger.error("item(for: \(identifier.rawValue, privacy: .public)) failed: \(error.localizedDescription, privacy: .public)")
                 completionHandler(nil, error)
             }
         }
@@ -80,7 +87,13 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     ? SharedConfig.onDemandFolderID()
                     : itemTemplate.parentItemIdentifier.rawValue
 
-                if itemTemplate.contentType == .folder {
+                // Skip AppleDouble resource fork files — we don't need them
+                if itemTemplate.filename.hasPrefix("._") {
+                    // Accept but ignore AppleDouble metadata files
+                    let fakeFile = FPServerFile.placeholder(name: itemTemplate.filename, parentID: parentID)
+                    let item = FileProviderItem(serverFile: fakeFile, isDownloaded: true)
+                    completionHandler(item, [], false, nil)
+                } else if itemTemplate.contentType == .folder {
                     // Create folder
                     let result = try await client.createFolder(
                         name: itemTemplate.filename,
@@ -110,6 +123,7 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 }
                 progress.completedUnitCount = 100
             } catch {
+                logger.error("createItem(\(itemTemplate.filename, privacy: .public), parent=\(itemTemplate.parentItemIdentifier.rawValue, privacy: .public)) failed: \(error.localizedDescription, privacy: .public)")
                 completionHandler(nil, [], false, error)
             }
         }
@@ -148,9 +162,16 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     )
                 }
 
-                let serverFile = try await client.getFile(id: item.itemIdentifier.rawValue)
-                let updatedItem = FileProviderItem(serverFile: serverFile, isDownloaded: newContents != nil)
-                completionHandler(updatedItem, [], false, nil)
+                // If only extendedAttributes changed (no file/name changes), just acknowledge
+                if changedFields == .extendedAttributes {
+                    let serverFile = try await client.getFile(id: item.itemIdentifier.rawValue)
+                    let updatedItem = FileProviderItem(serverFile: serverFile)
+                    completionHandler(updatedItem, [], false, nil)
+                } else {
+                    let serverFile = try await client.getFile(id: item.itemIdentifier.rawValue)
+                    let updatedItem = FileProviderItem(serverFile: serverFile, isDownloaded: newContents != nil)
+                    completionHandler(updatedItem, [], false, nil)
+                }
                 progress.completedUnitCount = 100
             } catch {
                 completionHandler(nil, [], false, error)

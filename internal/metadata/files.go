@@ -278,6 +278,32 @@ func (d *DB) RestoreFile(id string) error {
 	return nil
 }
 
+// PurgeUserTrash permanently deletes all soft-deleted files for the given user.
+func (d *DB) PurgeUserTrash(ownerID string) (int64, error) {
+	res, err := d.db.Exec(
+		`DELETE FROM files WHERE owner_id=? AND deleted_at IS NOT NULL`,
+		ownerID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("metadata: purge user trash: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// PermanentlyDeleteFile removes a single file from the database entirely.
+func (d *DB) PermanentlyDeleteFile(id string) error {
+	res, err := d.db.Exec(`DELETE FROM files WHERE id=? AND deleted_at IS NOT NULL`, id)
+	if err != nil {
+		return fmt.Errorf("metadata: permanently delete file: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrFileNotFound
+	}
+	return nil
+}
+
 // ListTrashedFiles returns all soft-deleted files owned by ownerID.
 func (d *DB) ListTrashedFiles(ownerID string) ([]File, error) {
 	rows, err := d.db.Query(

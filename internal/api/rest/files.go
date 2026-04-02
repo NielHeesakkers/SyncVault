@@ -328,6 +328,34 @@ func (s *Server) handleRestoreFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "restored"})
 }
 
+// handlePurgeTrash handles DELETE /api/trash — permanently delete all trashed files for the user.
+func (s *Server) handlePurgeTrash(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	count, err := s.db.PurgeUserTrash(claims.UserID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not purge trash"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"deleted": count})
+}
+
+// handlePermanentlyDeleteFile handles DELETE /api/trash/{id} — permanently delete one trashed file.
+func (s *Server) handlePermanentlyDeleteFile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if _, ok := s.checkFileOwnership(w, r, id); !ok {
+		return
+	}
+	if err := s.db.PermanentlyDeleteFile(id); err != nil {
+		if errors.Is(err, metadata.ErrFileNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found in trash"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not delete file"})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // handleListTrash handles GET /api/trash — list trashed files (admin sees all users).
 func (s *Server) handleListTrash(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
