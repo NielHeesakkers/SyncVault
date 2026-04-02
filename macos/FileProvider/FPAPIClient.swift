@@ -316,7 +316,7 @@ actor FPAPIClient {
 
 // MARK: - Models
 
-struct FPServerFile: Codable {
+struct FPServerFile: Decodable {
     let id: String
     let parentID: String?
     let name: String
@@ -340,11 +340,33 @@ struct FPServerFile: Codable {
         case deletedAt = "deleted_at"
         case removedLocally = "removed_locally"
     }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        parentID = try c.decodeIfPresent(String.self, forKey: .parentID)
+        isDir = (try? c.decode(Bool.self, forKey: .isDir)) ?? false
+        contentHash = try c.decodeIfPresent(String.self, forKey: .contentHash)
+        mimeType = try c.decodeIfPresent(String.self, forKey: .mimeType)
+        createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        updatedAt = try c.decodeIfPresent(String.self, forKey: .updatedAt)
+        deletedAt = try c.decodeIfPresent(String.self, forKey: .deletedAt)
+        removedLocally = try c.decodeIfPresent(Bool.self, forKey: .removedLocally)
+        // size can be Int64 or String — handle both
+        if let intSize = try? c.decode(Int64.self, forKey: .size) {
+            size = intSize
+        } else if let strSize = try? c.decode(String.self, forKey: .size), let parsed = Int64(strSize) {
+            size = parsed
+        } else {
+            size = 0
+        }
+    }
 }
 
-struct FPFilesResponse: Codable { let files: [FPServerFile] }
+struct FPFilesResponse: Decodable { let files: [FPServerFile] }
 
-struct FPChangesResponse: Codable {
+struct FPChangesResponse: Decodable {
     let changes: [FPServerFile]
     let serverTime: String
     enum CodingKeys: String, CodingKey {

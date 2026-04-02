@@ -1,3 +1,6 @@
+## [2.5.34] — 2026-04-02
+- Robust JSON decoder for FileProvider: handles Int/String type mismatches, unblocks on-demand uploads
+
 ## [2.5.33] — 2026-04-02
 - Block root-level file creation for non-admins, clean root, auto-expand user folder in browser
 
