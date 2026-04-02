@@ -1,9 +1,16 @@
 {
-  "version": "2.5.32",
+  "version": "2.5.33",
   "min_version": "1.0",
   "release_date": "2026-04-02",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.32/SyncVault-2.5.32.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.33/SyncVault-2.5.33.dmg",
   "history": [
+    {
+      "version": "2.5.33",
+      "date": "2026-04-02",
+      "changes": [
+        "Block root-level file creation for non-admins, clean root, auto-expand user folder in browser"
+      ]
+    },
     {
       "version": "2.5.32",
       "date": "2026-04-02",

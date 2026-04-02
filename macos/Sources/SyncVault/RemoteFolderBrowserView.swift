@@ -107,7 +107,17 @@ struct RemoteFolderBrowserView: View {
         errorMessage = nil
         do {
             let folders = try await apiClient.listFolders(parentID: nil)
-            rootNodes = folders.map { FolderNode(id: $0.id, name: $0.name, parentID: nil) }
+            // If there's only one root folder (user's own), auto-expand into it
+            if folders.count == 1 {
+                let userRoot = folders[0]
+                let subfolders = try await apiClient.listFolders(parentID: userRoot.id)
+                let rootNode = FolderNode(id: userRoot.id, name: userRoot.name, parentID: nil)
+                rootNode.children = subfolders.map { FolderNode(id: $0.id, name: $0.name, parentID: userRoot.id) }
+                rootNode.isExpanded = true
+                rootNodes = [rootNode]
+            } else {
+                rootNodes = folders.map { FolderNode(id: $0.id, name: $0.name, parentID: nil) }
+            }
             isLoading = false
         } catch {
             errorMessage = "Could not load folders"

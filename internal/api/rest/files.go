@@ -107,6 +107,12 @@ func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Non-admin users cannot create files at root level — must be inside their user folder
+	if req.ParentID == "" && claims.Role != "admin" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cannot create files at root level"})
+		return
+	}
+
 	f, err := s.db.CreateFile(req.ParentID, claims.UserID, req.Name, req.IsDir, 0, "", "")
 	if err != nil {
 		if errors.Is(err, metadata.ErrDuplicateFile) {

@@ -1,3 +1,6 @@
+## [2.5.33] — 2026-04-02
+- Block root-level file creation for non-admins, clean root, auto-expand user folder in browser
+
 ## [2.5.32] — 2026-04-02
 - FileProvider: always use block upload, fix 500 errors on multipart upload
 
