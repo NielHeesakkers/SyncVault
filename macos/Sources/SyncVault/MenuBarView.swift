@@ -201,6 +201,39 @@ struct MenuBarView: View {
                         }
                     }
 
+                    // MARK: - Recently Synced
+                    if !appState.recentActivity.isEmpty {
+                        subtleDivider
+                        sectionView {
+                            menuSectionHeader("Recently Synced")
+                            ForEach(Array(appState.recentActivity.prefix(5))) { item in
+                                Button(action: {
+                                    // Open the file in Finder if it exists locally
+                                    openRecentFile(item)
+                                }) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: iconForAction(item.action))
+                                            .font(.system(size: 10))
+                                            .foregroundColor(colorForAction(item.action))
+                                            .frame(width: 14)
+                                        Text(item.filename)
+                                            .font(.system(size: 11))
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                            .foregroundColor(.primary)
+                                        Spacer()
+                                        Text(timeAgo(item.timestamp))
+                                            .font(.system(size: 10))
+                                            .foregroundColor(Color(white: 0.4))
+                                    }
+                                    .padding(.vertical, 1)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
                     subtleDivider
 
                     // MARK: - Sync Tasks + Storage
@@ -437,6 +470,36 @@ struct MenuBarView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return "\(formatter.string(fromByteCount: Int64(bytesPerSecond)))/s"
+    }
+
+    func timeAgo(_ date: Date) -> String {
+        let seconds = Int(-date.timeIntervalSinceNow)
+        if seconds < 60 { return "now" }
+        if seconds < 3600 { return "\(seconds / 60)m" }
+        if seconds < 86400 { return "\(seconds / 3600)h" }
+        return "\(seconds / 86400)d"
+    }
+
+    func openRecentFile(_ item: ActivityItem) {
+        // Try to find and reveal the file in Finder
+        for task in appState.syncTasks where task.isEnabled {
+            let localPath = task.localPath
+            if !localPath.isEmpty {
+                let fullPath = (localPath as NSString).appendingPathComponent(item.filename)
+                let url = URL(fileURLWithPath: fullPath)
+                if FileManager.default.fileExists(atPath: fullPath) {
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                    return
+                }
+            }
+        }
+        // Fallback: open CloudStorage folder
+        let cloudPath = "/Users/\(NSUserName())/Library/CloudStorage/SyncVault-SyncVault-\(appState.username)"
+        let fullPath = (cloudPath as NSString).appendingPathComponent(item.filename)
+        let url = URL(fileURLWithPath: fullPath)
+        if FileManager.default.fileExists(atPath: fullPath) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        }
     }
 }
 

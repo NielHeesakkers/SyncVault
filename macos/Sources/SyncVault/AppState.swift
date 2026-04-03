@@ -397,6 +397,23 @@ class AppState: ObservableObject {
 
     private func checkFileProviderProgress() {
         let defaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
+
+        // Import recent files from FileProvider extension
+        if let recent = defaults?.array(forKey: "fp_recent_files") as? [[String: String]], !recent.isEmpty {
+            for entry in recent {
+                guard let filename = entry["filename"], let action = entry["action"] else { continue }
+                let alreadyTracked = recentActivity.contains { $0.filename == filename && $0.action == action }
+                if !alreadyTracked {
+                    let ts = Double(entry["timestamp"] ?? "0") ?? 0
+                    let item = ActivityItem(filename: filename, action: action, timestamp: Date(timeIntervalSince1970: ts))
+                    recentActivity.insert(item, at: 0)
+                }
+            }
+            if recentActivity.count > 20 { recentActivity = Array(recentActivity.prefix(20)) }
+            // Sort by most recent
+            recentActivity.sort { $0.timestamp > $1.timestamp }
+        }
+
         guard let action = defaults?.string(forKey: "fp_progress_action"),
               let filename = defaults?.string(forKey: "fp_progress_filename") else {
             if fpProgress != nil {
@@ -435,6 +452,18 @@ class AppState: ObservableObject {
         }
         fpLastBytes = bytes
         fpLastTime = now
+
+        // Track completed uploads/downloads in recent activity
+        if action == "Uploaded" || action == "Downloaded" {
+            let alreadyTracked = recentActivity.contains { $0.filename == filename && abs($0.timestamp.timeIntervalSinceNow) < 5 }
+            if !alreadyTracked {
+                let item = ActivityItem(filename: filename, action: action.lowercased(), timestamp: Date())
+                recentActivity.insert(item, at: 0)
+                if recentActivity.count > 20 {
+                    recentActivity = Array(recentActivity.prefix(20))
+                }
+            }
+        }
 
         // Format progress string
         let formatter = ByteCountFormatter()
@@ -723,10 +752,11 @@ class AppState: ObservableObject {
             }
         }
 
-        // After two-way sync, check on-demand and reimport if needed
+        // After two-way sync, check on-demand uploads
         await syncOnDemandFiles(client)
-        // Trigger reimport to pick up any stuck items
-        await resetOnDemandDomain()
+        // NOTE: Do NOT call resetOnDemandDomain() here — it invalidates the
+        // FileProvider extension every cycle, causing files to disappear and
+        // error -1407. The FileProvider handles its own enumeration.
     }
 
     /// Reset the on-demand FileProvider domain and reimport all items.

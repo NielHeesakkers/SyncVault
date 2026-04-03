@@ -10,17 +10,34 @@ enum SharedConfig {
         UserDefaults(suiteName: appGroupID)!
     }
 
-    static func apiClient() throws -> FPAPIClient {
+    // Singleton API client — prevents token race conditions between concurrent calls
+    private static var _cachedClient: FPAPIClient?
+    private static var _cachedClientURL: String?
+
+    static func sharedClient() throws -> FPAPIClient {
         guard let url = sharedDefaults.string(forKey: "serverURL"), !url.isEmpty else {
             throw NSError(domain: "com.syncvault", code: 1,
                          userInfo: [NSLocalizedDescriptionKey: "Server not configured"])
+        }
+
+        // Reuse existing client if server URL hasn't changed
+        if let client = _cachedClient, _cachedClientURL == url {
+            return client
         }
 
         let token = loadFromKeychain(key: "access_token")
         let username = loadFromKeychain(key: "fp_username")
         let password = loadFromKeychain(key: "fp_password")
 
-        return FPAPIClient(baseURL: url, token: token, username: username, password: password)
+        let client = FPAPIClient(baseURL: url, token: token, username: username, password: password)
+        _cachedClient = client
+        _cachedClientURL = url
+        return client
+    }
+
+    /// Legacy name — redirects to sharedClient
+    static func apiClient() throws -> FPAPIClient {
+        return try sharedClient()
     }
 
     static func onDemandFolderID() -> String {
@@ -77,6 +94,21 @@ enum SharedConfig {
         defaults.removeObject(forKey: "fp_progress_bytes")
         defaults.removeObject(forKey: "fp_progress_total")
         defaults.removeObject(forKey: "fp_progress_timestamp")
+    }
+
+    // MARK: - Recent files (extension → app)
+
+    static func addRecentFile(filename: String, action: String) {
+        let defaults = sharedDefaults
+        var recent = defaults.array(forKey: "fp_recent_files") as? [[String: String]] ?? []
+        let entry: [String: String] = [
+            "filename": filename,
+            "action": action,
+            "timestamp": "\(Date().timeIntervalSince1970)"
+        ]
+        recent.insert(entry, at: 0)
+        if recent.count > 20 { recent = Array(recent.prefix(20)) }
+        defaults.set(recent, forKey: "fp_recent_files")
     }
 
     static func getProgress() -> (action: String, filename: String, bytes: Int64, total: Int64, timestamp: Double)? {
