@@ -103,6 +103,7 @@ func (s *Server) setupRoutes() {
 		r.Delete("/api/trash", s.handlePurgeTrash)
 		r.Delete("/api/trash/{id}", s.handlePermanentlyDeleteFile)
 		r.Get("/api/changes", s.handleListChanges)
+		r.Get("/api/changes/v2", s.handleListChangesV2)
 		r.Get("/api/activity", s.handleUserActivity)
 
 		// Server-Sent Events for real-time push.

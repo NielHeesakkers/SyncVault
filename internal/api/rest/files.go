@@ -469,6 +469,32 @@ func (s *Server) handleListChanges(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleListChangesV2 handles GET /api/changes/v2?since_rank=<int64>.
+// Uses a monotonic rank counter instead of timestamps for reliable change tracking.
+// Returns all files with change_rank > since_rank, including soft-deleted files.
+func (s *Server) handleListChangesV2(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+
+	sinceRankStr := r.URL.Query().Get("since_rank")
+	sinceRank, _ := strconv.ParseInt(sinceRankStr, 10, 64)
+
+	changes, currentRank, err := s.db.ListChangesByRank(sinceRank, claims.UserID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list changes"})
+		return
+	}
+
+	result := make([]changeResponse, 0, len(changes))
+	for _, f := range changes {
+		result = append(result, toChangeResponse(f))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"changes":      result,
+		"current_rank": currentRank,
+	})
+}
+
 // fileAtTimeResponse is the JSON representation of one file in the history view.
 type fileAtTimeResponse struct {
 	ID          string    `json:"id"`

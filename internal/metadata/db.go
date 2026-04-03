@@ -51,6 +51,7 @@ func Open(path string) (*DB, error) {
 	migrations := []string{
 		`ALTER TABLE files ADD COLUMN removed_locally INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE users ADD COLUMN token_invalidated_at TEXT`,
+		`ALTER TABLE files ADD COLUMN change_rank INTEGER NOT NULL DEFAULT 0`,
 	}
 	for _, m := range migrations {
 		if _, err := rawDB.Exec(m); err != nil {
@@ -60,6 +61,12 @@ func Open(path string) (*DB, error) {
 				return nil, fmt.Errorf("metadata: migration %q: %w", m, err)
 			}
 		}
+	}
+
+	// Create indexes that may not exist yet (idempotent).
+	if _, err := rawDB.Exec(`CREATE INDEX IF NOT EXISTS idx_files_change_rank ON files(change_rank)`); err != nil {
+		rawDB.Close()
+		return nil, fmt.Errorf("metadata: create change_rank index: %w", err)
 	}
 
 	return &DB{db: rawDB}, nil

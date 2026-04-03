@@ -4,18 +4,76 @@ import os.log
 class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     let domain: NSFileProviderDomain
     let logger = Logger(subsystem: "com.syncvault.fileprovider", category: "Extension")
+    let cache: ItemCache?
+    private var pollTimer: DispatchSourceTimer?
 
     required init(domain: NSFileProviderDomain) {
         self.domain = domain
+        self.cache = try? ItemCache()
         super.init()
         logger.info("FileProviderExtension initialized for domain: \(domain.displayName)")
+        startPollingTimer()
     }
 
     func invalidate() {
+        pollTimer?.cancel()
+        pollTimer = nil
         logger.info("FileProviderExtension invalidated")
     }
 
-    // MARK: - Signal helper (critical for keeping Finder in sync)
+    // MARK: - Background polling (Fase 6)
+
+    private func startPollingTimer() {
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
+        timer.schedule(deadline: .now() + 30, repeating: 30)
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            Task { await self.pollForChanges() }
+        }
+        timer.resume()
+        pollTimer = timer
+    }
+
+    private func pollForChanges() async {
+        do {
+            let client = try SharedConfig.sharedClient()
+            let folderID = SharedConfig.onDemandFolderID()
+            guard !folderID.isEmpty else { return }
+
+            let files = try await client.listFiles(parentID: folderID)
+            guard let cache = cache else { return }
+
+            let cachedItems = await cache.allItems()
+            let serverIDs = Set(files.map { $0.id })
+            let cachedIDs = Set(cachedItems.map { $0.id })
+
+            var changed = false
+
+            // New or updated items
+            for file in files {
+                let existing = await cache.getItem(file.id)
+                if existing == nil || existing?.updatedAt != file.updatedAt {
+                    await cache.upsert(file)
+                    changed = true
+                }
+            }
+
+            // Deleted items (in cache but not on server)
+            for cachedID in cachedIDs where !serverIDs.contains(cachedID) {
+                await cache.markDeleted(cachedID)
+                changed = true
+            }
+
+            if changed {
+                logger.info("pollForChanges: detected changes, signaling enumerator")
+                signalChange(for: .rootContainer)
+            }
+        } catch {
+            // Silent fail — will retry in 30s
+        }
+    }
+
+    // MARK: - Signal helper
 
     private func signalChange(for parentIdentifier: NSFileProviderItemIdentifier) {
         guard let manager = NSFileProviderManager(for: domain) else { return }
@@ -27,7 +85,7 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         manager.signalEnumerator(for: .workingSet) { _ in }
     }
 
-    // MARK: - Item lookup
+    // MARK: - Item lookup (Fase 3: cache-first)
 
     func item(for identifier: NSFileProviderItemIdentifier,
               request: NSFileProviderRequest,
@@ -41,9 +99,15 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 } else if identifier == .trashContainer || identifier == .workingSet {
                     completionHandler(nil, NSError(domain: NSFileProviderErrorDomain, code: NSFileProviderError.noSuchItem.rawValue))
                 } else {
-                    let client = try SharedConfig.sharedClient()
-                    let serverFile = try await client.getFile(id: identifier.rawValue)
-                    completionHandler(FileProviderItem(serverFile: serverFile), nil)
+                    // Cache-first: try local cache, fallback to server
+                    if let cached = await cache?.getItem(identifier.rawValue) {
+                        completionHandler(FileProviderItem(serverFile: cached.toServerFile(), isDownloaded: cached.isDownloaded), nil)
+                    } else {
+                        let client = try SharedConfig.sharedClient()
+                        let serverFile = try await client.getFile(id: identifier.rawValue)
+                        await cache?.upsert(serverFile)
+                        completionHandler(FileProviderItem(serverFile: serverFile), nil)
+                    }
                 }
                 progress.completedUnitCount = 1
             } catch {
@@ -54,7 +118,7 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         return progress
     }
 
-    // MARK: - Download
+    // MARK: - Download (Fase 7: download state tracking)
 
     func fetchContents(for itemIdentifier: NSFileProviderItemIdentifier,
                        version requestedVersion: NSFileProviderItemVersion?,
@@ -69,14 +133,17 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 let (tempURL, serverFile) = try await client.downloadFileToDisk(id: itemIdentifier.rawValue)
                 let item = FileProviderItem(serverFile: serverFile, isDownloaded: true)
                 logger.info("Downloaded: \(serverFile.name, privacy: .public) (\(serverFile.size) bytes)")
+
+                // Update cache with download state
+                await cache?.upsert(serverFile, downloaded: true)
+
                 SharedConfig.setProgress(action: "Downloaded", filename: serverFile.name, bytesTransferred: serverFile.size, totalBytes: serverFile.size)
                 SharedConfig.addRecentFile(filename: serverFile.name, action: "downloaded")
                 SharedConfig.clearProgress()
                 completionHandler(tempURL, item, nil)
                 progress.completedUnitCount = 100
 
-                // Signal parent so download state is reflected
-                signalChange(for: .rootContainer)
+                signalChange(for: item.parentItemIdentifier)
             } catch {
                 logger.error("Download failed for \(itemIdentifier.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 completionHandler(nil, nil, error)
@@ -103,7 +170,7 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     : itemTemplate.parentItemIdentifier.rawValue
 
                 guard !parentID.isEmpty else {
-                    logger.error("createItem: parentID is EMPTY — onDemandFolderID not configured")
+                    logger.error("createItem: parentID is EMPTY")
                     completionHandler(nil, [], false, NSError(domain: NSFileProviderErrorDomain, code: NSFileProviderError.notAuthenticated.rawValue))
                     return
                 }
@@ -111,14 +178,12 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 logger.info("createItem: \(itemTemplate.filename, privacy: .public) in parent=\(parentID, privacy: .public)")
 
                 if itemTemplate.contentType == .folder {
-                    let result = try await client.createFolder(
-                        name: itemTemplate.filename,
-                        parentID: parentID
-                    )
+                    let result = try await client.createFolder(name: itemTemplate.filename, parentID: parentID)
+                    await cache?.upsert(result)
                     let item = FileProviderItem(serverFile: result)
                     completionHandler(item, [], false, nil)
                 } else if let url = url {
-                    // Consume resource fork so Finder considers it handled
+                    // Consume resource fork (Fase 8)
                     let rsrcUrl = url.appendingPathComponent("..namedfork/rsrc")
                     let _ = try? Data(contentsOf: rsrcUrl, options: .alwaysMapped)
 
@@ -127,11 +192,10 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
                     SharedConfig.setProgress(action: "Uploading", filename: itemTemplate.filename, bytesTransferred: 0, totalBytes: fileSize)
 
-                    let result = try await client.uploadFileFromDisk(
-                        fileURL: url,
-                        filename: itemTemplate.filename,
-                        parentID: parentID
-                    )
+                    let result = try await client.uploadFileFromDisk(fileURL: url, filename: itemTemplate.filename, parentID: parentID)
+
+                    await cache?.upsert(result, downloaded: true)
+
                     SharedConfig.setProgress(action: "Uploaded", filename: itemTemplate.filename, bytesTransferred: fileSize, totalBytes: fileSize)
                     SharedConfig.addRecentFile(filename: itemTemplate.filename, action: "uploaded")
                     SharedConfig.clearProgress()
@@ -141,11 +205,9 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     completionHandler(nil, [], false, NSError.fileProviderErrorForNonExistentItem(withIdentifier: itemTemplate.itemIdentifier))
                 }
                 progress.completedUnitCount = 100
-
-                // CRITICAL: Signal macOS to refresh the enumerator
                 signalChange(for: itemTemplate.parentItemIdentifier)
             } catch {
-                logger.error("createItem(\(itemTemplate.filename, privacy: .public), parent=\(itemTemplate.parentItemIdentifier.rawValue, privacy: .public)) failed: \(error.localizedDescription, privacy: .public)")
+                logger.error("createItem(\(itemTemplate.filename, privacy: .public)) failed: \(error.localizedDescription, privacy: .public)")
                 completionHandler(nil, [], false, error)
             }
         }
@@ -167,11 +229,14 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             do {
                 let client = try SharedConfig.sharedClient()
 
-                // Handle extended attributes only — just acknowledge, don't upload
+                // Handle extended attributes only (Fase 8)
                 if changedFields == .extendedAttributes {
-                    let serverFile = try await client.getFile(id: item.itemIdentifier.rawValue)
-                    let updatedItem = FileProviderItem(serverFile: serverFile)
-                    completionHandler(updatedItem, [], false, nil)
+                    if let cached = await cache?.getItem(item.itemIdentifier.rawValue) {
+                        completionHandler(FileProviderItem(serverFile: cached.toServerFile(), isDownloaded: cached.isDownloaded), [], false, nil)
+                    } else {
+                        let serverFile = try await client.getFile(id: item.itemIdentifier.rawValue)
+                        completionHandler(FileProviderItem(serverFile: serverFile), [], false, nil)
+                    }
                     progress.completedUnitCount = 100
                     return
                 }
@@ -183,7 +248,7 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     try await client.moveFile(id: item.itemIdentifier.rawValue, name: item.filename, parentID: newParentID)
                 }
 
-                // Consume resource fork if present
+                // Consume resource fork (Fase 8)
                 if let url = newContents {
                     let rsrcUrl = url.appendingPathComponent("..namedfork/rsrc")
                     let _ = try? Data(contentsOf: rsrcUrl, options: .alwaysMapped)
@@ -191,19 +256,14 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
                 if changedFields.contains(.contents), let url = newContents {
                     let parentID = item.parentItemIdentifier == .rootContainer ? SharedConfig.onDemandFolderID() : item.parentItemIdentifier.rawValue
-                    let _ = try await client.uploadFileFromDisk(
-                        fileURL: url,
-                        filename: item.filename,
-                        parentID: parentID
-                    )
+                    let _ = try await client.uploadFileFromDisk(fileURL: url, filename: item.filename, parentID: parentID)
                 }
 
                 let serverFile = try await client.getFile(id: item.itemIdentifier.rawValue)
+                await cache?.upsert(serverFile, downloaded: newContents != nil)
                 let updatedItem = FileProviderItem(serverFile: serverFile, isDownloaded: newContents != nil)
                 completionHandler(updatedItem, [], false, nil)
                 progress.completedUnitCount = 100
-
-                // Signal change
                 signalChange(for: item.parentItemIdentifier)
             } catch {
                 logger.error("modifyItem(\(item.filename, privacy: .public)) failed: \(error.localizedDescription, privacy: .public)")
@@ -226,10 +286,9 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             do {
                 let client = try SharedConfig.sharedClient()
                 try await client.deleteFile(id: identifier.rawValue)
+                await cache?.markDeleted(identifier.rawValue)
                 completionHandler(nil)
                 progress.completedUnitCount = 1
-
-                // Signal root container since we don't know the parent
                 signalChange(for: .rootContainer)
             } catch {
                 logger.error("deleteItem(\(identifier.rawValue, privacy: .public)) failed: \(error.localizedDescription, privacy: .public)")
@@ -243,6 +302,6 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
     func enumerator(for containerItemIdentifier: NSFileProviderItemIdentifier,
                     request: NSFileProviderRequest) throws -> NSFileProviderEnumerator {
-        return FileProviderEnumerator(containerItemIdentifier: containerItemIdentifier, domain: domain)
+        return FileProviderEnumerator(containerItemIdentifier: containerItemIdentifier, domain: domain, cache: cache)
     }
 }

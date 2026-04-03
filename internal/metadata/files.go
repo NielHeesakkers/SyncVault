@@ -31,6 +31,13 @@ var ErrFileNotFound = errors.New("metadata: file not found")
 // ErrDuplicateFile is returned when creating a file with a conflicting name in the same parent.
 var ErrDuplicateFile = errors.New("metadata: duplicate file name in parent")
 
+// nextChangeRank returns the next change_rank value (current max + 1).
+func (d *DB) nextChangeRank() int64 {
+	var rank int64
+	d.db.QueryRow(`SELECT COALESCE(MAX(change_rank), 0) + 1 FROM files`).Scan(&rank)
+	return rank
+}
+
 // CreateFile inserts a new file or directory record.
 // For directories: idempotent find-or-create — if a non-deleted directory with the same
 // name already exists, it is returned directly (no rename, no conflict).
@@ -83,8 +90,8 @@ func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, 
 	}
 
 	_, err := d.db.Exec(
-		`INSERT INTO files (id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO files (id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, change_rank)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		f.ID,
 		nullStringVal(f.ParentID),
 		f.OwnerID,
@@ -95,6 +102,7 @@ func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, 
 		nullStringVal(f.MimeType),
 		f.CreatedAt.Format(time.RFC3339Nano),
 		f.UpdatedAt.Format(time.RFC3339Nano),
+		d.nextChangeRank(),
 	)
 	if err != nil {
 		if isSQLiteConstraint(err) {
@@ -199,8 +207,8 @@ func (d *DB) MoveFile(id, newParentID, newName string) error {
 		newParent = newParentID
 	}
 	res, err := d.db.Exec(
-		`UPDATE files SET parent_id=?, name=?, updated_at=? WHERE id=? AND deleted_at IS NULL`,
-		newParent, newName, now.Format(time.RFC3339Nano), id,
+		`UPDATE files SET parent_id=?, name=?, updated_at=?, change_rank=? WHERE id=? AND deleted_at IS NULL`,
+		newParent, newName, now.Format(time.RFC3339Nano), d.nextChangeRank(), id,
 	)
 	if err != nil {
 		if isSQLiteConstraint(err) {
@@ -248,8 +256,8 @@ func (d *DB) UpdateFileOwner(id, newOwnerID string) error {
 func (d *DB) SoftDeleteFile(id string) error {
 	now := time.Now().UTC()
 	res, err := d.db.Exec(
-		`UPDATE files SET deleted_at=?, updated_at=? WHERE id=? AND deleted_at IS NULL`,
-		now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), id,
+		`UPDATE files SET deleted_at=?, updated_at=?, change_rank=? WHERE id=? AND deleted_at IS NULL`,
+		now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano), d.nextChangeRank(), id,
 	)
 	if err != nil {
 		return fmt.Errorf("metadata: soft delete file: %w", err)
@@ -265,8 +273,8 @@ func (d *DB) SoftDeleteFile(id string) error {
 func (d *DB) RestoreFile(id string) error {
 	now := time.Now().UTC()
 	res, err := d.db.Exec(
-		`UPDATE files SET deleted_at=NULL, updated_at=? WHERE id=? AND deleted_at IS NOT NULL`,
-		now.Format(time.RFC3339Nano), id,
+		`UPDATE files SET deleted_at=NULL, updated_at=?, change_rank=? WHERE id=? AND deleted_at IS NOT NULL`,
+		now.Format(time.RFC3339Nano), d.nextChangeRank(), id,
 	)
 	if err != nil {
 		return fmt.Errorf("metadata: restore file: %w", err)
@@ -374,8 +382,8 @@ func (d *DB) ListAllTrashedFiles() ([]File, error) {
 func (d *DB) UpdateFileContent(id, contentHash string, size int64) error {
 	now := time.Now().UTC()
 	res, err := d.db.Exec(
-		`UPDATE files SET content_hash=?, size=?, updated_at=? WHERE id=? AND deleted_at IS NULL`,
-		contentHash, size, now.Format(time.RFC3339Nano), id,
+		`UPDATE files SET content_hash=?, size=?, updated_at=?, change_rank=? WHERE id=? AND deleted_at IS NULL`,
+		contentHash, size, now.Format(time.RFC3339Nano), d.nextChangeRank(), id,
 	)
 	if err != nil {
 		return fmt.Errorf("metadata: update file content: %w", err)
@@ -413,6 +421,36 @@ func (d *DB) ListChangedFiles(since time.Time, ownerID string) ([]File, error) {
 		files = append(files, *f)
 	}
 	return files, rows.Err()
+}
+
+// ListChangesByRank returns all files where change_rank > sinceRank for the given owner.
+// Includes soft-deleted files so clients can handle deletions.
+// Returns the files, the current max rank, and any error.
+func (d *DB) ListChangesByRank(sinceRank int64, ownerID string) ([]File, int64, error) {
+	// Get current max rank first.
+	var currentRank int64
+	d.db.QueryRow(`SELECT COALESCE(MAX(change_rank), 0) FROM files`).Scan(&currentRank)
+
+	rows, err := d.db.Query(
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+		 FROM files WHERE owner_id = ? AND change_rank > ?
+		 ORDER BY change_rank ASC`,
+		ownerID, sinceRank,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("metadata: list changes by rank: %w", err)
+	}
+	defer rows.Close()
+
+	var files []File
+	for rows.Next() {
+		f, err := scanFileRow(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		files = append(files, *f)
+	}
+	return files, currentRank, rows.Err()
 }
 
 // StorageUsedByUser returns the sum of sizes of all non-deleted, non-directory files owned by userID.
@@ -718,7 +756,7 @@ func (d *DB) ListChangeDates(parentID, ownerID string) ([]time.Time, error) {
 
 // MarkRemovedLocally sets removed_locally=1 for the given file.
 func (d *DB) MarkRemovedLocally(fileID string) error {
-	res, err := d.db.Exec(`UPDATE files SET removed_locally=1 WHERE id=?`, fileID)
+	res, err := d.db.Exec(`UPDATE files SET removed_locally=1, change_rank=? WHERE id=?`, d.nextChangeRank(), fileID)
 	if err != nil {
 		return fmt.Errorf("metadata: mark removed locally: %w", err)
 	}
@@ -731,7 +769,7 @@ func (d *DB) MarkRemovedLocally(fileID string) error {
 
 // UnmarkRemovedLocally sets removed_locally=0 for the given file.
 func (d *DB) UnmarkRemovedLocally(fileID string) error {
-	res, err := d.db.Exec(`UPDATE files SET removed_locally=0 WHERE id=?`, fileID)
+	res, err := d.db.Exec(`UPDATE files SET removed_locally=0, change_rank=? WHERE id=?`, d.nextChangeRank(), fileID)
 	if err != nil {
 		return fmt.Errorf("metadata: unmark removed locally: %w", err)
 	}
