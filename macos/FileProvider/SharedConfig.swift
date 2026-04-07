@@ -21,9 +21,9 @@ enum SharedConfig {
                          userInfo: [NSLocalizedDescriptionKey: "Server not configured"])
         }
 
-        // Reuse client if URL matches and it's less than 5 minutes old
+        // Reuse client if URL matches and it's less than 24 hours old
         if let client = _cachedClient, _cachedClientURL == url,
-           let created = _cachedClientCreated, Date().timeIntervalSince(created) < 300 {
+           let created = _cachedClientCreated, Date().timeIntervalSince(created) < 86400 {
             return client
         }
 
