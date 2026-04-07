@@ -30,6 +30,7 @@ targets:
         product: SQLite
       - package: Sparkle
       - target: SyncVaultFileProvider
+      - target: SyncVaultFinderSync
     settings:
       base:
         INFOPLIST_FILE: Sources/SyncVault/Info.plist
@@ -58,6 +59,31 @@ targets:
         LSUIElement: true
         NSHighResolutionCapable: true
         LSApplicationCategoryType: public.app-category.utilities
+
+  SyncVaultFinderSync:
+    type: app-extension
+    platform: macOS
+    deploymentTarget:
+      macOS: "13.0"
+    sources:
+      - path: FinderSync
+    dependencies:
+      - sdk: libsqlite3.tbd
+    settings:
+      base:
+        INFOPLIST_FILE: FinderSync/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.syncvault.app.findersync
+        ENABLE_HARDENED_RUNTIME: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "@executable_path/../Frameworks"
+          - "@executable_path/../../../../Frameworks"
+    entitlements:
+      path: FinderSync/FinderSync.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+          - DE59N86W33.com.syncvault.shared
 
   SyncVaultFileProvider:
     type: app-extension

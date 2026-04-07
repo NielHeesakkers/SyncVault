@@ -12,6 +12,7 @@
 		1B4100C50A43336FD88467C9 /* SyncTasksTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75F5B9CC449B3A42443B1E69 /* SyncTasksTab.swift */; };
 		1DAD634F2B3829A9536687C1 /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1101721817B68D9FDCC83C38 /* SyncEngine.swift */; };
 		21C13CD1E7883379B8147945 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34330AC2DE1AF95341AE2396 /* KeychainHelper.swift */; };
+		23C75AA7D3ADFEE6F15BB5FF /* SyncVaultFinderSync.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 873C48E9CE3D4E740CD9AD16 /* SyncVaultFinderSync.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		279857F2C5F100802EE588FE /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2C14153ED8339A25D2318 /* APIClient.swift */; };
 		2B88568F36CADC4599DA338C /* SyncTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21276B1C44E0B61C8955956 /* SyncTask.swift */; };
 		2ED9B6B148FE6750B1DBF826 /* FileProviderExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B23A6820747CFA8BEA1964 /* FileProviderExtension.swift */; };
@@ -19,6 +20,7 @@
 		3E590498FEC86B6AE280B494 /* SpeedGraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 399F63F3155D3C438B3B33DF /* SpeedGraphView.swift */; };
 		3E8C2BED14CC3889E99CB6B7 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 44164418F31752C621F6B67A /* Sparkle */; };
 		41C91789CE8A5F7D62BEFC51 /* UIHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = D84AC8EB04849E57CCD57751 /* UIHelpers.swift */; };
+		44AC3061932AE7F89B4062CC /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = AA65E79BF1B6E75FCBF493FA /* libsqlite3.tbd */; };
 		4BF3C5D5D1ED893E1663C578 /* InfoTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = E28CF52AF24FAC1F1B5D8570 /* InfoTab.swift */; };
 		4FE5B71D31457C6AC1BA5AAE /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F74C8C1FCEBD361908B1935 /* AppState.swift */; };
 		57CFF9CFA5E9E6683AA05A36 /* SyncDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1584B409E0C60E69FD3EE564 /* SyncDatabase.swift */; };
@@ -33,6 +35,7 @@
 		C818F7D6B61788DA20662A3A /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 2FB44D1DFA69201212841F41 /* SQLite */; };
 		C82F3A56ED9CF97D04330CF5 /* SyncVaultFileProvider.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9CBA689C79C75E0DDD8D66D8 /* SyncVaultFileProvider.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C9DF29C4D68988A60C5E49B9 /* SharedConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F34AFDFCBC9BAA2A547677A /* SharedConfig.swift */; };
+		D4592BCEEF705AB4828CCCEE /* FinderSyncExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8187A3DC3F2125FA73837473 /* FinderSyncExtension.swift */; };
 		D586C1309BC88FB6D6A7559A /* SyncVaultApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1724FCD439D8EDFAB32A05C /* SyncVaultApp.swift */; };
 		DB327A44A1E0805BFC01C72E /* FileProviderEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B5DF716BCC97ACDFA90DFF5 /* FileProviderEnumerator.swift */; };
 		E25FCB868D5E5BA687464B22 /* ServerFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 999BDA0F83E9BC06BCEB72F5 /* ServerFile.swift */; };
@@ -43,6 +46,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		BC911E3CD4D9835D782933B4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2C5392B97645FBD49869FA37 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2E32F6AE1ED713574EF7CDF8;
+			remoteInfo = SyncVaultFinderSync;
+		};
 		C7BB9AE29541EB8A880B6F47 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 2C5392B97645FBD49869FA37 /* Project object */;
@@ -60,6 +70,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				C82F3A56ED9CF97D04330CF5 /* SyncVaultFileProvider.appex in Embed Foundation Extensions */,
+				23C75AA7D3ADFEE6F15BB5FF /* SyncVaultFinderSync.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -79,12 +90,15 @@
 		56862DE9E2BFB3086920F77A /* UpdaterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterService.swift; sourceTree = "<group>"; };
 		596BE606278E8940545D7D3D /* ItemCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemCache.swift; sourceTree = "<group>"; };
 		5F74C8C1FCEBD361908B1935 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		660C86F959515557241FD25E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6F34AFDFCBC9BAA2A547677A /* SharedConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedConfig.swift; sourceTree = "<group>"; };
 		70702DA21BB966F6734603A7 /* GeneralTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralTab.swift; sourceTree = "<group>"; };
 		75F5B9CC449B3A42443B1E69 /* SyncTasksTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncTasksTab.swift; sourceTree = "<group>"; };
 		76463197A091E21481CFD296 /* SyncVault.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SyncVault.entitlements; sourceTree = "<group>"; };
 		7F3FDEA20918B30FA0CD901D /* FileWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileWatcher.swift; sourceTree = "<group>"; };
+		8187A3DC3F2125FA73837473 /* FinderSyncExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinderSyncExtension.swift; sourceTree = "<group>"; };
 		8187B14E43A7916AFBAC1406 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		873C48E9CE3D4E740CD9AD16 /* SyncVaultFinderSync.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SyncVaultFinderSync.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		92068AE2AC3CF43472FD2719 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		999BDA0F83E9BC06BCEB72F5 /* ServerFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerFile.swift; sourceTree = "<group>"; };
 		9CBA689C79C75E0DDD8D66D8 /* SyncVaultFileProvider.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SyncVaultFileProvider.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -92,6 +106,8 @@
 		A21276B1C44E0B61C8955956 /* SyncTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncTask.swift; sourceTree = "<group>"; };
 		A32C695CE88C91D36E0FBB28 /* MenuBarIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIcon.swift; sourceTree = "<group>"; };
 		AA193C4380A489B50BA1C54F /* FileProviderItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderItem.swift; sourceTree = "<group>"; };
+		AA65E79BF1B6E75FCBF493FA /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+		AC4B266A6951A9DBBDB38267 /* FinderSync.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FinderSync.entitlements; sourceTree = "<group>"; };
 		B56E34977DB1CFE5D9017DCA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		C1B85466CBD1CE7C10EBE1FB /* FileProvider.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FileProvider.entitlements; sourceTree = "<group>"; };
 		C5AE6189024BEC7F01E6741A /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
@@ -105,6 +121,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		C46228B9D6616ABC1C8BD063 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				44AC3061932AE7F89B4062CC /* libsqlite3.tbd in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		CCC27499F26F5CA00B661E10 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -129,7 +153,9 @@
 			isa = PBXGroup;
 			children = (
 				1B55EA91C3C514282A6703E8 /* FileProvider */,
+				60F7622A3E6B5591FFC622C8 /* FinderSync */,
 				1D3A9D903F39470717591210 /* SyncVault */,
+				D782350BAD1A08F0B8E8F935 /* Frameworks */,
 				A979CBC3A7D0E595254DB862 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -182,18 +208,55 @@
 			path = Sources/SyncVault;
 			sourceTree = "<group>";
 		};
+		60F7622A3E6B5591FFC622C8 /* FinderSync */ = {
+			isa = PBXGroup;
+			children = (
+				AC4B266A6951A9DBBDB38267 /* FinderSync.entitlements */,
+				8187A3DC3F2125FA73837473 /* FinderSyncExtension.swift */,
+				660C86F959515557241FD25E /* Info.plist */,
+			);
+			path = FinderSync;
+			sourceTree = "<group>";
+		};
 		A979CBC3A7D0E595254DB862 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				E2444AC314D23826B10AEA48 /* SyncVault.app */,
 				9CBA689C79C75E0DDD8D66D8 /* SyncVaultFileProvider.appex */,
+				873C48E9CE3D4E740CD9AD16 /* SyncVaultFinderSync.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		D782350BAD1A08F0B8E8F935 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				AA65E79BF1B6E75FCBF493FA /* libsqlite3.tbd */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		2E32F6AE1ED713574EF7CDF8 /* SyncVaultFinderSync */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C34F99FD5DE938367F3C499C /* Build configuration list for PBXNativeTarget "SyncVaultFinderSync" */;
+			buildPhases = (
+				03485DB88FD12F2DF2E41DC7 /* Sources */,
+				C46228B9D6616ABC1C8BD063 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SyncVaultFinderSync;
+			packageProductDependencies = (
+			);
+			productName = SyncVaultFinderSync;
+			productReference = 873C48E9CE3D4E740CD9AD16 /* SyncVaultFinderSync.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		419561C4616A8D8BCF8EE1E6 /* SyncVault */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 86CC0F87DFE31CA5E083BC5F /* Build configuration list for PBXNativeTarget "SyncVault" */;
@@ -206,6 +269,7 @@
 			);
 			dependencies = (
 				2F25474016FD947F71C92F29 /* PBXTargetDependency */,
+				0FCA230F8A7A8B04D77E97B7 /* PBXTargetDependency */,
 			);
 			name = SyncVault;
 			packageProductDependencies = (
@@ -244,6 +308,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
+					2E32F6AE1ED713574EF7CDF8 = {
+						DevelopmentTeam = DE59N86W33;
+						ProvisioningStyle = Automatic;
+					};
 					419561C4616A8D8BCF8EE1E6 = {
 						DevelopmentTeam = DE59N86W33;
 						ProvisioningStyle = Automatic;
@@ -274,11 +342,20 @@
 			targets = (
 				419561C4616A8D8BCF8EE1E6 /* SyncVault */,
 				D19512B6D9728AC7937D4ED2 /* SyncVaultFileProvider */,
+				2E32F6AE1ED713574EF7CDF8 /* SyncVaultFinderSync */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
+		03485DB88FD12F2DF2E41DC7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D4592BCEEF705AB4828CCCEE /* FinderSyncExtension.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		7F6006D3ABB9251A18222EB5 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -325,6 +402,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		0FCA230F8A7A8B04D77E97B7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2E32F6AE1ED713574EF7CDF8 /* SyncVaultFinderSync */;
+			targetProxy = BC911E3CD4D9835D782933B4 /* PBXContainerItemProxy */;
+		};
 		2F25474016FD947F71C92F29 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = D19512B6D9728AC7937D4ED2 /* SyncVaultFileProvider */;
@@ -474,6 +556,40 @@
 			};
 			name = Release;
 		};
+		8F7AE0FCA4380429656CC804 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = FinderSync/FinderSync.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = FinderSync/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.syncvault.app.findersync;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		9B478E5E1B07746DC8D779B4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = FinderSync/FinderSync.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = FinderSync/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.syncvault.app.findersync;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
 		C806E36682CA9E7D731285C2 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -532,6 +648,15 @@
 			buildConfigurations = (
 				EBFF514561BF1664E8C69EDB /* Debug */,
 				5F40EA7B1A91AFFE18E8B2DD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C34F99FD5DE938367F3C499C /* Build configuration list for PBXNativeTarget "SyncVaultFinderSync" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8F7AE0FCA4380429656CC804 /* Debug */,
+				9B478E5E1B07746DC8D779B4 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

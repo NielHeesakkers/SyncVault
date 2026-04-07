@@ -8,6 +8,17 @@ actor SyncEngine {
     private let apiClient: APIClient
     private let db: SyncDatabase
     private var isRunning = false
+
+    /// Mark a file as currently syncing (for FinderSync badges)
+    static func markSyncingFile(_ path: String) {
+        let defaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
+        var files = defaults?.stringArray(forKey: "syncingFiles") ?? []
+        if !files.contains(path) {
+            files.append(path)
+            if files.count > 100 { files = Array(files.suffix(50)) } // Keep bounded
+            defaults?.set(files, forKey: "syncingFiles")
+        }
+    }
     /// Cache of relative directory path -> server folder ID (built during sync)
     private var folderIDCache: [String: String] = [:]
     /// Upload speed limit in bytes per second (0 = unlimited)
@@ -485,6 +496,9 @@ actor SyncEngine {
                             let fileSize = (attrs[.size] as? Int64) ?? 0
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
 
+                            // Mark as syncing for FinderSync badge
+                            Self.markSyncingFile(path)
+
                             // Dynamically adjust parallelism based on file size
                             let optimalParallel = DynamicSemaphore.parallelismFor(fileSize: fileSize)
                             await semaphore.setLimit(optimalParallel)
@@ -520,6 +534,8 @@ actor SyncEngine {
 
                         case .download(let fileID, let localPath, let relativePath):
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
+                            // Mark as syncing for FinderSync badge
+                            Self.markSyncingFile(localPath)
                             await onProgress(SyncProgress(
                                 currentFile: displayName, action: "Downloading",
                                 bytesTransferred: curBytes, totalBytes: totalBytesToUpload,

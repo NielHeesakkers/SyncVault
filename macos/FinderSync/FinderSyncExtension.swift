@@ -1,13 +1,18 @@
 import Cocoa
 import FinderSync
+import SQLite3
 import os
 
+@objc(FinderSyncExtension)
 class FinderSyncExtension: FIFinderSync {
     private let logger = Logger(subsystem: "com.syncvault.findersync", category: "FinderSync")
+    private var taskMapping: [String: String] = [:]  // localPath → taskID
+    private var syncingFiles: Set<String> = []
+    private var syncedPaths: Set<String> = []  // cache of synced relative paths
 
     override init() {
         super.init()
-        logger.info("FinderSync Extension initialized")
+        NSLog("SyncVault FinderSync: INIT")
 
         // Register badge images
         FIFinderSyncController.default().setBadgeImage(
@@ -23,45 +28,128 @@ class FinderSyncExtension: FIFinderSync {
             forBadgeIdentifier: "syncing"
         )
         FIFinderSyncController.default().setBadgeImage(
-            NSImage(systemSymbolName: "icloud.circle.fill", accessibilityDescription: "Cloud")!
-                .withSymbolConfiguration(.init(paletteColors: [.systemGray]))!,
-            label: "Cloud Only",
-            forBadgeIdentifier: "cloud"
+            NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Error")!
+                .withSymbolConfiguration(.init(paletteColors: [.systemOrange]))!,
+            label: "Error",
+            forBadgeIdentifier: "error"
         )
 
-        // Load monitored paths from shared UserDefaults
-        updateMonitoredPaths()
+        // Always set at least one path so Finder loads us
+        FIFinderSyncController.default().directoryURLs = [URL(fileURLWithPath: NSHomeDirectory() + "/Desktop")]
 
-        // Watch for changes to monitored paths
+        // Load state
+        reloadState()
+        loadSyncedPaths()
+
+        // Watch for changes
         DistributedNotificationCenter.default().addObserver(
-            self,
-            selector: #selector(pathsChanged),
-            name: NSNotification.Name("com.syncvault.monitoredPathsChanged"),
-            object: nil
+            self, selector: #selector(stateChanged),
+            name: NSNotification.Name("com.syncvault.syncCompleted"), object: nil
+        )
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(stateChanged),
+            name: NSNotification.Name("com.syncvault.monitoredPathsChanged"), object: nil
         )
     }
 
-    @objc private func pathsChanged() {
-        updateMonitoredPaths()
+    @objc private func stateChanged() {
+        NSLog("SyncVault FinderSync: stateChanged notification")
+        reloadState()
+        loadSyncedPaths()
     }
 
-    private func updateMonitoredPaths() {
+    private func reloadState() {
         let defaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
-        if let paths = defaults?.stringArray(forKey: "monitoredPaths"), !paths.isEmpty {
-            let urls = Set(paths.map { URL(fileURLWithPath: $0) })
-            FIFinderSyncController.default().directoryURLs = urls
-            logger.info("Monitoring \(urls.count) paths")
+
+        // Load task mapping (JSON string)
+        if let json = defaults?.string(forKey: "syncTaskMapping"),
+           let data = json.data(using: .utf8),
+           let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+            taskMapping = dict
         } else {
-            FIFinderSyncController.default().directoryURLs = []
-            logger.info("No paths to monitor")
+            taskMapping = [:]
         }
+
+        // Load syncing files
+        syncingFiles = Set(defaults?.stringArray(forKey: "syncingFiles") ?? [])
+
+        // Set monitored directories
+        if !taskMapping.isEmpty {
+            let urls = Set(taskMapping.keys.map { URL(fileURLWithPath: $0) })
+            FIFinderSyncController.default().directoryURLs = urls
+            NSLog("SyncVault FinderSync: monitoring %d paths", urls.count)
+        } else {
+            // Fallback: use monitoredPaths but exclude CloudStorage (on-demand)
+            if let paths = defaults?.stringArray(forKey: "monitoredPaths") {
+                let syncPaths = paths.filter { !$0.contains("CloudStorage") && !$0.contains("~") }
+                if !syncPaths.isEmpty {
+                    FIFinderSyncController.default().directoryURLs = Set(syncPaths.map { URL(fileURLWithPath: $0) })
+                    NSLog("SyncVault FinderSync: fallback monitoring %d paths", syncPaths.count)
+                }
+            }
+        }
+    }
+
+    /// Load synced file paths from the sync database using raw sqlite3
+    private func loadSyncedPaths() {
+        guard let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: "DE59N86W33.com.syncvault.shared"
+        ) else { return }
+
+        let dbPath = containerURL.appendingPathComponent("sync.db").path
+        guard FileManager.default.fileExists(atPath: dbPath) else { return }
+
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return }
+        defer { sqlite3_close(db) }
+
+        var newPaths = Set<String>()
+        var stmt: OpaquePointer?
+        let sql = "SELECT task_id, relative_path FROM sync_states_v2"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let taskIDCStr = sqlite3_column_text(stmt, 0),
+                  let relPathCStr = sqlite3_column_text(stmt, 1) else { continue }
+            let taskID = String(cString: taskIDCStr)
+            let relPath = String(cString: relPathCStr)
+
+            // Find the local path for this task
+            for (localPath, tID) in taskMapping where tID == taskID {
+                let fullPath = (localPath as NSString).appendingPathComponent(relPath)
+                newPaths.insert(fullPath)
+            }
+        }
+
+        syncedPaths = newPaths
+        NSLog("SyncVault FinderSync: loaded %d synced paths", syncedPaths.count)
     }
 
     // MARK: - Badge Icons
 
     override func requestBadgeIdentifier(for url: URL) {
-        // All files in monitored folders are "synced" by default
-        FIFinderSyncController.default().setBadgeIdentifier("synced", for: url)
+        let path = url.path
+
+        // 1. Currently syncing?
+        if syncingFiles.contains(path) {
+            FIFinderSyncController.default().setBadgeIdentifier("syncing", for: url)
+            return
+        }
+
+        // 2. Check if synced (in database)
+        if syncedPaths.contains(path) {
+            FIFinderSyncController.default().setBadgeIdentifier("synced", for: url)
+            return
+        }
+
+        // 3. Check if it's the root folder of a task
+        if taskMapping.keys.contains(path) {
+            FIFinderSyncController.default().setBadgeIdentifier("synced", for: url)
+            return
+        }
+
+        // No badge = not yet synced
     }
 
     // MARK: - Context Menu
@@ -73,10 +161,6 @@ class FinderSyncExtension: FIFinderSync {
         shareItem.image = NSImage(systemSymbolName: "link", accessibilityDescription: nil)
         menu.addItem(shareItem)
 
-        let versionsItem = NSMenuItem(title: "View Versions", action: #selector(viewVersions(_:)), keyEquivalent: "")
-        versionsItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: nil)
-        menu.addItem(versionsItem)
-
         let openItem = NSMenuItem(title: "Open on Server", action: #selector(openOnServer(_:)), keyEquivalent: "")
         openItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
         menu.addItem(openItem)
@@ -85,40 +169,13 @@ class FinderSyncExtension: FIFinderSync {
     }
 
     @IBAction func shareLink(_ sender: AnyObject?) {
-        guard let items = FIFinderSyncController.default().selectedItemURLs(), let url = items.first else { return }
-        logger.info("Share link requested for: \(url.lastPathComponent)")
-
-        // Get server URL from shared defaults
         let defaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
         let serverURL = defaults?.string(forKey: "serverURL") ?? ""
-
-        // Copy a placeholder share link to clipboard
-        let shareURL = "\(serverURL)/files"
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(shareURL, forType: .string)
-
-        // Show notification
-        let notification = NSUserNotification()
-        notification.title = "SyncVault"
-        notification.informativeText = "Share link copied to clipboard"
-        NSUserNotificationCenter.default.deliver(notification)
-    }
-
-    @IBAction func viewVersions(_ sender: AnyObject?) {
-        guard let items = FIFinderSyncController.default().selectedItemURLs(), let url = items.first else { return }
-        logger.info("View versions requested for: \(url.lastPathComponent)")
-
-        let defaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
-        let serverURL = defaults?.string(forKey: "serverURL") ?? ""
-        if let webURL = URL(string: "\(serverURL)/files") {
-            NSWorkspace.shared.open(webURL)
-        }
+        NSPasteboard.general.setString("\(serverURL)/files", forType: .string)
     }
 
     @IBAction func openOnServer(_ sender: AnyObject?) {
-        guard let items = FIFinderSyncController.default().selectedItemURLs(), let url = items.first else { return }
-        logger.info("Open on server requested for: \(url.lastPathComponent)")
-
         let defaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
         let serverURL = defaults?.string(forKey: "serverURL") ?? ""
         if let webURL = URL(string: "\(serverURL)/files") {

@@ -93,18 +93,31 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Shared app group container URL — accessible by FinderSync extension
+    static var sharedContainerURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "DE59N86W33.com.syncvault.shared")
+    }
+
     private func initSyncDatabase() {
-        let dbPath = Self.configDirectory.appendingPathComponent("sync.db")
+        // Use shared app group container so FinderSync can read the database for badges
+        let containerURL = Self.sharedContainerURL ?? Self.configDirectory
+        let dbPath = containerURL.appendingPathComponent("sync.db")
         do {
-            try FileManager.default.createDirectory(at: Self.configDirectory, withIntermediateDirectories: true)
-            // Touch the file so SQLite doesn't fail silently
+            try FileManager.default.createDirectory(at: containerURL, withIntermediateDirectories: true)
+
+            // Migrate: if old database exists in configDirectory, move it
+            let oldPath = Self.configDirectory.appendingPathComponent("sync.db")
+            if FileManager.default.fileExists(atPath: oldPath.path) && !FileManager.default.fileExists(atPath: dbPath.path) {
+                try? FileManager.default.moveItem(at: oldPath, to: dbPath)
+                logger.info("Migrated sync database to shared container")
+            }
+
             if !FileManager.default.fileExists(atPath: dbPath.path) {
                 FileManager.default.createFile(atPath: dbPath.path, contents: nil)
             }
             syncDatabase = try SyncDatabase(path: dbPath.path)
-            // Force table creation with a dummy query
             _ = try? syncDatabase?.getStates(taskID: "__init__")
-            logger.info("Sync database initialized at \(dbPath.path), exists: \(FileManager.default.fileExists(atPath: dbPath.path))")
+            logger.info("Sync database initialized at \(dbPath.path)")
         } catch {
             logger.error("Failed to initialize sync database: \(error)")
         }
@@ -183,9 +196,20 @@ class AppState: ObservableObject {
         try? JSONEncoder().encode(config).write(to: configURL)
 
         // Update monitored paths for Finder Sync Extension
-        let paths = syncTasks.map { $0.localPath }
+        let paths = syncTasks.filter { $0.mode != .onDemand }.map { $0.localPath }
         let sharedDefaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
         sharedDefaults?.set(paths, forKey: "monitoredPaths")
+
+        // Write task mapping: localPath → taskID (for FinderSync badges)
+        var mapping: [String: String] = [:]
+        for task in syncTasks where task.isEnabled && task.mode != .onDemand {
+            mapping[task.localPath] = task.id.uuidString
+        }
+        if let jsonData = try? JSONSerialization.data(withJSONObject: mapping),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            sharedDefaults?.set(jsonString, forKey: "syncTaskMapping")
+        }
+
         // Notify FinderSync extension that paths changed
         DistributedNotificationCenter.default().postNotificationName(
             NSNotification.Name("com.syncvault.monitoredPathsChanged"),
@@ -755,6 +779,9 @@ class AppState: ObservableObject {
         // Keep FileProvider credentials fresh (token expires after 24h)
         refreshFileProviderCredentials()
 
+        // Update FinderSync badge state
+        updateFinderSyncState()
+
         // After two-way sync, check on-demand uploads
         await syncOnDemandFiles(client)
         // NOTE: Do NOT call resetOnDemandDomain() here — it invalidates the
@@ -905,6 +932,35 @@ class AppState: ObservableObject {
                 logger.error("On-demand sync error: \(error)")
             }
         }
+    }
+
+    /// Update FinderSync extension with current sync task mapping and notify of state changes.
+    private func updateFinderSyncState() {
+        let defaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
+
+        // Write task mapping: localPath → taskID (only sync/backup, not on-demand)
+        var mapping: [String: String] = [:]
+        for task in syncTasks where task.isEnabled && task.mode != .onDemand {
+            mapping[task.localPath] = task.id.uuidString
+        }
+        if let d = defaults {
+            // Store as JSON string (UserDefaults dictionaries can be unreliable across processes)
+            if let jsonData = try? JSONSerialization.data(withJSONObject: mapping),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                d.set(jsonString, forKey: "syncTaskMapping")
+            }
+            d.removeObject(forKey: "syncingFiles")
+            d.synchronize()
+            logger.info("FinderSync: updated task mapping with \(mapping.count) tasks")
+        } else {
+            logger.error("FinderSync: could not access shared UserDefaults!")
+        }
+
+        // Notify FinderSync to refresh badges
+        DistributedNotificationCenter.default().postNotificationName(
+            NSNotification.Name("com.syncvault.syncCompleted"),
+            object: nil
+        )
     }
 
     /// Refresh FileProvider shared credentials so the extension can re-auth when tokens expire.
