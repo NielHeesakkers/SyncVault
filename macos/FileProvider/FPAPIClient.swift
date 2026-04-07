@@ -4,8 +4,8 @@ import CommonCrypto
 actor FPAPIClient {
     let baseURL: String
     private var accessToken: String?
-    private let username: String?
-    private let password: String?
+    private var username: String?
+    private var password: String?
 
     init(baseURL: String, token: String?, username: String? = nil, password: String? = nil) {
         self.baseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -183,11 +183,18 @@ actor FPAPIClient {
     // MARK: - Auto Re-Auth on 401
 
     private func reAuthenticate() async throws {
-        guard let username = username, let password = password else {
+        // Always read fresh credentials from keychain (main app refreshes them)
+        let freshUsername = username ?? SharedConfig.loadFromKeychain(key: "fp_username")
+        let freshPassword = password ?? SharedConfig.loadFromKeychain(key: "fp_password")
+        guard let user = freshUsername, let pass = freshPassword else {
             throw FPAPIError.unauthorized
         }
+        // Update stored credentials for next time
+        self.username = user
+        self.password = pass
+
         struct LoginResponse: Codable { let access_token: String; let refresh_token: String }
-        let body: [String: String] = ["username": username, "password": password]
+        let body: [String: String] = ["username": user, "password": pass]
         var request = URLRequest(url: URL(string: "\(baseURL)/api/auth/login")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

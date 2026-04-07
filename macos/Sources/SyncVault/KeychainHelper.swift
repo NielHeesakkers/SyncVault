@@ -51,31 +51,17 @@ enum KeychainHelper {
     /// The access group must match the App Group entitlement (DE59N86W33.com.syncvault.shared).
     static func saveShared(key: String, value: String) {
         let data = value.data(using: .utf8)!
-        let deleteQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecAttrService as String: "com.syncvault.shared",
-            kSecAttrAccessGroup as String: "DE59N86W33.com.syncvault.shared",
-            kSecUseDataProtectionKeychain as String: true
-        ]
-        SecItemDelete(deleteQuery as CFDictionary)
+        // Use standard keychain with access group — works reliably across app and extension
         let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecAttrService as String: "com.syncvault.shared",
-            kSecAttrAccessGroup as String: "DE59N86W33.com.syncvault.shared",
-            kSecUseDataProtectionKeychain as String: true,
-            kSecValueData as String: data
-        ]
-        SecItemAdd(query as CFDictionary, nil)
-        // Also delete legacy keychain entry to avoid stale prompts
-        let legacyDelete: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecAttrService as String: "com.syncvault.shared",
             kSecAttrAccessGroup as String: "DE59N86W33.com.syncvault.shared"
         ]
-        SecItemDelete(legacyDelete as CFDictionary)
+        SecItemDelete(query as CFDictionary)
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        SecItemAdd(addQuery as CFDictionary, nil)
     }
 
     static func loadShared(key: String) -> String? {
@@ -84,7 +70,6 @@ enum KeychainHelper {
             kSecAttrAccount as String: key,
             kSecAttrService as String: "com.syncvault.shared",
             kSecAttrAccessGroup as String: "DE59N86W33.com.syncvault.shared",
-            kSecUseDataProtectionKeychain as String: true,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]

@@ -752,6 +752,9 @@ class AppState: ObservableObject {
             }
         }
 
+        // Keep FileProvider credentials fresh (token expires after 24h)
+        refreshFileProviderCredentials()
+
         // After two-way sync, check on-demand uploads
         await syncOnDemandFiles(client)
         // NOTE: Do NOT call resetOnDemandDomain() here — it invalidates the
@@ -901,6 +904,21 @@ class AppState: ObservableObject {
             } catch {
                 logger.error("On-demand sync error: \(error)")
             }
+        }
+    }
+
+    /// Refresh FileProvider shared credentials so the extension can re-auth when tokens expire.
+    private func refreshFileProviderCredentials() {
+        guard isConnected else { return }
+        let hasOnDemand = syncTasks.contains { $0.isEnabled && $0.mode == .onDemand }
+        guard hasOnDemand else { return }
+
+        if let token = KeychainHelper.load(key: "access_token") {
+            KeychainHelper.saveShared(key: "access_token", value: token)
+        }
+        KeychainHelper.saveShared(key: "fp_username", value: username)
+        if let password = KeychainHelper.load(key: "server_password") {
+            KeychainHelper.saveShared(key: "fp_password", value: password)
         }
     }
 

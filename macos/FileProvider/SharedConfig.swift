@@ -13,6 +13,7 @@ enum SharedConfig {
     // Singleton API client — prevents token race conditions between concurrent calls
     private static var _cachedClient: FPAPIClient?
     private static var _cachedClientURL: String?
+    private static var _cachedClientCreated: Date?
 
     static func sharedClient() throws -> FPAPIClient {
         guard let url = sharedDefaults.string(forKey: "serverURL"), !url.isEmpty else {
@@ -20,11 +21,13 @@ enum SharedConfig {
                          userInfo: [NSLocalizedDescriptionKey: "Server not configured"])
         }
 
-        // Reuse existing client if server URL hasn't changed
-        if let client = _cachedClient, _cachedClientURL == url {
+        // Reuse client if URL matches and it's less than 5 minutes old
+        if let client = _cachedClient, _cachedClientURL == url,
+           let created = _cachedClientCreated, Date().timeIntervalSince(created) < 300 {
             return client
         }
 
+        // Read fresh credentials from shared keychain
         let token = loadFromKeychain(key: "access_token")
         let username = loadFromKeychain(key: "fp_username")
         let password = loadFromKeychain(key: "fp_password")
@@ -32,6 +35,7 @@ enum SharedConfig {
         let client = FPAPIClient(baseURL: url, token: token, username: username, password: password)
         _cachedClient = client
         _cachedClientURL = url
+        _cachedClientCreated = Date()
         return client
     }
 
@@ -47,22 +51,6 @@ enum SharedConfig {
     // MARK: - Keychain
 
     static func loadFromKeychain(key: String) -> String? {
-        // Try data protection keychain first (no password prompts)
-        let dpQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccessGroup as String: keychainAccessGroup,
-            kSecUseDataProtectionKeychain as String: true,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var result: AnyObject?
-        var status = SecItemCopyMatching(dpQuery as CFDictionary, &result)
-        if status == errSecSuccess, let data = result as? Data {
-            return String(data: data, encoding: .utf8)
-        }
-        // Fallback to legacy keychain
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
@@ -71,7 +59,8 @@ enum SharedConfig {
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
-        status = SecItemCopyMatching(query as CFDictionary, &result)
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
