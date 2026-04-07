@@ -152,6 +152,28 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         return progress
     }
 
+    // MARK: - Error conversion (macOS only understands NSFileProviderError)
+
+    private func toFileProviderError(_ error: Error) -> NSError {
+        if let fpError = error as? FPAPIError {
+            switch fpError {
+            case .unauthorized:
+                return NSError(domain: NSFileProviderErrorDomain, code: NSFileProviderError.notAuthenticated.rawValue)
+            case .serverError(let code):
+                if code == 404 {
+                    return NSError(domain: NSFileProviderErrorDomain, code: NSFileProviderError.noSuchItem.rawValue)
+                } else if code == 409 {
+                    return NSError(domain: NSFileProviderErrorDomain, code: NSFileProviderError.filenameCollision.rawValue)
+                }
+                return NSError(domain: NSFileProviderErrorDomain, code: NSFileProviderError.serverUnreachable.rawValue,
+                              userInfo: [NSLocalizedDescriptionKey: "Server error (\(code))"])
+            case .invalidResponse:
+                return NSError(domain: NSFileProviderErrorDomain, code: NSFileProviderError.serverUnreachable.rawValue)
+            }
+        }
+        return error as NSError
+    }
+
     // MARK: - Create
 
     func createItem(basedOn itemTemplate: NSFileProviderItem,
@@ -164,6 +186,13 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
         Task {
             do {
+                // Skip macOS FileProvider system test files and hidden files
+                if itemTemplate.filename.hasPrefix("drive_test_") || (itemTemplate.filename.hasPrefix(".") && itemTemplate.filename != ".sync") {
+                    completionHandler(nil, [], false, NSError(domain: NSCocoaErrorDomain, code: NSFileNoSuchFileError))
+                    progress.completedUnitCount = 100
+                    return
+                }
+
                 let client = try SharedConfig.sharedClient()
                 let parentID = itemTemplate.parentItemIdentifier == .rootContainer
                     ? SharedConfig.onDemandFolderID()
@@ -208,7 +237,7 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 signalChange(for: itemTemplate.parentItemIdentifier)
             } catch {
                 logger.error("createItem(\(itemTemplate.filename, privacy: .public)) failed: \(error.localizedDescription, privacy: .public)")
-                completionHandler(nil, [], false, error)
+                completionHandler(nil, [], false, toFileProviderError(error))
             }
         }
         return progress
@@ -267,7 +296,7 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 signalChange(for: item.parentItemIdentifier)
             } catch {
                 logger.error("modifyItem(\(item.filename, privacy: .public)) failed: \(error.localizedDescription, privacy: .public)")
-                completionHandler(nil, [], false, error)
+                completionHandler(nil, [], false, toFileProviderError(error))
             }
         }
         return progress
