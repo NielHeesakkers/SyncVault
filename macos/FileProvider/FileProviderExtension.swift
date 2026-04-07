@@ -112,7 +112,7 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 progress.completedUnitCount = 1
             } catch {
                 logger.error("item(for: \(identifier.rawValue, privacy: .public)) failed: \(error.localizedDescription, privacy: .public)")
-                completionHandler(nil, error)
+                completionHandler(nil, toFileProviderError(error))
             }
         }
         return progress
@@ -146,7 +146,7 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 signalChange(for: item.parentItemIdentifier)
             } catch {
                 logger.error("Download failed for \(itemIdentifier.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                completionHandler(nil, nil, error)
+                completionHandler(nil, nil, toFileProviderError(error))
             }
         }
         return progress
@@ -321,7 +321,7 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 signalChange(for: .rootContainer)
             } catch {
                 logger.error("deleteItem(\(identifier.rawValue, privacy: .public)) failed: \(error.localizedDescription, privacy: .public)")
-                completionHandler(error)
+                completionHandler(toFileProviderError(error))
             }
         }
         return progress
