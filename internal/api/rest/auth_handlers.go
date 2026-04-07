@@ -95,6 +95,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Auto-rehash with lower cost if the stored hash uses a higher cost (speeds up future logins)
+	if auth.NeedsRehash(user.Password) {
+		if newHash, err := auth.HashPassword(req.Password); err == nil {
+			_ = s.db.UpdateUserPassword(user.ID, newHash)
+		}
+	}
+
 	accessToken, refreshToken, err := s.jwt.GenerateTokens(user.ID, user.Username, user.Role)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not generate tokens"})

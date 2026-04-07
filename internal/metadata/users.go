@@ -106,6 +106,13 @@ func (d *DB) ListUsers() ([]User, error) {
 }
 
 // UpdateUser updates the mutable fields of an existing user.
+// UpdateUserPassword updates only the password hash for a user.
+func (d *DB) UpdateUserPassword(userID, passwordHash string) error {
+	_, err := d.db.Exec(`UPDATE users SET password=?, updated_at=? WHERE id=?`,
+		passwordHash, time.Now().UTC().Format(time.RFC3339Nano), userID)
+	return err
+}
+
 func (d *DB) UpdateUser(user *User) error {
 	user.UpdatedAt = time.Now().UTC()
 	res, err := d.db.Exec(
