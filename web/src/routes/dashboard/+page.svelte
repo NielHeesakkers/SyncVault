@@ -38,24 +38,22 @@
 			}
 		} catch {}
 
-		// Storage
+		// Storage — try admin endpoint first (shows totals), fall back to user endpoint
 		try {
-			const res = await api.get('/api/me/storage');
-			if (res.ok) {
-				const data = await res.json();
+			const adminRes = await api.get('/api/admin/storage');
+			if (adminRes.ok) {
+				const data = await adminRes.json();
 				storageUsed = data.used || 0;
-				storageQuota = data.quota || 0;
-			}
-		} catch {}
-
-		// Admin storage breakdown (trash + versions)
-		try {
-			const res = await api.get('/api/admin/storage');
-			if (res.ok) {
-				const data = await res.json();
+				storageQuota = data.total || 0;
 				trashSize = data.trash_size || 0;
 				versionsSize = data.versions_size || 0;
-				if (!storageUsed && data.used) storageUsed = data.used;
+			} else {
+				const res = await api.get('/api/me/storage');
+				if (res.ok) {
+					const data = await res.json();
+					storageUsed = data.used || 0;
+					storageQuota = data.quota || 0;
+				}
 			}
 		} catch {}
 		loading = false;
