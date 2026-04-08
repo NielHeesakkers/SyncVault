@@ -92,13 +92,13 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		resp := toFileResponse(f)
 		if f.IsDir {
 			if !f.ParentID.Valid {
-				// Root folder: show total owner storage
+				// Root folder: show total owner storage (fast indexed SUM)
 				if sz, ok := ownerSizes[f.OwnerID]; ok {
 					resp.Size = sz
 				}
 			} else {
-				// Subfolder: show direct children size (fast, indexed)
-				resp.Size = s.db.DirectChildrenSize(f.ID)
+				// Subfolder: recursive size (includes nested files)
+				resp.Size = s.db.RecursiveFolderSize(f.ID)
 			}
 		}
 		result = append(result, resp)

@@ -180,16 +180,23 @@ func (d *DB) OwnerStorageUsed(ownerID string) int64 {
 	return size
 }
 
-// DirectChildrenSize returns the sum of sizes of direct (non-recursive) children files.
-func (d *DB) DirectChildrenSize(parentID string) int64 {
+// RecursiveFolderSize returns the total size of all files under folderID (recursive).
+// Uses versions table for actual sizes. Fast for subfolders with reasonable file counts.
+func (d *DB) RecursiveFolderSize(folderID string) int64 {
 	var size int64
 	d.db.QueryRow(
-		`SELECT COALESCE(SUM(v.size), 0)
-		 FROM files f
-		 JOIN versions v ON v.file_id = f.id
-		   AND v.version_num = (SELECT MAX(v2.version_num) FROM versions v2 WHERE v2.file_id = f.id)
-		 WHERE f.parent_id = ? AND f.is_dir = 0 AND f.deleted_at IS NULL`,
-		parentID,
+		`WITH RECURSIVE tree(id) AS (
+			VALUES(?)
+			UNION ALL
+			SELECT f.id FROM files f JOIN tree t ON f.parent_id = t.id WHERE f.deleted_at IS NULL
+		)
+		SELECT COALESCE(SUM(v.size), 0)
+		FROM files f
+		JOIN tree t ON f.id = t.id
+		JOIN versions v ON v.file_id = f.id
+		  AND v.version_num = (SELECT MAX(v2.version_num) FROM versions v2 WHERE v2.file_id = f.id)
+		WHERE f.is_dir = 0 AND f.deleted_at IS NULL`,
+		folderID,
 	).Scan(&size)
 	return size
 }
