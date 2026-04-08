@@ -70,11 +70,13 @@ func (s *Server) handleCreateFileFromBlocks(w http.ResponseWriter, r *http.Reque
 		MimeType string               `json:"mime_type"`
 	}
 	if err := readJSON(r, &req); err != nil {
+		log.Printf("from-blocks: invalid request body from user %s: %v", claims.Username, err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
 
 	if req.Filename == "" || req.FileHash == "" || len(req.Blocks) == 0 {
+		log.Printf("from-blocks: missing fields from user %s: filename=%q hash=%q blocks=%d", claims.Username, req.Filename, req.FileHash, len(req.Blocks))
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "filename, file_hash, and blocks are required"})
 		return
 	}
