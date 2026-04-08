@@ -2,6 +2,7 @@ package rest
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -210,35 +211,114 @@ type publicShareResponse struct {
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 }
 
-// handlePublicShare handles GET /s/{token} — returns public share info.
+// handlePublicShare handles GET /s/{token} — serves a download page or JSON.
 func (s *Server) handlePublicShare(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 
 	sl, err := s.db.GetShareLinkByToken(token)
 	if err != nil {
 		if errors.Is(err, metadata.ErrShareLinkNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "share link not found"})
+			http.Error(w, "Share link not found", http.StatusNotFound)
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get share link"})
+		http.Error(w, "Server error", http.StatusInternalServerError)
 		return
 	}
 
 	f, err := s.db.GetFileByID(sl.FileID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get file"})
+		http.Error(w, "Server error", http.StatusInternalServerError)
 		return
 	}
 
 	expired := sl.ExpiresAt != nil && time.Now().UTC().After(*sl.ExpiresAt)
 
-	writeJSON(w, http.StatusOK, publicShareResponse{
-		Name:        f.Name,
-		Size:        f.Size,
-		HasPassword: sl.PasswordHash != "",
-		Expired:     expired,
-		ExpiresAt:   sl.ExpiresAt,
+	// If client wants JSON (API call), return JSON
+	if r.Header.Get("Accept") == "application/json" {
+		writeJSON(w, http.StatusOK, publicShareResponse{
+			Name:        f.Name,
+			Size:        f.Size,
+			HasPassword: sl.PasswordHash != "",
+			Expired:     expired,
+			ExpiresAt:   sl.ExpiresAt,
+		})
+		return
+	}
+
+	// Serve HTML download page
+	sizeStr := formatBytesGo(f.Size)
+	statusMsg := ""
+	if expired {
+		statusMsg = `<p style="color:#ef4444;font-weight:600;margin-bottom:16px;">This link has expired.</p>`
+	} else if sl.MaxDownloads > 0 && sl.DownloadCount >= sl.MaxDownloads {
+		statusMsg = `<p style="color:#ef4444;font-weight:600;margin-bottom:16px;">Download limit reached.</p>`
+	}
+
+	passwordField := ""
+	if sl.PasswordHash != "" {
+		passwordField = `<div style="margin-bottom:16px;">
+			<label style="display:block;font-size:13px;color:#9ca3af;margin-bottom:6px;">Password required</label>
+			<input type="password" id="share-password" placeholder="Enter password" style="width:100%;padding:10px 14px;background:#1f2937;border:1px solid #374151;border-radius:8px;color:#fff;font-size:14px;outline:none;" />
+		</div>`
+	}
+
+	downloadBtn := ""
+	if !expired && !(sl.MaxDownloads > 0 && sl.DownloadCount >= sl.MaxDownloads) {
+		downloadBtn = fmt.Sprintf(`<button onclick="downloadFile()" style="width:100%%;padding:12px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;transition:background 0.15s;" onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2563eb'">Download</button>`)
+	}
+
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>%s — SyncVault</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0f172a;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}</style>
+</head><body>
+<div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px;max-width:400px;width:100%%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+	<div style="width:56px;height:56px;background:#1e3a5f;border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;">
+		<svg width="24" height="24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+	</div>
+	<h2 style="font-size:18px;font-weight:700;margin-bottom:6px;">%s</h2>
+	<p style="font-size:13px;color:#64748b;margin-bottom:24px;">%s</p>
+	%s
+	%s
+	%s
+	<p style="font-size:11px;color:#475569;margin-top:20px;">Shared via <strong>SyncVault</strong></p>
+</div>
+<script>
+function downloadFile() {
+	const pw = document.getElementById('share-password');
+	const body = pw ? JSON.stringify({password: pw.value}) : '{}';
+	fetch('/s/%s/download', {method:'POST',headers:{'Content-Type':'application/json'},body:body})
+	.then(r => {
+		if (!r.ok) return r.json().then(d => { alert(d.error || 'Download failed'); throw new Error(); });
+		return r.blob();
 	})
+	.then(blob => {
+		const a = document.createElement('a');
+		a.href = URL.createObjectURL(blob);
+		a.download = '%s';
+		a.click();
+	})
+	.catch(() => {});
+}
+</script>
+</body></html>`, f.Name, f.Name, sizeStr, statusMsg, passwordField, downloadBtn, token, f.Name)
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(html))
+}
+
+func formatBytesGo(b int64) string {
+	switch {
+	case b >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(b)/float64(1<<30))
+	case b >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(b)/float64(1<<20))
+	case b >= 1<<10:
+		return fmt.Sprintf("%.1f KB", float64(b)/float64(1<<10))
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
 }
 
 // publicDownloadRequest is the body for POST /s/{token}/download.
