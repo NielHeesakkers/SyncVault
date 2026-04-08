@@ -138,8 +138,8 @@ func (s *Server) setupRoutes() {
 		r.Post("/api/files/{id}/shares", s.handleCreateShare)
 		r.Get("/api/files/{id}/shares", s.handleListShares)
 		r.Delete("/api/shares/{id}", s.handleDeleteShare)
-		r.Put("/api/shares/{id}/toggle", s.handleToggleShare)
 		r.Get("/api/shares/mine", s.handleListMyShares)
+		r.Put("/api/shares/{id}/toggle", s.handleToggleShare)
 
 		// Hash check and file tree (for sync clients).
 		r.Post("/api/files/check-hashes", s.handleCheckHashes)
