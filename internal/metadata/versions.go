@@ -51,6 +51,13 @@ func (d *DB) CreateVersion(fileID string, versionNum int, contentHash, patchHash
 	if err != nil {
 		return nil, fmt.Errorf("metadata: create version: %w", err)
 	}
+
+	// Keep files.size and files.content_hash in sync with latest version
+	d.db.Exec(
+		`UPDATE files SET size = ?, content_hash = ?, updated_at = ? WHERE id = ?`,
+		v.Size, v.ContentHash, now.Format(time.RFC3339Nano), v.FileID,
+	)
+
 	return v, nil
 }
 
