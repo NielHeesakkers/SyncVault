@@ -39,11 +39,6 @@ enum SharedConfig {
         return client
     }
 
-    /// Legacy name — redirects to sharedClient
-    static func apiClient() throws -> FPAPIClient {
-        return try sharedClient()
-    }
-
     static func onDemandFolderID() -> String {
         return sharedDefaults.string(forKey: "onDemandFolderID") ?? ""
     }

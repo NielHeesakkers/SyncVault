@@ -784,32 +784,6 @@ class AppState: ObservableObject {
 
         // After two-way sync, check on-demand uploads
         await syncOnDemandFiles(client)
-        // NOTE: Do NOT call resetOnDemandDomain() here — it invalidates the
-        // FileProvider extension every cycle, causing files to disappear and
-        // error -1407. The FileProvider handles its own enumeration.
-    }
-
-    /// Reset the on-demand FileProvider domain and reimport all items.
-    func resetOnDemandDomain() async {
-        guard isConnected else { return }
-        let onDemandTasks = syncTasks.filter { $0.isEnabled && $0.mode == .onDemand }
-        for task in onDemandTasks {
-            do {
-                let domainID = NSFileProviderDomainIdentifier("com.syncvault.\(username)")
-                let domain = NSFileProviderDomain(identifier: domainID, displayName: "SyncVault - \(username)")
-                if let manager = NSFileProviderManager(for: domain) {
-                    // Reimport all items — forces macOS to re-discover and re-upload everything
-                    try await manager.reimportItems(below: .rootContainer)
-                    logger.info("On-demand: reimport triggered for \(task.remoteFolderName)")
-                } else {
-                    // Fallback: remove and re-add domain
-                    try await setupOnDemandSync(folderID: task.remoteFolderID)
-                    logger.info("On-demand domain reset for \(task.remoteFolderName)")
-                }
-            } catch {
-                logger.error("On-demand domain reset failed: \(error)")
-            }
-        }
     }
 
     // MARK: - On-Demand Bulk Upload

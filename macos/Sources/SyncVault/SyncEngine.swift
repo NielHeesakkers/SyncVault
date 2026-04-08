@@ -240,7 +240,6 @@ actor SyncEngine {
         // 7. Update change journal: snapshot of everything that should exist
         // This is the union of local + remote that survived this sync cycle
         var journalEntries: [(relativePath: String, contentHash: String, isDir: Bool)] = []
-        let survivingPaths = Set<String>() // paths that were deleted this cycle
 
         // Add all local files that still exist
         for (relPath, localFile) in localFileMap {
@@ -929,151 +928,6 @@ actor SyncEngine {
         return fileHash
     }
 
-    // MARK: - Legacy Chunked Upload
-
-    /// Cache key for storing upload session IDs in UserDefaults.
-    private func uploadCacheKey(filename: String, parentID: String, fileSize: Int64) -> String {
-        "sv_upload_\(parentID)_\(filename)_\(fileSize)"
-    }
-
-    private func uploadChunked(fileURL: URL, filename: String, parentID: String, fileSize: Int64, onChunkUploaded: ((Int64) async -> Void)? = nil) async throws -> ChunkedUploadResult {
-        let chunkSize = 64 * 1024 * 1024  // 64 MB chunks
-        let cacheKey = uploadCacheKey(filename: filename, parentID: parentID, fileSize: fileSize)
-
-        // 1. Try to resume an existing upload session, or create a new one
-        var uploadID: String
-        var totalChunks: Int
-
-        if let cachedID = UserDefaults.standard.string(forKey: cacheKey) {
-            // Check if the cached session is still valid on the server
-            do {
-                let status = try await apiClient.getUploadStatus(uploadID: cachedID)
-                uploadID = cachedID
-                totalChunks = status.totalChunks
-                let received = status.receivedChunks.count
-                logger.info("Resuming upload session \(cachedID): \(received)/\(totalChunks) chunks already received")
-            } catch {
-                // Session expired or invalid — create a new one
-                logger.info("Cached upload session \(cachedID) expired, creating new session")
-                let session = try await apiClient.initChunkedUpload(filename: filename, parentID: parentID, totalSize: fileSize, chunkSize: chunkSize)
-                uploadID = session.uploadID
-                totalChunks = session.totalChunks
-                UserDefaults.standard.set(uploadID, forKey: cacheKey)
-            }
-        } else {
-            let session = try await apiClient.initChunkedUpload(filename: filename, parentID: parentID, totalSize: fileSize, chunkSize: chunkSize)
-            uploadID = session.uploadID
-            totalChunks = session.totalChunks
-            UserDefaults.standard.set(uploadID, forKey: cacheKey)
-        }
-
-        // 2. Check which chunks are already received
-        let status = try await apiClient.getUploadStatus(uploadID: uploadID)
-        let receivedSet = Set(status.receivedChunks)
-
-        // 3. Upload missing chunks — 10 in parallel via nonisolated static method
-        let missingChunks = (0..<totalChunks).filter { !receivedSet.contains($0) }
-
-        if !missingChunks.isEmpty {
-            let chunkSemaphore = DynamicSemaphore(initialLimit: 10)
-            let token = await apiClient.currentToken() ?? ""
-            let base = await apiClient.baseURL
-
-            // Report already-uploaded bytes for progress
-            let alreadyUploaded = Int64(receivedSet.count) * Int64(chunkSize)
-            if alreadyUploaded > 0 {
-                await onChunkUploaded?(alreadyUploaded)
-            }
-
-            try await withThrowingTaskGroup(of: Int64.self) { group in
-                for i in missingChunks {
-                    group.addTask {
-                        await chunkSemaphore.wait()
-                        defer { Task { await chunkSemaphore.signal() } }
-
-                        let handle = try FileHandle(forReadingFrom: fileURL)
-                        defer { handle.closeFile() }
-                        handle.seek(toFileOffset: UInt64(i) * UInt64(chunkSize))
-                        let data = handle.readData(ofLength: chunkSize)
-
-                        try await APIClient.uploadChunkDirect(baseURL: base, token: token, uploadID: uploadID, chunkIndex: i, data: data)
-
-                        return Int64(data.count)
-                    }
-                }
-                for try await size in group {
-                    await onChunkUploaded?(size)
-                }
-            }
-        } else {
-            logger.info("All chunks already uploaded, calling complete")
-            // Report full size for progress
-            await onChunkUploaded?(fileSize)
-        }
-
-        // 4. Complete — retry up to 5 times with increasing delay (server may be busy assembling)
-        var lastCompleteError: Error?
-        for attempt in 1...5 {
-            do {
-                let result = try await apiClient.completeChunkedUpload(uploadID: uploadID)
-                UserDefaults.standard.removeObject(forKey: cacheKey)
-                return result
-            } catch {
-                lastCompleteError = error
-                logger.warning("Complete attempt \(attempt)/5 failed: \(error.localizedDescription)")
-                if attempt < 5 {
-                    try await Task.sleep(nanoseconds: UInt64(attempt) * 3_000_000_000)
-                }
-            }
-        }
-
-        // Keep the session cached for next sync cycle to resume
-        throw lastCompleteError!
-    }
-
-    private func uploadDelta(fileURL: URL, remoteFileID: String, relativePath: String) async throws -> Bool {
-        // 1. Get remote block signatures
-        let blocksResponse = try await apiClient.getFileBlocks(id: remoteFileID)
-
-        // 2. Read local file in blocks and compare
-        let handle = try FileHandle(forReadingFrom: fileURL)
-        defer { handle.closeFile() }
-
-        let blockSize = blocksResponse.blockSize
-        let remoteBlocks = Dictionary(uniqueKeysWithValues: blocksResponse.blocks.map { ($0.index, $0) })
-
-        var reuseBlocks: [Int] = []
-        var newBlocks: [(index: Int, data: Data)] = []
-        var blockIndex = 0
-
-        while true {
-            let data = handle.readData(ofLength: blockSize)
-            if data.isEmpty { break }
-
-            let localHash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
-
-            if let remote = remoteBlocks[blockIndex], remote.strongHash == localHash {
-                reuseBlocks.append(blockIndex)
-            } else {
-                newBlocks.append((index: blockIndex, data: data))
-            }
-            blockIndex += 1
-        }
-
-        // 3. If more than 50% changed, full upload is faster
-        let totalBlocks = blockIndex
-        if newBlocks.count > totalBlocks / 2 { return false }
-
-        // 4. Build and upload delta
-        let manifest = DeltaManifest(
-            reuseBlocks: reuseBlocks,
-            newBlocks: newBlocks.map { DeltaManifestBlock(index: $0.index, offset: 0) }
-        )
-        let newData = newBlocks.reduce(Data()) { $0 + $1.data }
-        let _ = try await apiClient.uploadDelta(fileID: remoteFileID, manifest: manifest, newBlockData: newData)
-        return true
-    }
-
     // MARK: - Helpers
 
     static func hashFile(at url: URL) throws -> String {
@@ -1126,17 +980,6 @@ struct LocalFileInfo {
     let modifiedAt: Date
     let contentHash: String?
     var deletedLocally: Bool = false
-}
-
-/// Remote file with its relative path in the folder tree.
-struct RemoteFileInfo {
-    let id: String
-    let name: String
-    let relativePath: String
-    let contentHash: String?
-    let size: Int64
-    var isDir: Bool = false
-    var removedLocally: Bool? = nil
 }
 
 struct SyncProgress {
@@ -1197,32 +1040,6 @@ enum SyncAction: CustomStringConvertible {
 }
 
 // MARK: - Async helpers
-
-/// Simple actor-based semaphore for limiting concurrency in task groups.
-actor AsyncSemaphore {
-    private var count: Int
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    init(limit: Int) { count = limit }
-
-    func wait() async {
-        if count > 0 {
-            count -= 1
-        } else {
-            await withCheckedContinuation { cont in
-                waiters.append(cont)
-            }
-        }
-    }
-
-    func signal() {
-        if waiters.isEmpty {
-            count += 1
-        } else {
-            waiters.removeFirst().resume()
-        }
-    }
-}
 
 /// Dynamic semaphore that adjusts concurrency based on file size.
 actor DynamicSemaphore {

@@ -519,14 +519,10 @@ func (s *Server) handleAdminCleanup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	beforeDate, err := time.Parse(time.RFC3339, req.BeforeDate)
+	beforeDate, err := parseTimestamp(req.BeforeDate)
 	if err != nil {
-		// Try date-only format.
-		beforeDate, err = time.Parse("2006-01-02", req.BeforeDate)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "before_date must be RFC3339 or YYYY-MM-DD"})
-			return
-		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "before_date must be RFC3339 or YYYY-MM-DD"})
+		return
 	}
 
 	fileCount, versionCount, freedBytes, err := s.db.ExecuteCleanup(beforeDate, req.IncludeVersions, req.OnlyDeleted)
@@ -551,13 +547,10 @@ func (s *Server) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	beforeDate, err := time.Parse(time.RFC3339, beforeDateStr)
+	beforeDate, err := parseTimestamp(beforeDateStr)
 	if err != nil {
-		beforeDate, err = time.Parse("2006-01-02", beforeDateStr)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "before_date must be RFC3339 or YYYY-MM-DD"})
-			return
-		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "before_date must be RFC3339 or YYYY-MM-DD"})
+		return
 	}
 
 	includeVersions := r.URL.Query().Get("include_versions") == "true"

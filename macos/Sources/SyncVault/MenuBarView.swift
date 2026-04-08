@@ -254,13 +254,7 @@ struct MenuBarView: View {
                                     .font(.system(size: 11))
                                     .lineLimit(1)
                                 Spacer()
-                                if task.isEnabled && appState.isSyncing {
-                                    Circle().fill(taskStatusColor(task)).frame(width: 6, height: 6)
-                                } else {
-                                    Circle()
-                                        .fill(taskStatusColor(task))
-                                        .frame(width: 6, height: 6)
-                                }
+                                Circle().fill(taskStatusColor(task)).frame(width: 6, height: 6)
                                 Text(taskStatusLabel(task))
                                     .font(.system(size: 10))
                                     .foregroundColor(.secondary)

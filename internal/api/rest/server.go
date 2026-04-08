@@ -3,7 +3,9 @@ package rest
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
 	"github.com/NielHeesakkers/SyncVault/internal/email"
@@ -261,6 +263,17 @@ func isHexHash(s string, minLen int) bool {
 		}
 	}
 	return true
+}
+
+// parseTimestamp parses an ISO 8601 timestamp, accepting both RFC3339 and RFC3339Nano,
+// as well as a date-only format (YYYY-MM-DD). Returns the parsed time or an error.
+func parseTimestamp(s string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid timestamp %q: must be RFC3339 or YYYY-MM-DD", s)
 }
 
 // sanitizeFilename removes characters that could break Content-Disposition headers.

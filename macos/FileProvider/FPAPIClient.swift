@@ -25,10 +25,6 @@ actor FPAPIClient {
         return response.files
     }
 
-    func downloadFile(id: String) async throws -> Data {
-        return try await getDataWithReauth("/api/files/\(id)/download")
-    }
-
     /// Stream download directly to a temp file (no memory pressure)
     func downloadFileToDisk(id: String) async throws -> (URL, FPServerFile) {
         var request = URLRequest(url: URL(string: "\(baseURL)/api/files/\(id)/download")!)
@@ -46,10 +42,6 @@ actor FPAPIClient {
         try checkResponse(response)
         let file = try await getFile(id: id)
         return (tempURL, file)
-    }
-
-    func uploadFile(data: Data, filename: String, parentID: String?) async throws -> FPServerFile {
-        return try await uploadMultipart("/api/files/upload", fileData: data, filename: filename, parentID: parentID)
     }
 
     func deleteFile(id: String) async throws {
@@ -215,15 +207,6 @@ actor FPAPIClient {
         }
     }
 
-    private func getDataWithReauth(_ path: String) async throws -> Data {
-        do {
-            return try await getData(path)
-        } catch FPAPIError.unauthorized {
-            try await reAuthenticate()
-            return try await getData(path)
-        }
-    }
-
     private func deleteWithReauth(_ path: String) async throws {
         do {
             try await deleteRequest(path)
@@ -242,15 +225,6 @@ actor FPAPIClient {
         let (data, response) = try await URLSession.shared.data(for: request)
         try checkResponse(response)
         return try JSONDecoder().decode(T.self, from: data)
-    }
-
-    private func getData(_ path: String) async throws -> Data {
-        var request = URLRequest(url: URL(string: "\(baseURL)\(path)")!)
-        request.httpMethod = "GET"
-        addAuth(&request)
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response)
-        return data
     }
 
     private func post<T: Decodable>(_ path: String, body: Any) async throws -> T {
@@ -281,31 +255,6 @@ actor FPAPIClient {
         addAuth(&request)
         let (_, response) = try await URLSession.shared.data(for: request)
         try checkResponse(response)
-    }
-
-    private func uploadMultipart(_ path: String, fileData: Data, filename: String, parentID: String?) async throws -> FPServerFile {
-        let boundary = UUID().uuidString
-        var request = URLRequest(url: URL(string: "\(baseURL)\(path)")!)
-        request.httpMethod = "POST"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        addAuth(&request)
-
-        var body = Data()
-        if let parentID = parentID {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"parent_id\"\r\n\r\n".data(using: .utf8)!)
-            body.append("\(parentID)\r\n".data(using: .utf8)!)
-        }
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
-        body.append(fileData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-        request.httpBody = body
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response)
-        return try JSONDecoder().decode(FPServerFile.self, from: data)
     }
 
     private func addAuth(_ request: inout URLRequest) {

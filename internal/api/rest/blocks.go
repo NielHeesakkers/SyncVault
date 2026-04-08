@@ -12,7 +12,6 @@ import (
 // handlePutBlock handles PUT /api/blocks/{hash}.
 // Accepts raw block data (up to 5 MB), verifies the hash, and stores it.
 func (s *Server) handlePutBlock(w http.ResponseWriter, r *http.Request) {
-	_ = auth.GetClaims(r.Context())
 	hash := chi.URLParam(r, "hash")
 	if !isHexHash(hash, 8) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid hash"})
@@ -42,8 +41,6 @@ func (s *Server) handlePutBlock(w http.ResponseWriter, r *http.Request) {
 // handleCheckBlocks handles POST /api/blocks/check.
 // Accepts a list of hashes, returns which ones already exist in storage.
 func (s *Server) handleCheckBlocks(w http.ResponseWriter, r *http.Request) {
-	_ = auth.GetClaims(r.Context())
-
 	var req struct {
 		Hashes []string `json:"hashes"`
 	}

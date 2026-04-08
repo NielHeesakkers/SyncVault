@@ -250,7 +250,6 @@ func (s *Server) handleUpdateFile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	_ = f
 
 	var req updateFileRequest
 	if err := readJSON(r, &req); err != nil {
@@ -430,14 +429,10 @@ func (s *Server) handleListChanges(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try RFC3339Nano first (subsecond precision), then RFC3339
-	since, err := time.Parse(time.RFC3339Nano, sinceStr)
+	since, err := parseTimestamp(sinceStr)
 	if err != nil {
-		since, err = time.Parse(time.RFC3339, sinceStr)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid since timestamp: must be ISO 8601 (e.g. 2026-03-21T15:00:00Z)"})
-			return
-		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid since timestamp: must be ISO 8601 (e.g. 2026-03-21T15:00:00Z)"})
+		return
 	}
 
 	folderID := r.URL.Query().Get("folder_id")
@@ -518,13 +513,10 @@ func (s *Server) handleFilesAtTime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	at, err := time.Parse(time.RFC3339, atStr)
+	at, err := parseTimestamp(atStr)
 	if err != nil {
-		at, err = time.Parse(time.RFC3339Nano, atStr)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid at timestamp: must be ISO 8601 (e.g. 2026-03-20T15:00:00Z)"})
-			return
-		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid at timestamp: must be ISO 8601 (e.g. 2026-03-20T15:00:00Z)"})
+		return
 	}
 
 	parentID := r.URL.Query().Get("parent_id")
@@ -605,13 +597,10 @@ func (s *Server) handleDownloadFolderAtTime(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required query param: at"})
 		return
 	}
-	at, err := time.Parse(time.RFC3339, atStr)
+	at, err := parseTimestamp(atStr)
 	if err != nil {
-		at, err = time.Parse(time.RFC3339Nano, atStr)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid at timestamp"})
-			return
-		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid at timestamp"})
+		return
 	}
 
 	parentID := r.URL.Query().Get("parent_id")
@@ -620,7 +609,6 @@ func (s *Server) handleDownloadFolderAtTime(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Get the folder name for the ZIP filename
 	folder, err := s.db.GetFileByID(parentID)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "folder not found"})
@@ -700,13 +688,10 @@ func (s *Server) handleRestoreFolderAtTime(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	at, err := time.Parse(time.RFC3339, req.At)
+	at, err := parseTimestamp(req.At)
 	if err != nil {
-		at, err = time.Parse(time.RFC3339Nano, req.At)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid at timestamp"})
-			return
-		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid at timestamp"})
+		return
 	}
 
 	// Recursively restore all files

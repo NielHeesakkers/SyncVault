@@ -308,7 +308,6 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Invalidate all existing sessions — old password is no longer valid
 	if err := s.db.InvalidateTokens(userID); err != nil {
 		log.Printf("password reset: could not invalidate tokens: %v", err)
 	}
@@ -316,9 +315,6 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.MarkPasswordResetUsed(req.Token); err != nil {
 		log.Printf("password reset: could not mark token used: %v", err)
 	}
-
-	// Invalidate all existing tokens so the user is logged out everywhere
-	_ = s.db.InvalidateTokens(user.ID)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "password reset successfully"})
 }

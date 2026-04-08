@@ -150,35 +150,28 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		}
 
 		subFolderName := folderNameForTask(req.Type, taskName)
-		existing, findErr := s.db.FindFileByName(rootFolder.ID, claims.UserID, subFolderName)
-		if findErr == nil && existing != nil {
-			if existing.DeletedAt.Valid {
-				_ = s.db.RestoreFile(existing.ID)
-				_ = s.db.UnmarkRemovedLocally(existing.ID)
-			}
-			subFolder = existing
-		} else {
-			created, createErr := s.db.CreateFile(rootFolder.ID, claims.UserID, subFolderName, true, 0, "", "")
-			if createErr != nil {
-				if errors.Is(createErr, metadata.ErrDuplicateFile) {
-					existing2, findErr2 := s.db.FindFileByName(rootFolder.ID, claims.UserID, subFolderName)
-					if findErr2 == nil && existing2 != nil {
-						if existing2.DeletedAt.Valid {
-							_ = s.db.RestoreFile(existing2.ID)
-							_ = s.db.UnmarkRemovedLocally(existing2.ID)
-						}
-						subFolder = existing2
-					} else {
-						writeJSON(w, http.StatusConflict, map[string]string{"error": "a folder with this name already exists"})
-						return
-					}
-				} else {
-					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create task folder"})
+
+		// CreateFile for directories is idempotent: it returns the existing folder if one exists.
+		created, createErr := s.db.CreateFile(rootFolder.ID, claims.UserID, subFolderName, true, 0, "", "")
+		if createErr != nil {
+			if errors.Is(createErr, metadata.ErrDuplicateFile) {
+				// A soft-deleted folder with this name exists; find and restore it.
+				existing, findErr := s.db.FindFileByName(rootFolder.ID, claims.UserID, subFolderName)
+				if findErr != nil || existing == nil {
+					writeJSON(w, http.StatusConflict, map[string]string{"error": "a folder with this name already exists"})
 					return
 				}
+				if existing.DeletedAt.Valid {
+					_ = s.db.RestoreFile(existing.ID)
+					_ = s.db.UnmarkRemovedLocally(existing.ID)
+				}
+				subFolder = existing
 			} else {
-				subFolder = created
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create task folder"})
+				return
 			}
+		} else {
+			subFolder = created
 		}
 	}
 
