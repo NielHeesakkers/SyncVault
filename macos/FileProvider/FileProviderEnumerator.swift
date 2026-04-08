@@ -75,15 +75,21 @@ class FileProviderEnumerator: NSObject, NSFileProviderEnumerator {
                 if items.isEmpty {
                     let client = try SharedConfig.sharedClient()
                     let files = try await client.listFiles(parentID: parentID)
-                    items = files.map { FileProviderItem(serverFile: $0) }
-                    logger.info("enumerateItems: \(items.count, privacy: .public) items from server for parentID=\(parentID, privacy: .public)")
 
-                    // Populate cache
+                    // Preserve download state from cache if item was previously uploaded
                     if let cache = cache {
+                        var mappedItems: [FileProviderItem] = []
                         for file in files {
-                            await cache.upsert(file)
+                            let existing = await cache.getItem(file.id)
+                            let downloaded = existing?.isDownloaded ?? false
+                            await cache.upsert(file, downloaded: downloaded)
+                            mappedItems.append(FileProviderItem(serverFile: file, isDownloaded: downloaded))
                         }
+                        items = mappedItems
+                    } else {
+                        items = files.map { FileProviderItem(serverFile: $0) }
                     }
+                    logger.info("enumerateItems: \(items.count, privacy: .public) items from server for parentID=\(parentID, privacy: .public)")
                 }
 
                 observer.didEnumerate(items)
