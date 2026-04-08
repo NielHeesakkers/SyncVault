@@ -691,6 +691,30 @@ func (s *Server) handleDownloadFolderAtTime(w http.ResponseWriter, r *http.Reque
 	}
 }
 
+// streamFolderAsZip writes all files under a folder as a ZIP stream.
+func (s *Server) streamFolderAsZip(w http.ResponseWriter, folderID, folderName string) {
+	files, err := s.db.ListFilesRecursive(folderID, "", true)
+	if err != nil {
+		return
+	}
+
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+
+	for _, f := range files {
+		if f.IsDir || !f.ContentHash.Valid || f.ContentHash.String == "" {
+			continue
+		}
+		fw, err := zw.Create(f.RelativePath)
+		if err != nil {
+			return
+		}
+		if err := s.store.Get(f.ContentHash.String, fw); err != nil {
+			return
+		}
+	}
+}
+
 // handleRestoreFolderAtTime handles POST /api/files/history/restore.
 // Restores all files in a folder to their versions at the given time.
 func (s *Server) handleRestoreFolderAtTime(w http.ResponseWriter, r *http.Request) {

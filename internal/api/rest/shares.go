@@ -246,7 +246,11 @@ func (s *Server) handlePublicShare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Serve HTML download page
-	sizeStr := formatBytesGo(f.Size)
+	fileSize := f.Size
+	if f.IsDir {
+		fileSize = f.FolderSize
+	}
+	sizeStr := formatBytesGo(fileSize)
 	statusMsg := ""
 	if expired {
 		statusMsg = `<p style="color:#ef4444;font-weight:600;margin-bottom:16px;">This link has expired.</p>`
@@ -371,14 +375,22 @@ func (s *Server) handlePublicDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !f.ContentHash.Valid || f.ContentHash.String == "" {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "file has no content"})
-		return
-	}
-
 	// Increment download count before streaming.
 	if err := s.db.IncrementShareDownload(sl.ID); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update download count"})
+		return
+	}
+
+	if f.IsDir {
+		// Download folder as ZIP
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+f.Name+`.zip"`)
+		s.streamFolderAsZip(w, f.ID, f.Name)
+		return
+	}
+
+	if !f.ContentHash.Valid || f.ContentHash.String == "" {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "file has no content"})
 		return
 	}
 
