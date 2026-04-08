@@ -2,6 +2,7 @@ package rest
 
 import (
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
@@ -81,6 +82,7 @@ func (s *Server) handleCreateFileFromBlocks(w http.ResponseWriter, r *http.Reque
 	// Write the manifest (verifies all blocks exist)
 	totalSize, err := s.store.CreateManifest(req.FileHash, req.Blocks)
 	if err != nil {
+		log.Printf("from-blocks manifest error for %s (hash=%s, blocks=%d): %v", req.Filename, req.FileHash, len(req.Blocks), err)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}

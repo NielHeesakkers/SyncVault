@@ -725,13 +725,20 @@ class AppState: ObservableObject {
                 UserDefaults.standard.set(syncCount + 1, forKey: syncCountKey)
 
                 if let paths = changedPaths, paths.isEmpty, lastSyncDate != nil {
+                    // Skip sync if no local changes — unless it's time for a periodic full scan
                     if syncCount % 5 != 0 {
                         logger.info("  No changes for \(task.remoteFolderName), skipping")
                         continue
                     }
-                    // Every 5th cycle: force full scan to detect remote changes
+                    // Every 5th cycle: force full scan to detect remote changes and catch up
                     logger.info("  Periodic full scan for \(task.remoteFolderName)")
                     changedPaths = nil
+                }
+
+                // If lastSyncDate is nil (cleared after upload progress), force full scan without date filter
+                // This ensures all un-synced files get hashed and uploaded
+                if lastSyncDate == nil {
+                    changedPaths = nil  // Force full scan
                 }
 
                 let result = try await engine.syncTask(task, changedPaths: changedPaths, lastSyncDate: lastSyncDate) { [weak self] progress in
@@ -744,8 +751,16 @@ class AppState: ObservableObject {
                 logger.info(" Result: \(result.uploaded) up, \(result.downloaded) down, \(result.deleted) del, \(result.conflicts) conflicts, \(result.errors) errors")
 
                 // Store last successful sync date (for optimized reconnect hashing)
+                // Only set if no errors AND something was actually synced or nothing left to do
                 if result.errors == 0 {
-                    UserDefaults.standard.set(Date(), forKey: lastSyncKey)
+                    if result.uploaded > 0 || result.downloaded > 0 {
+                        // Progress was made — but don't set lastSyncDate yet if there might be more
+                        // files to process. Force a full scan on the next cycle.
+                        UserDefaults.standard.removeObject(forKey: lastSyncKey)
+                    } else {
+                        // Nothing to upload/download = fully synced
+                        UserDefaults.standard.set(Date(), forKey: lastSyncKey)
+                    }
                     // Clear any previous error — sync is working again
                     if lastError != nil { lastError = nil }
                 }
