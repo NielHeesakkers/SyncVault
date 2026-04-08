@@ -76,7 +76,12 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		if dirsOnly && !f.IsDir {
 			continue
 		}
-		result = append(result, toFileResponse(f))
+		resp := toFileResponse(f)
+		// Compute folder sizes (recursive sum of all files inside)
+		if f.IsDir {
+			resp.Size = s.db.FolderSize(f.ID)
+		}
+		result = append(result, resp)
 	}
 
 	if result == nil {

@@ -166,6 +166,21 @@ func (d *DB) FindFileByName(parentID, ownerID, name string) (*File, error) {
 
 // ListChildren returns all non-deleted children of parentID, sorted dirs first, then by name.
 // Pass empty string for parentID to list root items (NULL parent).
+// FolderSize returns the total size of all non-directory files under folderID (recursive).
+func (d *DB) FolderSize(folderID string) int64 {
+	var size int64
+	d.db.QueryRow(
+		`WITH RECURSIVE tree(id) AS (
+			SELECT id FROM files WHERE parent_id = ? AND deleted_at IS NULL
+			UNION ALL
+			SELECT f.id FROM files f JOIN tree t ON f.parent_id = t.id WHERE f.deleted_at IS NULL
+		)
+		SELECT COALESCE(SUM(f.size), 0) FROM files f JOIN tree t ON f.id = t.id WHERE f.is_dir = 0`,
+		folderID,
+	).Scan(&size)
+	return size
+}
+
 func (d *DB) ListChildren(parentID string) ([]File, error) {
 	var rows *sql.Rows
 	var err error
