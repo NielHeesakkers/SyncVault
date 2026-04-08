@@ -333,17 +333,14 @@ func (d *DB) RestoreFile(id string) error {
 // PurgeUserTrash permanently deletes all soft-deleted files for the given user.
 // Deletes files first (no children), then folders (leaf-first via repeated passes).
 func (d *DB) PurgeUserTrash(ownerID string) (int64, error) {
-	// First delete versions for trashed files
-	d.db.Exec(
-		`DELETE FROM versions WHERE file_id IN (SELECT id FROM files WHERE owner_id=? AND deleted_at IS NOT NULL)`,
-		ownerID,
-	)
+	// Temporarily disable FK checks for clean cascade delete
+	d.db.Exec(`PRAGMA foreign_keys=OFF`)
+	defer d.db.Exec(`PRAGMA foreign_keys=ON`)
 
-	// Delete file_blocks for trashed files
-	d.db.Exec(
-		`DELETE FROM file_blocks WHERE file_id IN (SELECT id FROM files WHERE owner_id=? AND deleted_at IS NOT NULL)`,
-		ownerID,
-	)
+	// Delete all dependent rows for trashed files
+	d.db.Exec(`DELETE FROM versions WHERE file_id IN (SELECT id FROM files WHERE owner_id=? AND deleted_at IS NOT NULL)`, ownerID)
+	d.db.Exec(`DELETE FROM file_blocks WHERE file_id IN (SELECT id FROM files WHERE owner_id=? AND deleted_at IS NOT NULL)`, ownerID)
+	d.db.Exec(`DELETE FROM share_links WHERE file_id IN (SELECT id FROM files WHERE owner_id=? AND deleted_at IS NOT NULL)`, ownerID)
 
 	// Then delete non-directory files
 	res, err := d.db.Exec(
