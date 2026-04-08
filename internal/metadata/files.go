@@ -212,18 +212,30 @@ func (d *DB) FolderSize(folderID string) int64 {
 func (d *DB) ListChildren(parentID string) ([]File, error) {
 	var rows *sql.Rows
 	var err error
-	// files.size is kept in sync with latest version by CreateVersion
+	// Join with latest version for accurate file sizes
 	if parentID == "" {
 		rows, err = d.db.Query(
-			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
-			 FROM files WHERE parent_id IS NULL AND deleted_at IS NULL
-			 ORDER BY is_dir DESC, name`,
+			`SELECT f.id, f.parent_id, f.owner_id, f.name, f.is_dir,
+			        COALESCE(v.size, f.size) as size,
+			        COALESCE(v.content_hash, f.content_hash) as content_hash,
+			        f.mime_type, f.created_at, f.updated_at, f.deleted_at, f.removed_locally
+			 FROM files f
+			 LEFT JOIN versions v ON v.file_id = f.id
+			   AND v.version_num = (SELECT MAX(v2.version_num) FROM versions v2 WHERE v2.file_id = f.id)
+			 WHERE f.parent_id IS NULL AND f.deleted_at IS NULL
+			 ORDER BY f.is_dir DESC, f.name`,
 		)
 	} else {
 		rows, err = d.db.Query(
-			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
-			 FROM files WHERE parent_id = ? AND deleted_at IS NULL
-			 ORDER BY is_dir DESC, name`,
+			`SELECT f.id, f.parent_id, f.owner_id, f.name, f.is_dir,
+			        COALESCE(v.size, f.size) as size,
+			        COALESCE(v.content_hash, f.content_hash) as content_hash,
+			        f.mime_type, f.created_at, f.updated_at, f.deleted_at, f.removed_locally
+			 FROM files f
+			 LEFT JOIN versions v ON v.file_id = f.id
+			   AND v.version_num = (SELECT MAX(v2.version_num) FROM versions v2 WHERE v2.file_id = f.id)
+			 WHERE f.parent_id = ? AND f.deleted_at IS NULL
+			 ORDER BY f.is_dir DESC, f.name`,
 			parentID,
 		)
 	}
