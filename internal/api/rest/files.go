@@ -348,10 +348,25 @@ func (s *Server) handleRestoreFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "restored"})
 }
 
-// handlePurgeTrash handles DELETE /api/trash — permanently delete all trashed files for the user.
+// handlePurgeTrash handles DELETE /api/trash — permanently delete all trashed files.
+// Admin purges ALL users' trash. Regular users purge only their own.
 func (s *Server) handlePurgeTrash(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
-	count, err := s.db.PurgeUserTrash(claims.UserID)
+	var count int64
+	var err error
+	if claims.Role == "admin" {
+		// Admin: purge ALL trash
+		users, _ := s.db.ListUsers()
+		for _, u := range users {
+			n, e := s.db.PurgeUserTrash(u.ID)
+			count += n
+			if e != nil {
+				err = e
+			}
+		}
+	} else {
+		count, err = s.db.PurgeUserTrash(claims.UserID)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not purge trash"})
 		return
