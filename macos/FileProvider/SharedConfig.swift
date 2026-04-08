@@ -107,8 +107,6 @@ enum SharedConfig {
         return (action, filename, bytes, total, timestamp)
     }
 
-    // MARK: - Keychain
-
     static func saveToKeychain(key: String, value: String) {
         let data = value.data(using: .utf8)!
         let query: [String: Any] = [

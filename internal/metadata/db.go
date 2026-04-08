@@ -86,7 +86,6 @@ func Open(path string) (*DB, error) {
 
 		// Backfill folder_size for all directories.
 		// Runs multiple rounds so parent folders pick up children's updated sizes.
-		log.Printf("metadata: backfilling folder_size...")
 		for round := 0; round < 15; round++ {
 			rawDB.Exec(`
 				UPDATE files SET folder_size = (
@@ -101,7 +100,6 @@ func Open(path string) (*DB, error) {
 				)
 				WHERE is_dir = 1 AND deleted_at IS NULL
 			`)
-			log.Printf("metadata: folder_size backfill round %d complete", round+1)
 		}
 		log.Printf("metadata: folder_size backfill complete")
 	}()

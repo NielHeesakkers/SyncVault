@@ -834,9 +834,6 @@ class AppState: ObservableObject {
 
                 var toUpload: [(fullPath: String, relativePath: String, parentRelPath: String)] = []
 
-                var localFileCount = 0
-                var localDirCount = 0
-                logger.info("On-demand: scanning \(cloudPath, privacy: .public) with \(remoteTree.count) remote entries")
                 while let relPath = enumerator.nextObject() as? String {
                     let fullPath = (cloudPath as NSString).appendingPathComponent(relPath)
                     let name = URL(fileURLWithPath: relPath).lastPathComponent
@@ -846,7 +843,6 @@ class AppState: ObservableObject {
                     let isDir = attrs[.type] as? FileAttributeType == .typeDirectory
 
                     if isDir {
-                        localDirCount += 1
                         // Create missing directories on server
                         if folderCache[relPath] == nil {
                             let parentRel = (relPath as NSString).deletingLastPathComponent
@@ -860,7 +856,6 @@ class AppState: ObservableObject {
                             }
                         }
                     } else {
-                        localFileCount += 1
                         // Check if file needs uploading by checking relative path in remote tree
                         let remoteMatch = remoteTree.first { $0.relativePath == relPath && !$0.isDir }
                         if remoteMatch == nil {
@@ -870,21 +865,7 @@ class AppState: ObservableObject {
                     }
                 }
 
-                // Debug: log first few upload candidates
-                if !toUpload.isEmpty {
-                    for item in toUpload.prefix(3) {
-                        logger.info("On-demand: will upload \(item.relativePath, privacy: .public)")
-                    }
-                }
-                let remoteFileCount = remoteTree.filter { !$0.isDir }.count
-                let localScanned = toUpload.count + remoteFileCount
-
-                logger.info("On-demand: scanned \(localFileCount) files + \(localDirCount) dirs locally, \(toUpload.count) to upload, \(remoteFileCount) on server")
-
-                if toUpload.isEmpty {
-                    logger.info("On-demand: all synced (\(remoteFileCount) on server)")
-                    continue
-                }
+                if toUpload.isEmpty { continue }
 
                 logger.info("On-demand: \(toUpload.count) files to upload")
 

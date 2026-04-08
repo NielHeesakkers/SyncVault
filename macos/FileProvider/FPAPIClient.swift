@@ -383,24 +383,6 @@ struct FPServerFile: Decodable {
         }
     }
 
-    /// Placeholder for files we accept but don't store (e.g. AppleDouble ._files)
-    static func placeholder(name: String, parentID: String) -> FPServerFile {
-        let mirror = FPServerFile(
-            id: UUID().uuidString,
-            parentID: parentID,
-            name: name,
-            isDir: false,
-            size: 0,
-            contentHash: nil,
-            mimeType: nil,
-            createdAt: nil,
-            updatedAt: nil,
-            deletedAt: nil,
-            removedLocally: nil
-        )
-        return mirror
-    }
-
     init(id: String, parentID: String?, name: String, isDir: Bool, size: Int64, contentHash: String?, mimeType: String?, createdAt: String?, updatedAt: String?, deletedAt: String?, removedLocally: Bool?) {
         self.id = id
         self.parentID = parentID

@@ -92,14 +92,6 @@ actor ItemCache {
         try? db.run(insert)
     }
 
-    func bulkUpsert(_ files: [FPServerFile]) {
-        try? db.transaction {
-            for file in files {
-                upsert(file)
-            }
-        }
-    }
-
     // MARK: - Query
 
     func listChildren(parentID: String) -> [CachedItem] {
@@ -144,20 +136,10 @@ actor ItemCache {
         try? db.run(item.update(colIsDownloaded <- true, colRank <- nextRank()))
     }
 
-    func markEvicted(_ id: String) {
-        let item = items.filter(colID == id)
-        try? db.run(item.update(colIsDownloaded <- false, colRank <- nextRank()))
-    }
-
     func markDeleted(_ id: String) {
         let item = items.filter(colID == id)
         let now = ISO8601DateFormatter().string(from: Date())
         try? db.run(item.update(colDeletedAt <- now, colRank <- nextRank()))
-    }
-
-    func remove(_ id: String) {
-        let item = items.filter(colID == id)
-        try? db.run(item.delete())
     }
 
     func clearAll() {

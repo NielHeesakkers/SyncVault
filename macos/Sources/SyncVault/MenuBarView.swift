@@ -208,7 +208,6 @@ struct MenuBarView: View {
                             menuSectionHeader("Recently Synced")
                             ForEach(Array(appState.recentActivity.prefix(5))) { item in
                                 Button(action: {
-                                    // Open the file in Finder if it exists locally
                                     openRecentFile(item)
                                 }) {
                                     HStack(spacing: 8) {
@@ -356,7 +355,6 @@ struct MenuBarView: View {
                     .buttonStyle(.plain)
                     .simultaneousGesture(TapGesture().onEnded {
                         NSApp.activate(ignoringOtherApps: true)
-                        // Bring settings window to front if already open
                         for window in NSApp.windows where window.title.contains("Settings") || window.title.contains("SyncVault") {
                             if window.isVisible {
                                 window.makeKeyAndOrderFront(nil)
@@ -475,7 +473,6 @@ struct MenuBarView: View {
     }
 
     func openRecentFile(_ item: ActivityItem) {
-        // Try to find and reveal the file in Finder
         for task in appState.syncTasks where task.isEnabled {
             let localPath = task.localPath
             if !localPath.isEmpty {
