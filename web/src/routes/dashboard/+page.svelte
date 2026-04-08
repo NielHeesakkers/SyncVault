@@ -102,9 +102,34 @@
 		return Math.min(100, Math.round((storageUsed / storageQuota) * 100));
 	}
 
-	// SVG circle progress
+	// SVG donut segments
 	const circleR = 40;
 	const circleC = 2 * Math.PI * circleR;
+
+	function storageSegments(): { offset: number; dash: number; color: string; label: string; size: number }[] {
+		const total = storageUsed + trashSize + versionsSize;
+		if (total === 0) return [{ offset: 0, dash: circleC, color: '#374151', label: 'Empty', size: 0 }];
+		const activeSize = Math.max(0, storageUsed - trashSize - versionsSize);
+		const segments = [];
+		let offset = 0;
+		if (activeSize > 0) {
+			const pct = activeSize / total;
+			segments.push({ offset, dash: pct * circleC, color: '#3b82f6', label: 'Files', size: activeSize });
+			offset += pct * circleC;
+		}
+		if (versionsSize > 0) {
+			const pct = versionsSize / total;
+			segments.push({ offset, dash: pct * circleC, color: '#8b5cf6', label: 'Old versions', size: versionsSize });
+			offset += pct * circleC;
+		}
+		if (trashSize > 0) {
+			const pct = trashSize / total;
+			segments.push({ offset, dash: pct * circleC, color: '#f97316', label: 'Trash', size: trashSize });
+			offset += pct * circleC;
+		}
+		return segments;
+	}
+
 	function circleDash(): string {
 		const pct = storagePercent() / 100;
 		return `${(circleC * pct).toFixed(1)} ${circleC.toFixed(1)}`;
@@ -207,48 +232,37 @@
 				</div>
 			{:else}
 				<div class="flex flex-col items-center">
-					<div class="relative w-24 h-24">
+					<div class="relative w-28 h-28">
 						<svg viewBox="0 0 100 100" class="w-full h-full -rotate-90">
-							<!-- Background circle -->
-							<circle cx="50" cy="50" r={circleR} fill="none" stroke="var(--border-strong)" stroke-width="10" />
-							<!-- Progress circle -->
-							<circle
-								cx="50" cy="50" r={circleR}
-								fill="none"
-								stroke={storageColor()}
-								stroke-width="10"
-								stroke-linecap="round"
-								stroke-dasharray={circleDash()}
-							/>
+							{#each storageSegments() as seg}
+								<circle
+									cx="50" cy="50" r={circleR}
+									fill="none"
+									stroke={seg.color}
+									stroke-width="10"
+									stroke-dasharray="{seg.dash} {circleC - seg.dash}"
+									stroke-dashoffset={-seg.offset}
+								>
+									<title>{seg.label}: {formatBytes(seg.size)}</title>
+								</circle>
+							{/each}
 						</svg>
 						<div class="absolute inset-0 flex flex-col items-center justify-center">
-							<span class="text-lg font-bold text-white">{storagePercent()}%</span>
+							<span class="text-base font-bold text-white">{formatBytes(storageUsed)}</span>
+							<span class="text-[10px]" style="color: var(--text-tertiary);">total</span>
 						</div>
 					</div>
-					<div class="mt-3 text-center">
-						<p class="text-sm font-medium text-white/80">{formatBytes(storageUsed)}</p>
-						{#if storageQuota > 0}
-							<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">of {formatBytes(storageQuota)}</p>
-						{:else}
-							<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">no quota set</p>
-						{/if}
+					<div class="mt-4 w-full space-y-1.5">
+						{#each storageSegments().filter(s => s.size > 0) as seg}
+							<div class="flex items-center justify-between group cursor-default" title="{seg.label}: {formatBytes(seg.size)}">
+								<div class="flex items-center gap-2">
+									<div class="w-2.5 h-2.5 rounded-full" style="background: {seg.color};"></div>
+									<span class="text-xs" style="color: var(--text-tertiary);">{seg.label}</span>
+								</div>
+								<span class="text-xs font-medium text-white/70">{formatBytes(seg.size)}</span>
+							</div>
+						{/each}
 					</div>
-					{#if trashSize > 0 || versionsSize > 0}
-						<div class="mt-4 pt-3 border-t space-y-1.5" style="border-color: var(--border);">
-							{#if trashSize > 0}
-								<div class="flex items-center justify-between">
-									<span class="text-xs" style="color: var(--text-tertiary);">🗑️ Trash</span>
-									<span class="text-xs font-medium text-orange-400">{formatBytes(trashSize)}</span>
-								</div>
-							{/if}
-							{#if versionsSize > 0}
-								<div class="flex items-center justify-between">
-									<span class="text-xs" style="color: var(--text-tertiary);">📋 Old versions</span>
-									<span class="text-xs font-medium text-blue-400">{formatBytes(versionsSize)}</span>
-								</div>
-							{/if}
-						</div>
-					{/if}
 				</div>
 			{/if}
 		</div>
