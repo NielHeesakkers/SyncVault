@@ -75,18 +75,23 @@ func (s *Server) handleCreateFileFromBlocks(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if req.Filename == "" || req.FileHash == "" || len(req.Blocks) == 0 {
+	if req.Filename == "" || req.FileHash == "" {
 		log.Printf("from-blocks: missing fields from user %s: filename=%q hash=%q blocks=%d", claims.Username, req.Filename, req.FileHash, len(req.Blocks))
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "filename, file_hash, and blocks are required"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "filename and file_hash are required"})
 		return
 	}
 
-	// Write the manifest (verifies all blocks exist)
-	totalSize, err := s.store.CreateManifest(req.FileHash, req.Blocks)
-	if err != nil {
-		log.Printf("from-blocks manifest error for %s (hash=%s, blocks=%d): %v", req.Filename, req.FileHash, len(req.Blocks), err)
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
+	// Handle empty files (0 blocks, e.g. macOS Icon\r files)
+	var totalSize int64
+	if len(req.Blocks) > 0 {
+		// Write the manifest (verifies all blocks exist)
+		var err error
+		totalSize, err = s.store.CreateManifest(req.FileHash, req.Blocks)
+		if err != nil {
+			log.Printf("from-blocks manifest error for %s (hash=%s, blocks=%d): %v", req.Filename, req.FileHash, len(req.Blocks), err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 	}
 
 	if req.MimeType == "" {

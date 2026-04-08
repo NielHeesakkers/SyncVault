@@ -717,7 +717,8 @@ actor SyncEngine {
 
             // Skip hidden files, system files, and macOS metadata
             if name.hasPrefix(".") || name.hasPrefix("._") || name.hasPrefix(".smbdelete") ||
-               name == ".DS_Store" || name == "Thumbs.db" || name == "desktop.ini" {
+               name == ".DS_Store" || name == "Thumbs.db" || name == "desktop.ini" ||
+               name == "Icon\r" || name == "Icon\r\n" || name.hasPrefix("Icon") && name.count <= 5 {
                 if name.hasPrefix(".") { enumerator.skipDescendants() }
                 continue
             }
