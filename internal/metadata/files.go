@@ -1051,57 +1051,48 @@ type FileTreeEntry struct {
 }
 
 // ListFilesRecursive returns all files (recursively) under a folder with relative paths.
+// Uses a single recursive CTE query instead of N+1 queries per folder.
 func (d *DB) ListFilesRecursive(folderID, ownerID string, isAdmin bool) ([]FileTreeEntry, error) {
-	var entries []FileTreeEntry
-	err := d.listFilesRecursiveHelper(folderID, "", ownerID, isAdmin, &entries)
-	return entries, err
-}
-
-func (d *DB) listFilesRecursiveHelper(folderID, prefix, ownerID string, isAdmin bool, entries *[]FileTreeEntry) error {
-	query := "SELECT id, name, is_dir, size, content_hash, removed_locally FROM files WHERE parent_id = ? AND deleted_at IS NULL"
+	ownerFilter := ""
 	args := []interface{}{folderID}
 	if !isAdmin {
-		query += " AND owner_id = ?"
+		ownerFilter = "AND f.owner_id = ?"
 		args = append(args, ownerID)
 	}
-	query += " ORDER BY is_dir DESC, name"
+
+	query := fmt.Sprintf(`
+		WITH RECURSIVE tree AS (
+			SELECT id, name, is_dir, size, content_hash, removed_locally,
+			       name as rel_path
+			FROM files
+			WHERE parent_id = ? AND deleted_at IS NULL %s
+			UNION ALL
+			SELECT f.id, f.name, f.is_dir, f.size, f.content_hash, f.removed_locally,
+			       t.rel_path || '/' || f.name
+			FROM files f JOIN tree t ON f.parent_id = t.id
+			WHERE f.deleted_at IS NULL
+		)
+		SELECT id, name, rel_path, is_dir, size, content_hash, removed_locally
+		FROM tree ORDER BY rel_path`, ownerFilter)
 
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
-		return fmt.Errorf("metadata: list files recursive: %w", err)
+		return nil, fmt.Errorf("metadata: list files recursive: %w", err)
 	}
 	defer rows.Close()
 
-	var children []FileTreeEntry
+	var entries []FileTreeEntry
 	for rows.Next() {
 		var e FileTreeEntry
-		var isDir int
-		var removedLocally int
-		if err := rows.Scan(&e.ID, &e.Name, &isDir, &e.Size, &e.ContentHash, &removedLocally); err != nil {
-			return fmt.Errorf("metadata: scan file tree entry: %w", err)
+		var isDir, removedLocally int
+		if err := rows.Scan(&e.ID, &e.Name, &e.RelativePath, &isDir, &e.Size, &e.ContentHash, &removedLocally); err != nil {
+			return nil, fmt.Errorf("metadata: scan file tree entry: %w", err)
 		}
 		e.IsDir = isDir != 0
 		e.RemovedLocally = removedLocally != 0
-		if prefix == "" {
-			e.RelativePath = e.Name
-		} else {
-			e.RelativePath = prefix + "/" + e.Name
-		}
-		children = append(children, e)
+		entries = append(entries, e)
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
-	for _, child := range children {
-		*entries = append(*entries, child)
-		if child.IsDir {
-			if err := d.listFilesRecursiveHelper(child.ID, child.RelativePath, ownerID, isAdmin, entries); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return entries, rows.Err()
 }
 
 // CheckHashes takes a list of content hashes and returns those that already exist in the database.
