@@ -380,7 +380,7 @@
 					}
 					showRetention = true;
 				} else {
-					showToast('No sync task found for this folder', 'error');
+					showToast('Retention requires a sync task. Configure sync in the macOS app first.', 'info');
 				}
 			}
 		} catch {
