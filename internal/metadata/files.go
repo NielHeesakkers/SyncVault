@@ -166,6 +166,16 @@ func (d *DB) FindFileByName(parentID, ownerID, name string) (*File, error) {
 
 // ListChildren returns all non-deleted children of parentID, sorted dirs first, then by name.
 // Pass empty string for parentID to list root items (NULL parent).
+// OwnerStorageUsed returns total bytes used by all files owned by the given user.
+func (d *DB) OwnerStorageUsed(ownerID string) int64 {
+	var size int64
+	d.db.QueryRow(
+		`SELECT COALESCE(SUM(size), 0) FROM files WHERE owner_id = ? AND is_dir = 0 AND deleted_at IS NULL`,
+		ownerID,
+	).Scan(&size)
+	return size
+}
+
 // FolderSize returns the total size of all non-directory files under folderID (recursive).
 func (d *DB) FolderSize(folderID string) int64 {
 	var size int64
