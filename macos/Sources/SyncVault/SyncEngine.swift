@@ -713,6 +713,15 @@ actor SyncEngine {
         var skipCount = 0
 
         while let relativePath = enumerator.nextObject() as? String {
+            let name = URL(fileURLWithPath: relativePath).lastPathComponent
+
+            // Skip hidden files, system files, and macOS metadata
+            if name.hasPrefix(".") || name.hasPrefix("._") || name.hasPrefix(".smbdelete") ||
+               name == ".DS_Store" || name == "Thumbs.db" || name == "desktop.ini" {
+                if name.hasPrefix(".") { enumerator.skipDescendants() }
+                continue
+            }
+
             if excludePatterns.contains(where: { matchPattern($0, against: relativePath) }) {
                 continue
             }
