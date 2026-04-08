@@ -143,8 +143,10 @@
 			const res = await api.get(`/api/files${params}`);
 			if (res.ok) {
 				const data = await res.json();
-				// Map simple files to match the history format
-				files = (data.files || []).map((f: any) => ({
+				// Filter hidden/system files and map to history format
+				files = (data.files || [])
+					.filter((f: any) => !f.name.startsWith('.'))
+					.map((f: any) => ({
 					...f,
 					version_num: f.version_num || (f.is_dir ? 0 : 1),
 				}));
@@ -177,7 +179,7 @@
 			const res = await api.get(`/api/files/history?${params}`);
 			if (res.ok) {
 				const data = await res.json();
-				files = data.files || [];
+				files = (data.files || []).filter((f: any) => !f.name.startsWith('.'));
 			} else {
 				showToast('Failed to load history', 'error');
 			}
@@ -644,15 +646,13 @@
 								<td class="px-4 py-3.5">
 									<div class="flex items-center gap-1 justify-end">
 										{#if file.is_dir}
-											{#if breadcrumbs.length <= 2}
-												<button
-													onclick={(e) => { e.stopPropagation(); openRetention(file); }}
-													title="Retention policy"
-													class="action-btn"
-												>
-													<Settings2 size={13} /> Retention
-												</button>
-											{/if}
+											<button
+												onclick={(e) => { e.stopPropagation(); openRetention(file); }}
+												title="Retention policy"
+												class="action-btn"
+											>
+												<Settings2 size={13} /> Retention
+											</button>
 											<button onclick={(e) => { e.stopPropagation(); openShare(file); }} title="Share folder" class="action-btn action-btn-purple">
 												<Share2 size={13} /> Share
 											</button>
