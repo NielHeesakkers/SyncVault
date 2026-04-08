@@ -421,36 +421,30 @@ func (d *DB) PurgeAllTrash() (int64, error) {
 		if n == 0 { break }
 	}
 
-	// Also force-delete ALL items that appear in admin trash view
-	// This catches orphaned items where deleted_at might not be set
-	trashed, _ := d.ListAllTrashedFiles()
-	for _, f := range trashed {
-		d.db.Exec(`DELETE FROM versions WHERE file_id = ?`, f.ID)
-		d.db.Exec(`DELETE FROM file_blocks WHERE file_id = ?`, f.ID)
-		d.db.Exec(`DELETE FROM share_links WHERE file_id = ?`, f.ID)
-	}
-	// Delete non-dir orphans first
-	for _, f := range trashed {
-		if !f.IsDir {
-			d.db.Exec(`DELETE FROM files WHERE id = ?`, f.ID)
-			total++
-		}
-	}
-	// Then dirs leaf-first
+	// Brute force: delete ALL files with deleted_at set, regardless of owner
+	d.db.Exec(`DELETE FROM versions WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
+	d.db.Exec(`DELETE FROM file_blocks WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
+	d.db.Exec(`DELETE FROM share_links WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
+
+	// Non-dirs first
+	res, _ = d.db.Exec(`DELETE FROM files WHERE deleted_at IS NOT NULL AND is_dir = 0`)
+	n, _ := res.RowsAffected()
+	total += n
+
+	// Dirs leaf-first
 	for i := 0; i < 50; i++ {
-		deleted := false
-		for _, f := range trashed {
-			if f.IsDir {
-				res, _ := d.db.Exec(`DELETE FROM files WHERE id = ? AND id NOT IN (SELECT DISTINCT parent_id FROM files WHERE parent_id IS NOT NULL)`, f.ID)
-				n, _ := res.RowsAffected()
-				if n > 0 {
-					total += n
-					deleted = true
-				}
-			}
-		}
-		if !deleted { break }
+		res, _ = d.db.Exec(`DELETE FROM files WHERE deleted_at IS NOT NULL AND is_dir = 1 AND id NOT IN (SELECT DISTINCT parent_id FROM files WHERE parent_id IS NOT NULL)`)
+		n, _ = res.RowsAffected()
+		total += n
+		if n == 0 { break }
 	}
+
+	// Also delete orphaned folders that have no task and no non-deleted parent
+	d.db.Exec(`DELETE FROM versions WHERE file_id IN (SELECT id FROM files WHERE id NOT IN (SELECT folder_id FROM sync_tasks WHERE folder_id IS NOT NULL) AND parent_id NOT IN (SELECT id FROM files) AND parent_id IS NOT NULL)`)
+	d.db.Exec(`DELETE FROM file_blocks WHERE file_id IN (SELECT id FROM files WHERE id NOT IN (SELECT folder_id FROM sync_tasks WHERE folder_id IS NOT NULL) AND parent_id NOT IN (SELECT id FROM files) AND parent_id IS NOT NULL)`)
+	res, _ = d.db.Exec(`DELETE FROM files WHERE id NOT IN (SELECT folder_id FROM sync_tasks WHERE folder_id IS NOT NULL) AND parent_id NOT IN (SELECT id FROM files) AND parent_id IS NOT NULL`)
+	n, _ = res.RowsAffected()
+	total += n
 
 	return total, nil
 }
