@@ -198,6 +198,7 @@ CREATE TABLE IF NOT EXISTS file_locks (
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_files_parent_id    ON files(parent_id);
 CREATE INDEX IF NOT EXISTS idx_files_owner_id     ON files(owner_id);
+CREATE INDEX IF NOT EXISTS idx_files_owner_size   ON files(owner_id, is_dir, deleted_at, size);
 CREATE INDEX IF NOT EXISTS idx_files_deleted_at   ON files(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_versions_file_id   ON versions(file_id);
 CREATE INDEX IF NOT EXISTS idx_versions_file_time ON versions(file_id, created_at, version_num);

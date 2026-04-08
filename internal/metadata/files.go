@@ -176,6 +176,16 @@ func (d *DB) OwnerStorageUsed(ownerID string) int64 {
 	return size
 }
 
+// DirectChildrenSize returns the sum of sizes of direct (non-recursive) children files.
+func (d *DB) DirectChildrenSize(parentID string) int64 {
+	var size int64
+	d.db.QueryRow(
+		`SELECT COALESCE(SUM(size), 0) FROM files WHERE parent_id = ? AND deleted_at IS NULL`,
+		parentID,
+	).Scan(&size)
+	return size
+}
+
 // FolderSize returns the total size of all non-directory files under folderID (recursive).
 func (d *DB) FolderSize(folderID string) int64 {
 	var size int64

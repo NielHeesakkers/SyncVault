@@ -68,6 +68,19 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	// Non-admins only see their own files at root level.
 	// When navigating inside a specific folder (parentID set), show all children
 	// regardless of owner so team folder contents are visible.
+	// Pre-compute storage used per owner for root-level dir size display.
+	// Uses indexed SUM query (~50ms), not recursive CTE.
+	ownerSizes := map[string]int64{}
+	if parentID == "" {
+		for _, f := range files {
+			if f.IsDir && !f.ParentID.Valid {
+				if _, done := ownerSizes[f.OwnerID]; !done {
+					ownerSizes[f.OwnerID] = s.db.OwnerStorageUsed(f.OwnerID)
+				}
+			}
+		}
+	}
+
 	var result []fileResponse
 	for _, f := range files {
 		if claims.Role != "admin" && parentID == "" && f.OwnerID != claims.UserID {
@@ -76,7 +89,19 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		if dirsOnly && !f.IsDir {
 			continue
 		}
-		result = append(result, toFileResponse(f))
+		resp := toFileResponse(f)
+		if f.IsDir {
+			if !f.ParentID.Valid {
+				// Root folder: show total owner storage
+				if sz, ok := ownerSizes[f.OwnerID]; ok {
+					resp.Size = sz
+				}
+			} else {
+				// Subfolder: show direct children size (fast, indexed)
+				resp.Size = s.db.DirectChildrenSize(f.ID)
+			}
+		}
+		result = append(result, resp)
 	}
 
 	if result == nil {
