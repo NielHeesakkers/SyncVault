@@ -89,6 +89,14 @@ func (d *DB) CreateSyncTask(userID, folderID, name, taskType, localPath string) 
 	return t, nil
 }
 
+// GetSyncTaskByFolderID finds the sync task associated with a folder (any user).
+func (d *DB) GetSyncTaskByFolderID(folderID string) (*SyncTask, error) {
+	row := d.db.QueryRow(
+		`SELECT id, user_id, folder_id, name, type, local_path, status, created_at
+		 FROM sync_tasks WHERE folder_id = ? LIMIT 1`, folderID)
+	return scanSyncTask(row)
+}
+
 // ListSyncTasks returns all sync tasks for the given user, ordered by creation time.
 func (d *DB) ListSyncTasks(userID string) ([]SyncTask, error) {
 	rows, err := d.db.Query(

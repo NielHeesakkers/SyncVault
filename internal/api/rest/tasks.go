@@ -58,8 +58,25 @@ func folderNameForTask(taskType, taskName string) string {
 }
 
 // handleListTasks handles GET /api/tasks.
+// Admins can filter by folder_id to find tasks for any user's folder.
 func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
+
+	// Admin can search by folder_id across all users
+	if folderID := r.URL.Query().Get("folder_id"); folderID != "" && claims.Role == "admin" {
+		task, err := s.db.GetSyncTaskByFolderID(folderID)
+		if err != nil || task == nil {
+			writeJSON(w, http.StatusOK, []taskResponse{})
+			return
+		}
+		folder, _ := s.db.GetFileByID(task.FolderID)
+		folderName := ""
+		if folder != nil {
+			folderName = folder.Name
+		}
+		writeJSON(w, http.StatusOK, []taskResponse{toTaskResponse(task, folderName)})
+		return
+	}
 
 	tasks, err := s.db.ListSyncTasks(claims.UserID)
 	if err != nil {

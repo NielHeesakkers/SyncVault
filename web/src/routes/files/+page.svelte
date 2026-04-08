@@ -368,10 +368,21 @@
 	async function openRetention(file: HistoryFile) {
 		retentionFolder = file;
 		try {
+			// Try user's own tasks first, then all tasks (admin)
+			let task: any = null;
 			const res = await api.get('/api/tasks');
 			if (res.ok) {
 				const tasks = await res.json();
-				const task = tasks.find((t: any) => t.folder_id === file.id);
+				task = tasks.find((t: any) => t.folder_id === file.id);
+			}
+			if (!task && user?.role === 'admin') {
+				const adminRes = await api.get(`/api/tasks?folder_id=${file.id}`);
+				if (adminRes.ok) {
+					const adminTasks = await adminRes.json();
+					task = Array.isArray(adminTasks) ? adminTasks[0] : adminTasks?.tasks?.[0];
+				}
+			}
+			{
 				if (task) {
 					retentionTaskId = task.id;
 					const retRes = await api.get(`/api/tasks/${task.id}/retention`);
