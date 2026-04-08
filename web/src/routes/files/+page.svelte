@@ -28,8 +28,14 @@
 		name: string;
 	}
 
-	let currentFolderId = $state<string | null>(null);
-	let breadcrumbs = $state<BreadcrumbItem[]>([{ id: null, name: 'Files' }]);
+	// Read folder ID from URL query parameter on init
+	const urlFolder = typeof window !== 'undefined' ? new URL(window.location.href).searchParams.get('folder') : null;
+	let currentFolderId = $state<string | null>(urlFolder);
+	let breadcrumbs = $state<BreadcrumbItem[]>(
+		urlFolder
+			? [{ id: null, name: 'Files' }, { id: urlFolder, name: '...' }]
+			: [{ id: null, name: 'Files' }]
+	);
 	let files = $state<HistoryFile[]>([]);
 	let changeDates = $state<string[]>([]);
 	let loading = $state(false);
