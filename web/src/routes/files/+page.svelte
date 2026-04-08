@@ -237,8 +237,12 @@
 		const url = new URL(window.location.href);
 		url.searchParams.set('folder', file.id);
 		history.pushState({ folderId: file.id, breadcrumbs: JSON.parse(JSON.stringify(breadcrumbs)) }, '', url);
-		loadChangeDates(file.id);
-		if (selectedDate) loadHistory(file.id, selectedDate);
+		timelineLoaded = false;
+		if (selectedDate) {
+			loadHistory(file.id, selectedDate);
+		} else {
+			await loadCurrentFiles(file.id);
+		}
 	}
 
 	function navigateToBreadcrumb(crumb: BreadcrumbItem) {
@@ -251,8 +255,12 @@
 		if (crumb.id) url.searchParams.set('folder', crumb.id);
 		else url.searchParams.delete('folder');
 		history.pushState({ folderId: crumb.id, breadcrumbs: JSON.parse(JSON.stringify(breadcrumbs)) }, '', url);
-		loadChangeDates(crumb.id);
-		if (selectedDate) loadHistory(crumb.id, selectedDate);
+		timelineLoaded = false;
+		if (selectedDate) {
+			loadHistory(crumb.id, selectedDate);
+		} else {
+			loadCurrentFiles(crumb.id);
+		}
 	}
 
 	async function selectFile(file: HistoryFile) {
