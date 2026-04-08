@@ -247,13 +247,24 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
                     let result = try await client.uploadFileFromDisk(fileURL: url, filename: itemTemplate.filename, parentID: parentID)
 
-                    await cache?.upsert(result, downloaded: true)
+                    await cache?.upsert(result, downloaded: false) // Will be evicted
 
                     SharedConfig.setProgress(action: "Uploaded", filename: itemTemplate.filename, bytesTransferred: fileSize, totalBytes: fileSize)
                     SharedConfig.addRecentFile(filename: itemTemplate.filename, action: "uploaded")
                     SharedConfig.clearProgress()
-                    let item = FileProviderItem(serverFile: result, isDownloaded: true)
+                    // Return as not-downloaded so macOS treats it as cloud-only after upload
+                    let item = FileProviderItem(serverFile: result, isDownloaded: false)
                     completionHandler(item, [], false, nil)
+
+                    // Auto-evict: remove local copy after successful upload
+                    // File stays on server, shown as cloud placeholder in Finder
+                    if let manager = NSFileProviderManager(for: domain) {
+                        let itemID = NSFileProviderItemIdentifier(result.id)
+                        Task {
+                            try? await manager.evictItem(identifier: itemID)
+                            logger.info("Auto-evicted: \(itemTemplate.filename, privacy: .public)")
+                        }
+                    }
                 } else {
                     completionHandler(nil, [], false, NSError.fileProviderErrorForNonExistentItem(withIdentifier: itemTemplate.itemIdentifier))
                 }
