@@ -1258,3 +1258,37 @@ func (d *DB) GetFileLock(fileID string) (*FileLock, error) {
 func (d *DB) GetChangesSince(userID string, since time.Time) ([]File, error) {
 	return d.ListChangedFiles(since, userID)
 }
+
+// CleanupOldTrash permanently deletes files (and their versions/blocks/share_links)
+// that have been in the trash longer than maxAgeDays days.
+// Returns the total number of files removed.
+func (d *DB) CleanupOldTrash(maxAgeDays int) (int64, error) {
+	cutoff := time.Now().UTC().Add(-time.Duration(maxAgeDays) * 24 * time.Hour)
+	cutoffStr := cutoff.Format(time.RFC3339)
+
+	// Temporarily disable FK constraints so we can delete in the right order
+	// without cascading issues.
+	d.db.Exec(`PRAGMA foreign_keys=OFF`)
+	defer d.db.Exec(`PRAGMA foreign_keys=ON`)
+
+	// Delete dependent rows first.
+	d.db.Exec(`DELETE FROM versions WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL AND deleted_at < ?)`, cutoffStr)
+	d.db.Exec(`DELETE FROM file_blocks WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL AND deleted_at < ?)`, cutoffStr)
+	d.db.Exec(`DELETE FROM share_links WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL AND deleted_at < ?)`, cutoffStr)
+
+	// Delete non-directory files first.
+	res, _ := d.db.Exec(`DELETE FROM files WHERE deleted_at IS NOT NULL AND deleted_at < ? AND is_dir = 0`, cutoffStr)
+	total, _ := res.RowsAffected()
+
+	// Delete directories leaf-first (up to 50 rounds to handle deep nesting).
+	for i := 0; i < 50; i++ {
+		res, _ = d.db.Exec(`DELETE FROM files WHERE deleted_at IS NOT NULL AND deleted_at < ? AND is_dir = 1 AND id NOT IN (SELECT DISTINCT parent_id FROM files WHERE parent_id IS NOT NULL)`, cutoffStr)
+		n, _ := res.RowsAffected()
+		total += n
+		if n == 0 {
+			break
+		}
+	}
+
+	return total, nil
+}

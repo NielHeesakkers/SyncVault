@@ -657,13 +657,6 @@
 								<td class="px-4 py-3.5">
 									<div class="flex items-center gap-1 justify-end">
 										{#if file.is_dir}
-											<button
-												onclick={(e) => { e.stopPropagation(); openRetention(file); }}
-												title="Retention policy"
-												class="action-btn"
-											>
-												<Settings2 size={13} /> Retention
-											</button>
 											<button onclick={(e) => { e.stopPropagation(); openShare(file); }} title="Share folder" class="action-btn action-btn-purple">
 												<Share2 size={13} /> Share
 											</button>

@@ -229,6 +229,10 @@ struct EditSyncTaskView: View {
     @State private var localPath: String
     @State private var mode: SyncTask.SyncMode
     @State private var isEnabled: Bool
+    @State private var retentionDaily: Int = 90
+    @State private var retentionWeekly: Int = 24
+    @State private var retentionMonthly: Int = 12
+    @State private var retentionMax: Int = 10
 
     init(appState: AppState, task: SyncTask, isPresented: Binding<SyncTask?>) {
         self.appState = appState
@@ -280,6 +284,56 @@ struct EditSyncTaskView: View {
                     Toggle("", isOn: $isEnabled)
                         .labelsHidden()
                 }
+
+                // Retention Policy
+                Divider()
+                Text("Retention Policy")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+
+                LabeledField("Daily versions") {
+                    HStack {
+                        TextField("", value: $retentionDaily, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                        Text("days")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                LabeledField("Weekly versions") {
+                    HStack {
+                        TextField("", value: $retentionWeekly, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                        Text("weeks")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                LabeledField("Monthly versions") {
+                    HStack {
+                        TextField("", value: $retentionMonthly, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                        Text("months")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                LabeledField("Max versions") {
+                    HStack {
+                        TextField("", value: $retentionMax, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 60)
+                        Text("per file")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
 
             HStack {
@@ -295,6 +349,15 @@ struct EditSyncTaskView: View {
                     if mode == .onDemand {
                         Task { try? await appState.setupOnDemandSync(folderID: updated.remoteFolderID) }
                     }
+                    // Save retention policy
+                    if let serverTaskID = task.serverTaskID, let client = appState.apiClient {
+                        Task {
+                            try? await client.setTaskRetention(taskID: serverTaskID, policy: RetentionPolicy(
+                                hourly: 0, daily: retentionDaily, weekly: retentionWeekly,
+                                monthly: retentionMonthly, yearly: 0
+                            ))
+                        }
+                    }
                     isPresented = nil
                 }
                 .keyboardShortcut(.defaultAction)
@@ -303,6 +366,19 @@ struct EditSyncTaskView: View {
         }
         .padding(20)
         .frame(width: 460)
+        .onAppear {
+            if let serverTaskID = task.serverTaskID, let client = appState.apiClient {
+                Task {
+                    if let policy = try? await client.getTaskRetention(taskID: serverTaskID) {
+                        await MainActor.run {
+                            retentionDaily = policy.daily
+                            retentionWeekly = policy.weekly
+                            retentionMonthly = policy.monthly
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
 	"github.com/NielHeesakkers/SyncVault/internal/metadata"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 // createTaskRequest is the body for POST /api/tasks.
@@ -206,6 +207,16 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create task"})
 		return
 	}
+
+	// Apply default Smart Retention policy.
+	_ = s.db.SetRetentionPolicy(metadata.RetentionPolicy{
+		ID:            uuid.New().String(),
+		SyncTaskID:    task.ID,
+		DailyDays:     90,
+		WeeklyWeeks:   24,
+		MonthlyMonths: 12,
+		MaxVersions:   10,
+	})
 
 	writeJSON(w, http.StatusCreated, toTaskResponse(task, subFolder.Name))
 }

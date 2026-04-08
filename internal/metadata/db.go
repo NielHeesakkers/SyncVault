@@ -106,6 +106,34 @@ func Open(path string) (*DB, error) {
 		log.Printf("metadata: folder_size backfill complete")
 	}()
 
+	// Smart Retention: apply default policies to existing tasks and enforce periodically.
+	go func() {
+		time.Sleep(1 * time.Minute) // Wait for server to be fully ready.
+		d := &DB{db: rawDB}
+
+		// Apply default retention to existing tasks that have no policy.
+		_, err := rawDB.Exec(`INSERT OR IGNORE INTO retention_policies (id, sync_task_id, daily_days, weekly_weeks, monthly_months, max_versions)
+			SELECT hex(randomblob(16)), id, 90, 24, 12, 10 FROM sync_tasks
+			WHERE id NOT IN (SELECT sync_task_id FROM retention_policies WHERE sync_task_id IS NOT NULL)`)
+		if err != nil {
+			log.Printf("metadata: apply default retention policies: %v", err)
+		} else {
+			log.Printf("metadata: default retention policies applied to existing tasks")
+		}
+
+		// Run enforcement immediately, then every 6 hours.
+		d.EnforceAllRetentionPolicies()
+		d.CleanupOldTrash(30)
+		log.Printf("metadata: initial retention enforcement and trash cleanup complete")
+
+		ticker := time.NewTicker(6 * time.Hour)
+		for range ticker.C {
+			d.EnforceAllRetentionPolicies()
+			d.CleanupOldTrash(30)
+			log.Printf("metadata: periodic retention enforcement and trash cleanup complete")
+		}
+	}()
+
 	// Periodic WAL checkpoint to keep the WAL file small.
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
