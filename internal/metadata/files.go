@@ -534,6 +534,20 @@ func (d *DB) ListChangesByRank(sinceRank int64, ownerID string) ([]File, int64, 
 	return files, currentRank, rows.Err()
 }
 
+// TotalTrashSize returns the total size of all soft-deleted files.
+func (d *DB) TotalTrashSize() int64 {
+	var size int64
+	d.db.QueryRow(`SELECT COALESCE(SUM(size), 0) FROM files WHERE deleted_at IS NOT NULL AND is_dir = 0`).Scan(&size)
+	return size
+}
+
+// TotalVersionsSize returns the total size of all non-latest versions (old versions that retention may clean up).
+func (d *DB) TotalVersionsSize() int64 {
+	var size int64
+	d.db.QueryRow(`SELECT COALESCE(SUM(v.size), 0) FROM versions v WHERE v.version_num < (SELECT MAX(v2.version_num) FROM versions v2 WHERE v2.file_id = v.file_id)`).Scan(&size)
+	return size
+}
+
 // StorageUsedByUser returns the sum of sizes of all non-deleted, non-directory files owned by userID.
 func (d *DB) StorageUsedByUser(userID string) (int64, error) {
 	var total sql.NullInt64

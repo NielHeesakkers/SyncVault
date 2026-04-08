@@ -12,6 +12,8 @@
 	// Storage data
 	let storageUsed = $state(0);
 	let storageQuota = $state(0);
+	let trashSize = $state(0);
+	let versionsSize = $state(0);
 
 	// Activity
 	let activity = $state<any[]>([]);
@@ -43,6 +45,17 @@
 				const data = await res.json();
 				storageUsed = data.used || 0;
 				storageQuota = data.quota || 0;
+			}
+		} catch {}
+
+		// Admin storage breakdown (trash + versions)
+		try {
+			const res = await api.get('/api/admin/storage');
+			if (res.ok) {
+				const data = await res.json();
+				trashSize = data.trash_size || 0;
+				versionsSize = data.versions_size || 0;
+				if (!storageUsed && data.used) storageUsed = data.used;
 			}
 		} catch {}
 		loading = false;
@@ -222,6 +235,22 @@
 							<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">no quota set</p>
 						{/if}
 					</div>
+					{#if trashSize > 0 || versionsSize > 0}
+						<div class="mt-4 pt-3 border-t space-y-1.5" style="border-color: var(--border);">
+							{#if trashSize > 0}
+								<div class="flex items-center justify-between">
+									<span class="text-xs" style="color: var(--text-tertiary);">🗑️ Trash</span>
+									<span class="text-xs font-medium text-orange-400">{formatBytes(trashSize)}</span>
+								</div>
+							{/if}
+							{#if versionsSize > 0}
+								<div class="flex items-center justify-between">
+									<span class="text-xs" style="color: var(--text-tertiary);">📋 Old versions</span>
+									<span class="text-xs font-medium text-blue-400">{formatBytes(versionsSize)}</span>
+								</div>
+							{/if}
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</div>

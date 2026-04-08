@@ -316,10 +316,12 @@ func (s *Server) handleAdminResetPassword(w http.ResponseWriter, r *http.Request
 
 // storageOverviewResponse is the JSON response for GET /api/admin/storage.
 type storageOverviewResponse struct {
-	TotalUsers int   `json:"total_users"`
-	Used       int64 `json:"used"`
-	Total      int64 `json:"total"`
-	Available  int64 `json:"available"`
+	TotalUsers   int   `json:"total_users"`
+	Used         int64 `json:"used"`
+	Total        int64 `json:"total"`
+	Available    int64 `json:"available"`
+	TrashSize    int64 `json:"trash_size"`
+	VersionsSize int64 `json:"versions_size"`
 }
 
 // handleAdminStorage handles GET /api/admin/storage.
@@ -341,11 +343,16 @@ func (s *Server) handleAdminStorage(w http.ResponseWriter, r *http.Request) {
 		totalQuota += u.QuotaBytes
 	}
 
+	trashSize := s.db.TotalTrashSize()
+	versionsSize := s.db.TotalVersionsSize()
+
 	writeJSON(w, http.StatusOK, storageOverviewResponse{
-		TotalUsers: len(users),
-		Used:       totalUsed,
-		Total:      totalQuota,
-		Available:  totalQuota - totalUsed,
+		TotalUsers:   len(users),
+		Used:         totalUsed,
+		Total:        totalQuota,
+		Available:    totalQuota - totalUsed,
+		TrashSize:    trashSize,
+		VersionsSize: versionsSize,
 	})
 }
 
