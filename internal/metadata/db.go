@@ -84,10 +84,11 @@ func Open(path string) (*DB, error) {
 			log.Printf("metadata: files.size sync complete")
 		}
 
-		// Backfill folder_size for all directories (bottom-up).
+		// Backfill folder_size for all directories.
+		// Runs multiple rounds so parent folders pick up children's updated sizes.
 		log.Printf("metadata: backfilling folder_size...")
-		for round := 0; round < 30; round++ {
-			res, _ := rawDB.Exec(`
+		for round := 0; round < 15; round++ {
+			rawDB.Exec(`
 				UPDATE files SET folder_size = (
 					SELECT COALESCE(SUM(
 						CASE WHEN c.is_dir = 1 THEN c.folder_size
@@ -99,16 +100,8 @@ func Open(path string) (*DB, error) {
 					FROM files c WHERE c.parent_id = files.id AND c.deleted_at IS NULL
 				)
 				WHERE is_dir = 1 AND deleted_at IS NULL
-				  AND NOT EXISTS (
-					SELECT 1 FROM files c WHERE c.parent_id = files.id AND c.is_dir = 1 AND c.folder_size = 0 AND c.deleted_at IS NULL
-					  AND EXISTS (SELECT 1 FROM files gc WHERE gc.parent_id = c.id AND gc.deleted_at IS NULL)
-				  )
 			`)
-			n, _ := res.RowsAffected()
-			if n == 0 {
-				break
-			}
-			log.Printf("metadata: folder_size backfill round %d: %d folders", round+1, n)
+			log.Printf("metadata: folder_size backfill round %d complete", round+1)
 		}
 		log.Printf("metadata: folder_size backfill complete")
 	}()
