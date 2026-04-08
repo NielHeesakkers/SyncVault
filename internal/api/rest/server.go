@@ -54,6 +54,7 @@ func (s *Server) setupRoutes() {
 	r.Use(chimiddleware.Recoverer)
 	r.Use(CORSMiddleware)
 	r.Use(LoggingMiddleware)
+	r.Use(chimiddleware.Compress(5, "application/json", "text/event-stream"))
 
 	// Public routes.
 	r.Get("/api/health", s.handleHealth)
@@ -96,6 +97,7 @@ func (s *Server) setupRoutes() {
 		r.Delete("/api/files/{id}", s.handleDeleteFile)
 		r.Post("/api/files/{id}/restore", s.handleRestoreFile)
 		r.Get("/api/files/{id}/download", s.handleDownloadFile)
+		r.Get("/api/files/{id}/preview", s.handlePreviewFile)
 		// File locking.
 		r.Post("/api/files/{id}/lock", s.handleLockFile)
 		r.Delete("/api/files/{id}/lock", s.handleUnlockFile)
@@ -135,6 +137,7 @@ func (s *Server) setupRoutes() {
 		r.Post("/api/files/{id}/shares", s.handleCreateShare)
 		r.Get("/api/files/{id}/shares", s.handleListShares)
 		r.Delete("/api/shares/{id}", s.handleDeleteShare)
+		r.Put("/api/shares/{id}/toggle", s.handleToggleShare)
 		r.Get("/api/shares/mine", s.handleListMyShares)
 
 		// Hash check and file tree (for sync clients).

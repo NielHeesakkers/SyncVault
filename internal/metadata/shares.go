@@ -145,6 +145,22 @@ func (d *DB) DeleteShareLink(id string) error {
 	return nil
 }
 
+// SetShareLinkDisabled enables or disables a share link by setting expires_at.
+// When disabled, expires_at is set to Unix epoch (1970-01-01); when enabled, it is cleared.
+func (d *DB) SetShareLinkDisabled(id string, disabled bool) error {
+	var err error
+	if disabled {
+		epoch := time.Unix(0, 0).UTC().Format(time.RFC3339Nano)
+		_, err = d.db.Exec(`UPDATE share_links SET expires_at = ? WHERE id = ?`, epoch, id)
+	} else {
+		_, err = d.db.Exec(`UPDATE share_links SET expires_at = NULL WHERE id = ?`, id)
+	}
+	if err != nil {
+		return fmt.Errorf("metadata: set share link disabled: %w", err)
+	}
+	return nil
+}
+
 // scanShareLink scans a single ShareLink from a *sql.Row.
 func scanShareLink(row *sql.Row) (*ShareLink, error) {
 	var sl ShareLink

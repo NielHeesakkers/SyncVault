@@ -152,6 +152,70 @@ actor FPAPIClient {
         return hash.map { String(format: "%02x", $0) }.joined()
     }
 
+    // MARK: - SSE (Server-Sent Events)
+
+    /// Returns an AsyncThrowingStream of SSE events from /api/events.
+    /// Each yielded tuple contains (event name, data payload).
+    func listenForSSE() -> AsyncThrowingStream<(event: String, data: String), Error> {
+        // Capture what we need before returning the non-isolated stream
+        let url = URL(string: "\(baseURL)/api/events")!
+        let token = accessToken ?? ""
+
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    var request = URLRequest(url: url)
+                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    request.timeoutInterval = .infinity
+
+                    let config = URLSessionConfiguration.default
+                    config.timeoutIntervalForRequest = .infinity
+                    config.timeoutIntervalForResource = .infinity
+                    let session = URLSession(configuration: config)
+
+                    let (bytes, response) = try await session.bytes(for: request)
+                    guard let http = response as? HTTPURLResponse else {
+                        continuation.finish(throwing: FPAPIError.invalidResponse)
+                        return
+                    }
+                    if http.statusCode == 401 {
+                        continuation.finish(throwing: FPAPIError.unauthorized)
+                        return
+                    }
+                    if http.statusCode >= 400 {
+                        continuation.finish(throwing: FPAPIError.serverError(http.statusCode))
+                        return
+                    }
+
+                    var currentEvent = ""
+                    var currentData = ""
+
+                    for try await line in bytes.lines {
+                        if line.hasPrefix("event: ") {
+                            currentEvent = String(line.dropFirst(7))
+                        } else if line.hasPrefix("data: ") {
+                            currentData = String(line.dropFirst(6))
+                        } else if line.isEmpty {
+                            if !currentEvent.isEmpty {
+                                continuation.yield((event: currentEvent, data: currentData))
+                            }
+                            currentEvent = ""
+                            currentData = ""
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+
     func getChanges(since: Date) async throws -> FPChangesResponse {
         let formatter = ISO8601DateFormatter()
         let sinceStr = formatter.string(from: since).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""

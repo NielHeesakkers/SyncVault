@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -68,6 +69,14 @@ func Open(path string) (*DB, error) {
 		rawDB.Close()
 		return nil, fmt.Errorf("metadata: create change_rank index: %w", err)
 	}
+
+	// Periodic WAL checkpoint to keep the WAL file small.
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		for range ticker.C {
+			rawDB.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+		}
+	}()
 
 	return &DB{db: rawDB}, nil
 }

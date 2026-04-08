@@ -5,33 +5,57 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     let domain: NSFileProviderDomain
     let logger = Logger(subsystem: "com.syncvault.fileprovider", category: "Extension")
     let cache: ItemCache?
-    private var pollTimer: DispatchSourceTimer?
+    private var sseTask: Task<Void, Never>?
 
     required init(domain: NSFileProviderDomain) {
         self.domain = domain
         self.cache = try? ItemCache()
         super.init()
         logger.info("FileProviderExtension initialized for domain: \(domain.displayName)")
-        startPollingTimer()
+        startSSEListener()
     }
 
     func invalidate() {
-        pollTimer?.cancel()
-        pollTimer = nil
+        sseTask?.cancel()
+        sseTask = nil
         logger.info("FileProviderExtension invalidated")
     }
 
-    // MARK: - Background polling (Fase 6)
+    // MARK: - SSE listener (real-time push from server)
 
-    private func startPollingTimer() {
-        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue.global(qos: .utility))
-        timer.schedule(deadline: .now() + 30, repeating: 30)
-        timer.setEventHandler { [weak self] in
-            guard let self = self else { return }
-            Task { await self.pollForChanges() }
+    private func startSSEListener() {
+        sseTask = Task {
+            var retryDelay: UInt64 = 1_000_000_000 // 1 second
+
+            while !Task.isCancelled {
+                do {
+                    let client = try SharedConfig.sharedClient()
+
+                    logger.info("SSE: connecting to server...")
+
+                    for try await (event, _) in await client.listenForSSE() {
+                        guard !Task.isCancelled else { return }
+                        retryDelay = 1_000_000_000 // Reset on successful receive
+
+                        if event == "changes" {
+                            logger.info("SSE: changes detected, refreshing")
+                            await pollForChanges()
+                        }
+                    }
+
+                    // Stream ended normally (server closed connection)
+                    guard !Task.isCancelled else { return }
+                    logger.info("SSE: stream ended, will reconnect")
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    logger.error("SSE: disconnected: \(error.localizedDescription, privacy: .public)")
+                }
+
+                // Exponential backoff: 1s, 2s, 4s, 8s, ... max 30s
+                try? await Task.sleep(nanoseconds: retryDelay)
+                retryDelay = min(retryDelay * 2, 30_000_000_000)
+            }
         }
-        timer.resume()
-        pollTimer = timer
     }
 
     private func pollForChanges() async {

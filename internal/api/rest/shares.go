@@ -154,6 +154,53 @@ func (s *Server) handleListMyShares(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"shares": result})
 }
 
+// toggleShareRequest is the body for PUT /api/shares/{id}/toggle.
+type toggleShareRequest struct {
+	Disabled bool `json:"disabled"`
+}
+
+// handleToggleShare handles PUT /api/shares/{id}/toggle — enables or disables a share link.
+func (s *Server) handleToggleShare(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	sl, err := s.db.GetShareLinkByID(id)
+	if err != nil {
+		if errors.Is(err, metadata.ErrShareLinkNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "share link not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get share link"})
+		return
+	}
+
+	// Only the creator (or admin) may toggle.
+	claims := auth.GetClaims(r.Context())
+	if sl.CreatedBy != claims.UserID && claims.Role != "admin" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+		return
+	}
+
+	var req toggleShareRequest
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	if err := s.db.SetShareLinkDisabled(id, req.Disabled); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update share link"})
+		return
+	}
+
+	// Re-fetch and return updated share.
+	sl, err = s.db.GetShareLinkByID(id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get share link"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, s.toShareLinkResponseWithName(*sl))
+}
+
 // publicShareResponse is the JSON response for GET /s/{token}.
 type publicShareResponse struct {
 	Name        string     `json:"name"`

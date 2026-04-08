@@ -797,6 +797,40 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handlePreviewFile handles GET /api/files/{id}/preview — serves inline file content.
+func (s *Server) handlePreviewFile(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	f, ok := s.checkFileOwnership(w, r, id)
+	if !ok {
+		return
+	}
+
+	if f.IsDir {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot preview a directory"})
+		return
+	}
+
+	if !f.ContentHash.Valid || f.ContentHash.String == "" {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "file has no content"})
+		return
+	}
+
+	// Only allow preview for files with a known mime type.
+	if !f.MimeType.Valid || f.MimeType.String == "" {
+		writeJSON(w, http.StatusUnsupportedMediaType, map[string]string{"error": "unknown file type"})
+		return
+	}
+
+	w.Header().Set("Content-Type", f.MimeType.String)
+	w.Header().Set("Content-Disposition", "inline")
+
+	if err := s.store.Get(f.ContentHash.String, w); err != nil {
+		// Headers already sent; we can't write a JSON error at this point.
+		return
+	}
+}
+
 // handleUserActivity handles GET /api/activity?limit=N.
 // Returns activity log entries scoped to the authenticated user.
 func (s *Server) handleUserActivity(w http.ResponseWriter, r *http.Request) {
