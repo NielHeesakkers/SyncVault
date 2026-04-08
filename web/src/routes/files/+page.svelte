@@ -537,15 +537,7 @@
 
 	<!-- File list -->
 	<div class="flex-1 overflow-auto p-6">
-		{#if !selectedDate && changeDates.length === 0}
-			<div class="flex flex-col items-center justify-center py-24">
-				<div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style="background: var(--bg-active);">
-					<Clock size={28} style="color: var(--text-tertiary);" />
-				</div>
-				<p class="text-base font-medium text-white/40">No version history found</p>
-				<p class="text-sm mt-1.5" style="color: var(--text-tertiary);">Upload and modify files to start building version history.</p>
-			</div>
-		{:else if loading}
+		{#if loading}
 			<!-- Skeleton loading -->
 			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 				<div class="px-4 py-3 border-b" style="border-color: var(--border);">
