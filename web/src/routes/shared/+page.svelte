@@ -56,10 +56,7 @@
 
 	async function doDelete() {
 		if (!deleteTarget) return;
-		const endpoint = deleteTarget.file_id
-			? `/api/files/${deleteTarget.file_id}/shares/${deleteTarget.id}`
-			: `/api/shares/${deleteTarget.id}`;
-		const res = await api.delete(endpoint);
+		const res = await api.delete(`/api/shares/${deleteTarget.id}`);
 		if (res.ok) {
 			showToast('Share link deleted', 'success');
 			links = links.filter((l) => l.id !== deleteTarget!.id);
