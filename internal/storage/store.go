@@ -114,7 +114,33 @@ func (s *Store) PutBlock(hash string, data []byte) (isNew bool, err error) {
 	}
 
 	err = retryOnTooManyFiles("PutBlock write", func() error {
-		return os.WriteFile(cp, data, 0644)
+		// Write with explicit open/sync/close for SMB reliability
+		f, err := os.Create(cp)
+		if err != nil {
+			return err
+		}
+		if _, err := f.Write(data); err != nil {
+			f.Close()
+			os.Remove(cp)
+			return err
+		}
+		// Force flush to disk (critical for SMB/NFS mounts)
+		if err := f.Sync(); err != nil {
+			f.Close()
+			os.Remove(cp)
+			return err
+		}
+		if err := f.Close(); err != nil {
+			os.Remove(cp)
+			return err
+		}
+		// Verify write succeeded (SMB can silently drop data)
+		info, err := os.Stat(cp)
+		if err != nil || info.Size() != int64(len(data)) {
+			os.Remove(cp)
+			return fmt.Errorf("write verification failed: expected %d bytes, got %d", len(data), info.Size())
+		}
+		return nil
 	})
 	if err != nil {
 		return false, fmt.Errorf("storage: write block: %w", err)
