@@ -545,14 +545,6 @@
 				<p class="text-base font-medium text-white/40">No version history found</p>
 				<p class="text-sm mt-1.5" style="color: var(--text-tertiary);">Upload and modify files to start building version history.</p>
 			</div>
-		{:else if !selectedDate}
-			<div class="flex flex-col items-center justify-center py-24">
-				<div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style="background: var(--bg-active);">
-					<Clock size={28} style="color: var(--text-tertiary);" />
-				</div>
-				<p class="text-base font-medium text-white/40">Select a point on the timeline below</p>
-				<p class="text-sm mt-1.5" style="color: var(--text-tertiary);">Click a dot to see files as they were on that date.</p>
-			</div>
 		{:else if loading}
 			<!-- Skeleton loading -->
 			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
