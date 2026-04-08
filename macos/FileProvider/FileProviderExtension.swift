@@ -244,8 +244,11 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     let fileSize = (attrs[.size] as? Int64) ?? 0
 
                     SharedConfig.setProgress(action: "Uploading", filename: itemTemplate.filename, bytesTransferred: 0, totalBytes: fileSize)
+                    progress.totalUnitCount = fileSize > 0 ? fileSize : 100
 
-                    let result = try await client.uploadFileFromDisk(fileURL: url, filename: itemTemplate.filename, parentID: parentID)
+                    let result = try await client.uploadFileFromDisk(fileURL: url, filename: itemTemplate.filename, parentID: parentID) { bytesUploaded, totalBytes in
+                        progress.completedUnitCount = bytesUploaded
+                    }
 
                     await cache?.upsert(result, downloaded: false) // Will be evicted
 

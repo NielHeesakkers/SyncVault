@@ -54,7 +54,7 @@ actor FPAPIClient {
     /// 2. Check which blocks server already has (dedup)
     /// 3. Upload only missing blocks
     /// 4. Create file on server from blocks
-    func uploadFileFromDisk(fileURL: URL, filename: String, parentID: String?) async throws -> FPServerFile {
+    func uploadFileFromDisk(fileURL: URL, filename: String, parentID: String?, onProgress: ((Int64, Int64) -> Void)? = nil) async throws -> FPServerFile {
         let blockSize = 4 * 1024 * 1024
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer { handle.closeFile() }
@@ -79,6 +79,7 @@ actor FPAPIClient {
             hashed += Int64(data.count)
             if index % 10 == 0 {
                 SharedConfig.setProgress(action: "Hashing", filename: filename, bytesTransferred: hashed, totalBytes: fileSize)
+                onProgress?(hashed / 4, fileSize) // Hashing = first 25%
             }
         }
 
@@ -116,6 +117,7 @@ actor FPAPIClient {
 
                 uploaded += Int64(data.count)
                 SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: uploaded, totalBytes: fileSize)
+                onProgress?(uploaded, fileSize)
             }
         }
 
