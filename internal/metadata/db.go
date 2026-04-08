@@ -71,14 +71,18 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("metadata: create change_rank index: %w", err)
 	}
 
-	// One-time migration: sync files.size with latest version size.
-	// After this, CreateVersion keeps files.size in sync automatically.
-	var needsSizeSync int
-	rawDB.QueryRow(`SELECT COUNT(*) FROM files f WHERE f.is_dir = 0 AND f.size = 0 AND EXISTS (SELECT 1 FROM versions v WHERE v.file_id = f.id AND v.size > 0)`).Scan(&needsSizeSync)
-	if needsSizeSync > 0 {
-		rawDB.Exec(`UPDATE files SET size = (SELECT v.size FROM versions v WHERE v.file_id = files.id ORDER BY v.version_num DESC LIMIT 1), content_hash = (SELECT v.content_hash FROM versions v WHERE v.file_id = files.id ORDER BY v.version_num DESC LIMIT 1) WHERE is_dir = 0 AND size = 0 AND EXISTS (SELECT 1 FROM versions v WHERE v.file_id = files.id AND v.size > 0)`)
-		log.Printf("metadata: synced files.size for %d files from versions table", needsSizeSync)
-	}
+	// Background migration: sync files.size with latest version size.
+	// Runs async so it doesn't block server startup or requests.
+	go func() {
+		time.Sleep(10 * time.Second) // Wait for server to be fully ready
+		var needsSizeSync int
+		rawDB.QueryRow(`SELECT COUNT(*) FROM files WHERE is_dir = 0 AND size = 0 AND id IN (SELECT file_id FROM versions WHERE size > 0 LIMIT 1)`).Scan(&needsSizeSync)
+		if needsSizeSync > 0 {
+			log.Printf("metadata: syncing files.size in background...")
+			rawDB.Exec(`UPDATE files SET size = (SELECT v.size FROM versions v WHERE v.file_id = files.id ORDER BY v.version_num DESC LIMIT 1), content_hash = (SELECT v.content_hash FROM versions v WHERE v.file_id = files.id ORDER BY v.version_num DESC LIMIT 1) WHERE is_dir = 0 AND size = 0 AND id IN (SELECT DISTINCT file_id FROM versions WHERE size > 0)`)
+			log.Printf("metadata: files.size sync complete")
+		}
+	}()
 
 	// Periodic WAL checkpoint to keep the WAL file small.
 	go func() {
