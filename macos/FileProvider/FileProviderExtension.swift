@@ -210,8 +210,8 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
         Task {
             do {
-                // Skip macOS FileProvider system test files and hidden files
-                if itemTemplate.filename.hasPrefix("drive_test_") || (itemTemplate.filename.hasPrefix(".") && itemTemplate.filename != ".sync") {
+                // Skip only macOS FileProvider system test files
+                if itemTemplate.filename.hasPrefix("drive_test_") {
                     completionHandler(nil, [], false, NSError(domain: NSCocoaErrorDomain, code: NSFileNoSuchFileError))
                     progress.completedUnitCount = 100
                     return

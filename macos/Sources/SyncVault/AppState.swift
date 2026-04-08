@@ -834,6 +834,8 @@ class AppState: ObservableObject {
 
                 var toUpload: [(fullPath: String, relativePath: String, parentRelPath: String)] = []
 
+                var localFileCount = 0
+                var localDirCount = 0
                 while let relPath = enumerator.nextObject() as? String {
                     let fullPath = (cloudPath as NSString).appendingPathComponent(relPath)
                     let name = URL(fileURLWithPath: relPath).lastPathComponent
