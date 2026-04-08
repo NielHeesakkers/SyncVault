@@ -110,6 +110,9 @@
 
 	onMount(async () => {
 		history.replaceState({ folderId: currentFolderId, breadcrumbs: JSON.parse(JSON.stringify(breadcrumbs)) }, '');
+		// Load current files immediately (fast — no history query)
+		await loadCurrentFiles(currentFolderId);
+		// Then load timeline dates in background (non-blocking)
 		loadChangeDates(currentFolderId);
 		const handlePopState = (e: PopStateEvent) => {
 			if (e.state?.breadcrumbs) {
@@ -117,13 +120,33 @@
 				currentFolderId = e.state.folderId;
 				selectedFile = null;
 				selectedFileDates = [];
+				selectedDate = null;
+				loadCurrentFiles(currentFolderId);
 				loadChangeDates(currentFolderId);
-				if (selectedDate) loadHistory(currentFolderId, selectedDate);
 			}
 		};
 		window.addEventListener('popstate', handlePopState);
 		return () => window.removeEventListener('popstate', handlePopState);
 	});
+
+	// Fast initial load — uses simple file listing (no version history)
+	async function loadCurrentFiles(folderId: string | null) {
+		loading = true;
+		files = [];
+		try {
+			const params = folderId ? `?parent_id=${folderId}` : '?parent_id=';
+			const res = await api.get(`/api/files${params}`);
+			if (res.ok) {
+				const data = await res.json();
+				// Map simple files to match the history format
+				files = (data.files || []).map((f: any) => ({
+					...f,
+					version_num: f.version_num || (f.is_dir ? 0 : 1),
+				}));
+			}
+		} catch {}
+		loading = false;
+	}
 
 	async function loadChangeDates(folderId: string | null) {
 		try {
@@ -134,9 +157,7 @@
 			if (res.ok) {
 				const data = await res.json();
 				changeDates = data.dates || [];
-				if (!selectedDate) {
-					selectDate(new Date().toISOString().slice(0, 10));
-				}
+				// Don't auto-select date — user must click timeline
 			}
 		} catch {}
 	}
