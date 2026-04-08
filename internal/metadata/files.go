@@ -399,6 +399,39 @@ func (d *DB) PurgeUserTrash(ownerID string) (int64, error) {
 	return total, nil
 }
 
+// PurgeAllTrash permanently deletes ALL soft-deleted files AND orphaned files (no parent, no task).
+func (d *DB) PurgeAllTrash() (int64, error) {
+	d.db.Exec(`PRAGMA foreign_keys=OFF`)
+	defer d.db.Exec(`PRAGMA foreign_keys=ON`)
+
+	// Delete dependent rows for ALL trashed/orphaned files
+	d.db.Exec(`DELETE FROM versions WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
+	d.db.Exec(`DELETE FROM file_blocks WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
+	d.db.Exec(`DELETE FROM share_links WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
+
+	// Delete non-dir trashed files
+	res, _ := d.db.Exec(`DELETE FROM files WHERE deleted_at IS NOT NULL AND is_dir = 0`)
+	total, _ := res.RowsAffected()
+
+	// Delete trashed dirs leaf-first
+	for i := 0; i < 50; i++ {
+		res, _ = d.db.Exec(`DELETE FROM files WHERE deleted_at IS NOT NULL AND is_dir = 1 AND id NOT IN (SELECT DISTINCT parent_id FROM files WHERE parent_id IS NOT NULL)`)
+		n, _ := res.RowsAffected()
+		total += n
+		if n == 0 { break }
+	}
+
+	// Also delete orphaned folders: folders whose parent doesn't exist and have no sync task
+	d.db.Exec(`DELETE FROM versions WHERE file_id IN (SELECT f.id FROM files f WHERE f.parent_id IS NOT NULL AND f.parent_id NOT IN (SELECT id FROM files) AND f.id NOT IN (SELECT folder_id FROM sync_tasks WHERE folder_id IS NOT NULL))`)
+	d.db.Exec(`DELETE FROM file_blocks WHERE file_id IN (SELECT f.id FROM files f WHERE f.parent_id IS NOT NULL AND f.parent_id NOT IN (SELECT id FROM files) AND f.id NOT IN (SELECT folder_id FROM sync_tasks WHERE folder_id IS NOT NULL))`)
+	d.db.Exec(`DELETE FROM share_links WHERE file_id IN (SELECT f.id FROM files f WHERE f.parent_id IS NOT NULL AND f.parent_id NOT IN (SELECT id FROM files) AND f.id NOT IN (SELECT folder_id FROM sync_tasks WHERE folder_id IS NOT NULL))`)
+	res, _ = d.db.Exec(`DELETE FROM files WHERE parent_id IS NOT NULL AND parent_id NOT IN (SELECT id FROM files) AND id NOT IN (SELECT folder_id FROM sync_tasks WHERE folder_id IS NOT NULL)`)
+	n, _ := res.RowsAffected()
+	total += n
+
+	return total, nil
+}
+
 // PermanentlyDeleteFile removes a single file from the database entirely.
 func (d *DB) PermanentlyDeleteFile(id string) error {
 	res, err := d.db.Exec(`DELETE FROM files WHERE id=? AND deleted_at IS NOT NULL`, id)

@@ -349,21 +349,13 @@ func (s *Server) handleRestoreFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePurgeTrash handles DELETE /api/trash — permanently delete all trashed files.
-// Admin purges ALL users' trash. Regular users purge only their own.
+// Admin purges ALL trash (including orphaned items). Regular users purge only their own.
 func (s *Server) handlePurgeTrash(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
 	var count int64
 	var err error
 	if claims.Role == "admin" {
-		// Admin: purge ALL trash
-		users, _ := s.db.ListUsers()
-		for _, u := range users {
-			n, e := s.db.PurgeUserTrash(u.ID)
-			count += n
-			if e != nil {
-				err = e
-			}
-		}
+		count, err = s.db.PurgeAllTrash()
 	} else {
 		count, err = s.db.PurgeUserTrash(claims.UserID)
 	}
