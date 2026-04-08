@@ -744,6 +744,8 @@ class AppState: ObservableObject {
                 // Store last successful sync date (for optimized reconnect hashing)
                 if result.errors == 0 {
                     UserDefaults.standard.set(Date(), forKey: lastSyncKey)
+                    // Clear any previous error — sync is working again
+                    if lastError != nil { lastError = nil }
                 }
 
                 // Upload known state to server (for restore-to-new-Mac scenario)
@@ -772,7 +774,12 @@ class AppState: ObservableObject {
                 break
             } catch {
                 logger.info(" Error: \(error)")
-                lastError = "Sync error: \(error.localizedDescription)"
+                // Check if it's a storage issue
+                if "\(error)".contains("500") || "\(error)".contains("503") {
+                    lastError = "Server storage temporarily unavailable"
+                } else {
+                    lastError = "Sync error: \(error.localizedDescription)"
+                }
             }
         }
 

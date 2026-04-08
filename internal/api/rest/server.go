@@ -211,9 +211,18 @@ func (s *Server) setupRoutes() {
 
 const AppVersion = "2.5.35"
 
-// handleHealth returns a simple health check response.
+// handleHealth returns a simple health check response, including storage status.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": AppVersion})
+	storageOK := s.store.IsAvailable()
+	status := "ok"
+	if !storageOK {
+		status = "degraded"
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":      status,
+		"version":     AppVersion,
+		"storage_ok":  storageOK,
+	})
 }
 
 // handleMe returns the current authenticated user's claims.

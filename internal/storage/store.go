@@ -57,6 +57,12 @@ func NewStore(dir string, chunkSize int) (*Store, error) {
 	}, nil
 }
 
+// IsAvailable checks if the storage directory is accessible.
+func (s *Store) IsAvailable() bool {
+	_, err := os.Stat(s.dir)
+	return err == nil
+}
+
 // chunkPath returns the path for a chunk identified by its hash.
 func (s *Store) chunkPath(hash string) string {
 	return filepath.Join(s.dir, hash[:2], hash)
