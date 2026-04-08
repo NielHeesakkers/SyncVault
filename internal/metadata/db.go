@@ -85,31 +85,32 @@ func Open(path string) (*DB, error) {
 		}
 
 		// Backfill folder_size for all directories (bottom-up).
-		// Each round updates folders whose subfolder children already have correct folder_size.
-		var needsFolderSizeBackfill int
-		rawDB.QueryRow(`SELECT COUNT(*) FROM files WHERE is_dir = 1 AND folder_size = 0 AND deleted_at IS NULL AND id IN (SELECT DISTINCT parent_id FROM files WHERE parent_id IS NOT NULL AND deleted_at IS NULL)`).Scan(&needsFolderSizeBackfill)
-		if needsFolderSizeBackfill > 0 {
-			log.Printf("metadata: backfilling folder_size in background...")
-			for round := 0; round < 30; round++ {
-				res, _ := rawDB.Exec(`
-					UPDATE files SET folder_size = (
-						SELECT COALESCE(SUM(CASE WHEN c.is_dir = 1 THEN c.folder_size ELSE c.size END), 0)
-						FROM files c WHERE c.parent_id = files.id AND c.deleted_at IS NULL
-					)
-					WHERE is_dir = 1 AND deleted_at IS NULL
-					  AND folder_size = 0
-					  AND NOT EXISTS (
-						SELECT 1 FROM files c WHERE c.parent_id = files.id AND c.is_dir = 1 AND c.folder_size = 0 AND c.deleted_at IS NULL
-					  )
-				`)
-				n, _ := res.RowsAffected()
-				if n == 0 {
-					break
-				}
-				log.Printf("metadata: folder_size backfill round %d: %d folders", round+1, n)
+		log.Printf("metadata: backfilling folder_size...")
+		for round := 0; round < 30; round++ {
+			res, _ := rawDB.Exec(`
+				UPDATE files SET folder_size = (
+					SELECT COALESCE(SUM(
+						CASE WHEN c.is_dir = 1 THEN c.folder_size
+						ELSE COALESCE(
+							(SELECT v.size FROM versions v WHERE v.file_id = c.id ORDER BY v.version_num DESC LIMIT 1),
+							c.size
+						) END
+					), 0)
+					FROM files c WHERE c.parent_id = files.id AND c.deleted_at IS NULL
+				)
+				WHERE is_dir = 1 AND deleted_at IS NULL
+				  AND NOT EXISTS (
+					SELECT 1 FROM files c WHERE c.parent_id = files.id AND c.is_dir = 1 AND c.folder_size = 0 AND c.deleted_at IS NULL
+					  AND EXISTS (SELECT 1 FROM files gc WHERE gc.parent_id = c.id AND gc.deleted_at IS NULL)
+				  )
+			`)
+			n, _ := res.RowsAffected()
+			if n == 0 {
+				break
 			}
-			log.Printf("metadata: folder_size backfill complete")
+			log.Printf("metadata: folder_size backfill round %d: %d folders", round+1, n)
 		}
+		log.Printf("metadata: folder_size backfill complete")
 	}()
 
 	// Periodic WAL checkpoint to keep the WAL file small.
