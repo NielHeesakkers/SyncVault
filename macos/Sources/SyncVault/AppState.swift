@@ -229,6 +229,8 @@ class AppState: ObservableObject {
             let bookmarkData = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
             var bookmarks = loadBookmarks()
             bookmarks[url.path] = bookmarkData
+            // Ensure config directory exists before writing
+            try FileManager.default.createDirectory(at: Self.configDirectory, withIntermediateDirectories: true)
             let bookmarkURL = Self.configDirectory.appendingPathComponent("bookmarks.plist")
             try (bookmarks as NSDictionary).write(to: bookmarkURL)
             logger.info("Saved bookmark for \(url.path)")

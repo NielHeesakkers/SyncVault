@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"errors"
 	"fmt"
+	"log"
 	"io"
 	"net/http"
 	"path"
@@ -1045,6 +1046,7 @@ func (s *Server) handleFileTree(w http.ResponseWriter, r *http.Request) {
 
 	files, err := s.db.ListFilesRecursive(folderID, claims.UserID, claims.Role == "admin")
 	if err != nil {
+		log.Printf("handleFileTree error for folder %s: %v", folderID, err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list file tree"})
 		return
 	}
