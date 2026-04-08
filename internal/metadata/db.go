@@ -75,7 +75,7 @@ func Open(path string) (*DB, error) {
 	// Background migration: sync files.size with latest version size.
 	// Runs async so it doesn't block server startup or requests.
 	go func() {
-		time.Sleep(10 * time.Second) // Wait for server to be fully ready
+		time.Sleep(2 * time.Minute) // Wait for server to handle initial requests before heavy migrations
 		var needsSizeSync int
 		rawDB.QueryRow(`SELECT COUNT(*) FROM files WHERE is_dir = 0 AND size = 0 AND id IN (SELECT file_id FROM versions WHERE size > 0 LIMIT 1)`).Scan(&needsSizeSync)
 		if needsSizeSync > 0 {
