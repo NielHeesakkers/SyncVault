@@ -54,6 +54,7 @@ func Open(path string) (*DB, error) {
 		`ALTER TABLE files ADD COLUMN removed_locally INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE users ADD COLUMN token_invalidated_at TEXT`,
 		`ALTER TABLE files ADD COLUMN change_rank INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE files ADD COLUMN folder_size INTEGER NOT NULL DEFAULT 0`,
 	}
 	for _, m := range migrations {
 		if _, err := rawDB.Exec(m); err != nil {
@@ -81,6 +82,33 @@ func Open(path string) (*DB, error) {
 			log.Printf("metadata: syncing files.size in background...")
 			rawDB.Exec(`UPDATE files SET size = (SELECT v.size FROM versions v WHERE v.file_id = files.id ORDER BY v.version_num DESC LIMIT 1), content_hash = (SELECT v.content_hash FROM versions v WHERE v.file_id = files.id ORDER BY v.version_num DESC LIMIT 1) WHERE is_dir = 0 AND size = 0 AND id IN (SELECT DISTINCT file_id FROM versions WHERE size > 0)`)
 			log.Printf("metadata: files.size sync complete")
+		}
+
+		// Backfill folder_size for all directories (bottom-up).
+		// Each round updates folders whose subfolder children already have correct folder_size.
+		var needsFolderSizeBackfill int
+		rawDB.QueryRow(`SELECT COUNT(*) FROM files WHERE is_dir = 1 AND folder_size = 0 AND deleted_at IS NULL AND id IN (SELECT DISTINCT parent_id FROM files WHERE parent_id IS NOT NULL AND deleted_at IS NULL)`).Scan(&needsFolderSizeBackfill)
+		if needsFolderSizeBackfill > 0 {
+			log.Printf("metadata: backfilling folder_size in background...")
+			for round := 0; round < 30; round++ {
+				res, _ := rawDB.Exec(`
+					UPDATE files SET folder_size = (
+						SELECT COALESCE(SUM(CASE WHEN c.is_dir = 1 THEN c.folder_size ELSE c.size END), 0)
+						FROM files c WHERE c.parent_id = files.id AND c.deleted_at IS NULL
+					)
+					WHERE is_dir = 1 AND deleted_at IS NULL
+					  AND folder_size = 0
+					  AND NOT EXISTS (
+						SELECT 1 FROM files c WHERE c.parent_id = files.id AND c.is_dir = 1 AND c.folder_size = 0 AND c.deleted_at IS NULL
+					  )
+				`)
+				n, _ := res.RowsAffected()
+				if n == 0 {
+					break
+				}
+				log.Printf("metadata: folder_size backfill round %d: %d folders", round+1, n)
+			}
+			log.Printf("metadata: folder_size backfill complete")
 		}
 	}()
 

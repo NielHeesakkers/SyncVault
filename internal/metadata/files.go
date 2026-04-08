@@ -23,6 +23,7 @@ type File struct {
 	UpdatedAt      time.Time
 	DeletedAt      sql.NullString
 	RemovedLocally bool
+	FolderSize     int64
 }
 
 // ErrFileNotFound is returned when a file cannot be found.
@@ -36,6 +37,30 @@ func (d *DB) nextChangeRank() int64 {
 	var rank int64
 	d.db.QueryRow(`SELECT COALESCE(MAX(change_rank), 0) + 1 FROM files`).Scan(&rank)
 	return rank
+}
+
+// updateAncestorSizes recalculates folder_size for the given file's parent and all ancestors.
+// Each folder's size is the sum of its direct children's sizes (files use size, dirs use folder_size).
+// Called after any file mutation (create, update size, delete, restore).
+func (d *DB) updateAncestorSizes(fileID string) {
+	var parentID sql.NullString
+	d.db.QueryRow(`SELECT parent_id FROM files WHERE id = ?`, fileID).Scan(&parentID)
+
+	d.updateFolderSizeChain(parentID)
+}
+
+// updateFolderSizeChain recalculates folder_size for the given folder and all its ancestors.
+func (d *DB) updateFolderSizeChain(folderID sql.NullString) {
+	for folderID.Valid {
+		d.db.Exec(`UPDATE files SET folder_size = (
+			SELECT COALESCE(SUM(CASE WHEN is_dir = 1 THEN folder_size ELSE size END), 0)
+			FROM files WHERE parent_id = ? AND deleted_at IS NULL
+		) WHERE id = ?`, folderID.String, folderID.String)
+
+		var nextParent sql.NullString
+		d.db.QueryRow(`SELECT parent_id FROM files WHERE id = ?`, folderID.String).Scan(&nextParent)
+		folderID = nextParent
+	}
 }
 
 // CreateFile inserts a new file or directory record.
@@ -118,6 +143,12 @@ func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, 
 		}
 		return nil, fmt.Errorf("metadata: create file: %w", err)
 	}
+
+	// Update ancestor folder sizes if this file has a parent.
+	if parentID != "" {
+		d.updateAncestorSizes(f.ID)
+	}
+
 	return f, nil
 }
 
@@ -126,12 +157,12 @@ func (d *DB) findActiveDir(parentID, ownerID, name string) (*File, error) {
 	var row *sql.Row
 	if parentID == "" {
 		row = d.db.QueryRow(
-			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally, folder_size
 			 FROM files WHERE parent_id IS NULL AND owner_id = ? AND name = ? AND is_dir = 1 AND deleted_at IS NULL`, ownerID, name,
 		)
 	} else {
 		row = d.db.QueryRow(
-			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally, folder_size
 			 FROM files WHERE parent_id = ? AND owner_id = ? AND name = ? AND is_dir = 1 AND deleted_at IS NULL`, parentID, ownerID, name,
 		)
 	}
@@ -141,7 +172,7 @@ func (d *DB) findActiveDir(parentID, ownerID, name string) (*File, error) {
 // GetFileByID returns the file with the given ID (including soft-deleted).
 func (d *DB) GetFileByID(id string) (*File, error) {
 	row := d.db.QueryRow(
-		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally, folder_size
 		 FROM files WHERE id = ?`, id,
 	)
 	return scanFile(row)
@@ -152,12 +183,12 @@ func (d *DB) FindFileByName(parentID, ownerID, name string) (*File, error) {
 	var row *sql.Row
 	if parentID == "" {
 		row = d.db.QueryRow(
-			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally, folder_size
 			 FROM files WHERE parent_id IS NULL AND owner_id = ? AND name = ?`, ownerID, name,
 		)
 	} else {
 		row = d.db.QueryRow(
-			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+			`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally, folder_size
 			 FROM files WHERE parent_id = ? AND owner_id = ? AND name = ?`, parentID, ownerID, name,
 		)
 	}
@@ -216,9 +247,9 @@ func (d *DB) ListChildren(parentID string) ([]File, error) {
 	if parentID == "" {
 		rows, err = d.db.Query(
 			`SELECT f.id, f.parent_id, f.owner_id, f.name, f.is_dir,
-			        COALESCE(v.size, f.size) as size,
+			        CASE WHEN f.is_dir = 1 THEN f.folder_size ELSE COALESCE(v.size, f.size) END as size,
 			        COALESCE(v.content_hash, f.content_hash) as content_hash,
-			        f.mime_type, f.created_at, f.updated_at, f.deleted_at, f.removed_locally
+			        f.mime_type, f.created_at, f.updated_at, f.deleted_at, f.removed_locally, f.folder_size
 			 FROM files f
 			 LEFT JOIN versions v ON v.file_id = f.id
 			   AND v.version_num = (SELECT MAX(v2.version_num) FROM versions v2 WHERE v2.file_id = f.id)
@@ -228,9 +259,9 @@ func (d *DB) ListChildren(parentID string) ([]File, error) {
 	} else {
 		rows, err = d.db.Query(
 			`SELECT f.id, f.parent_id, f.owner_id, f.name, f.is_dir,
-			        COALESCE(v.size, f.size) as size,
+			        CASE WHEN f.is_dir = 1 THEN f.folder_size ELSE COALESCE(v.size, f.size) END as size,
 			        COALESCE(v.content_hash, f.content_hash) as content_hash,
-			        f.mime_type, f.created_at, f.updated_at, f.deleted_at, f.removed_locally
+			        f.mime_type, f.created_at, f.updated_at, f.deleted_at, f.removed_locally, f.folder_size
 			 FROM files f
 			 LEFT JOIN versions v ON v.file_id = f.id
 			   AND v.version_num = (SELECT MAX(v2.version_num) FROM versions v2 WHERE v2.file_id = f.id)
@@ -258,6 +289,11 @@ func (d *DB) ListChildren(parentID string) ([]File, error) {
 // MoveFile moves a file to a new parent and/or renames it.
 func (d *DB) MoveFile(id, newParentID, newName string) error {
 	now := time.Now().UTC()
+
+	// Remember old parent so we can update its folder_size after the move.
+	var oldParentID sql.NullString
+	d.db.QueryRow(`SELECT parent_id FROM files WHERE id = ?`, id).Scan(&oldParentID)
+
 	var newParent interface{}
 	if newParentID != "" {
 		newParent = newParentID
@@ -276,6 +312,11 @@ func (d *DB) MoveFile(id, newParentID, newName string) error {
 	if n == 0 {
 		return ErrFileNotFound
 	}
+
+	// Update folder sizes for both old and new parent trees.
+	d.updateFolderSizeChain(oldParentID)
+	d.updateAncestorSizes(id)
+
 	return nil
 }
 
@@ -322,6 +363,10 @@ func (d *DB) SoftDeleteFile(id string) error {
 	if n == 0 {
 		return ErrFileNotFound
 	}
+
+	// Update ancestor folder sizes after soft delete.
+	d.updateAncestorSizes(id)
+
 	return nil
 }
 
@@ -339,6 +384,10 @@ func (d *DB) RestoreFile(id string) error {
 	if n == 0 {
 		return ErrFileNotFound
 	}
+
+	// Update ancestor folder sizes after restore.
+	d.updateAncestorSizes(id)
+
 	return nil
 }
 
@@ -399,7 +448,7 @@ func (d *DB) PermanentlyDeleteFile(id string) error {
 // ListTrashedFiles returns all soft-deleted files owned by ownerID.
 func (d *DB) ListTrashedFiles(ownerID string) ([]File, error) {
 	rows, err := d.db.Query(
-		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally, folder_size
 		 FROM files WHERE owner_id=? AND deleted_at IS NOT NULL
 		 ORDER BY deleted_at DESC`,
 		ownerID,
@@ -423,7 +472,7 @@ func (d *DB) ListTrashedFiles(ownerID string) ([]File, error) {
 // ListAllTrashedFiles returns all soft-deleted files across all users (admin view).
 func (d *DB) ListAllTrashedFiles() ([]File, error) {
 	rows, err := d.db.Query(
-		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally, folder_size
 		 FROM files WHERE deleted_at IS NOT NULL
 		 ORDER BY deleted_at DESC`,
 	)
@@ -465,7 +514,7 @@ func (d *DB) UpdateFileContent(id, contentHash string, size int64) error {
 func (d *DB) ListChangedFiles(since time.Time, ownerID string) ([]File, error) {
 	sinceStr := since.UTC().Format(time.RFC3339Nano)
 	rows, err := d.db.Query(
-		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally, folder_size
 		 FROM files
 		 WHERE owner_id = ?
 		   AND (updated_at > ? OR deleted_at > ?)
@@ -497,7 +546,7 @@ func (d *DB) ListChangesByRank(sinceRank int64, ownerID string) ([]File, int64, 
 	d.db.QueryRow(`SELECT COALESCE(MAX(change_rank), 0) FROM files`).Scan(&currentRank)
 
 	rows, err := d.db.Query(
-		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally, folder_size
 		 FROM files WHERE owner_id = ? AND change_rank > ?
 		 ORDER BY change_rank ASC`,
 		ownerID, sinceRank,
@@ -577,6 +626,7 @@ func scanFile(row *sql.Row) (*File, error) {
 		&f.ID, &f.ParentID, &f.OwnerID, &f.Name, &isDirInt,
 		&f.Size, &f.ContentHash, &f.MimeType,
 		&createdAt, &updatedAt, &f.DeletedAt, &removedLocallyInt,
+		&f.FolderSize,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrFileNotFound
@@ -600,6 +650,7 @@ func scanFileRow(rows *sql.Rows) (*File, error) {
 		&f.ID, &f.ParentID, &f.OwnerID, &f.Name, &isDirInt,
 		&f.Size, &f.ContentHash, &f.MimeType,
 		&createdAt, &updatedAt, &f.DeletedAt, &removedLocallyInt,
+		&f.FolderSize,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("metadata: scan file row: %w", err)
@@ -1132,7 +1183,7 @@ func (d *DB) CheckFileHashes(ownerID string, hashes []string) (map[string]bool, 
 // Returns up to 50 results ordered by name.
 func (d *DB) SearchFiles(ownerID, query string) ([]File, error) {
 	rows, err := d.db.Query(
-		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally
+		`SELECT id, parent_id, owner_id, name, is_dir, size, content_hash, mime_type, created_at, updated_at, deleted_at, removed_locally, folder_size
 		 FROM files WHERE owner_id = ? AND name LIKE ? AND deleted_at IS NULL ORDER BY name LIMIT 50`,
 		ownerID, "%"+query+"%",
 	)

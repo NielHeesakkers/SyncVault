@@ -58,6 +58,9 @@ func (d *DB) CreateVersion(fileID string, versionNum int, contentHash, patchHash
 		v.Size, v.ContentHash, now.Format(time.RFC3339Nano), v.FileID,
 	)
 
+	// Update ancestor folder sizes after file size change.
+	d.updateAncestorSizes(v.FileID)
+
 	return v, nil
 }
 
