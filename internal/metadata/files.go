@@ -1087,7 +1087,7 @@ func (d *DB) ListFilesRecursive(folderID, ownerID string, isAdmin bool) ([]FileT
 	ownerFilter := ""
 	args := []interface{}{folderID}
 	if !isAdmin {
-		ownerFilter = "AND f.owner_id = ?"
+		ownerFilter = "AND owner_id = ?"
 		args = append(args, ownerID)
 	}
 
