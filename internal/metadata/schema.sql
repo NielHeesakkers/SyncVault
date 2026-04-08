@@ -201,6 +201,7 @@ CREATE INDEX IF NOT EXISTS idx_files_owner_id     ON files(owner_id);
 CREATE INDEX IF NOT EXISTS idx_files_deleted_at   ON files(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_versions_file_id   ON versions(file_id);
 CREATE INDEX IF NOT EXISTS idx_versions_file_time ON versions(file_id, created_at, version_num);
+CREATE INDEX IF NOT EXISTS idx_versions_created   ON versions(created_at);
 CREATE INDEX IF NOT EXISTS idx_devices_user_id    ON devices(user_id);
 CREATE INDEX IF NOT EXISTS idx_activity_user_id   ON activity_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_activity_created   ON activity_log(created_at);

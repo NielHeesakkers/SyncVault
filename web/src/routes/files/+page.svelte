@@ -112,8 +112,7 @@
 		history.replaceState({ folderId: currentFolderId, breadcrumbs: JSON.parse(JSON.stringify(breadcrumbs)) }, '');
 		// Load current files immediately (fast — no history query)
 		await loadCurrentFiles(currentFolderId);
-		// Then load timeline dates in background (non-blocking)
-		loadChangeDates(currentFolderId);
+		// Timeline dates are loaded on-demand when user clicks the timeline area
 		const handlePopState = (e: PopStateEvent) => {
 			if (e.state?.breadcrumbs) {
 				breadcrumbs = e.state.breadcrumbs;
@@ -121,8 +120,8 @@
 				selectedFile = null;
 				selectedFileDates = [];
 				selectedDate = null;
+				changeDates = [];
 				loadCurrentFiles(currentFolderId);
-				loadChangeDates(currentFolderId);
 			}
 		};
 		window.addEventListener('popstate', handlePopState);
@@ -219,6 +218,15 @@
 	function selectDate(dateStr: string) {
 		selectedDate = dateStr;
 		loadHistory(currentFolderId, dateStr);
+	}
+
+	// Load timeline dates on-demand (called when user clicks timeline area)
+	let timelineLoaded = $state(false);
+	function loadTimelineIfNeeded() {
+		if (!timelineLoaded) {
+			timelineLoaded = true;
+			loadChangeDates(currentFolderId);
+		}
 	}
 
 	async function navigateToFolder(file: HistoryFile) {
@@ -725,8 +733,9 @@
 		{/if}
 	</div>
 
-	<!-- Timeline -->
-	<div class="border-t flex-shrink-0 px-4 py-2" style="background: var(--bg-base); border-color: var(--border);" bind:this={timelineContainer}>
+	<!-- Timeline (loads dates on first hover/click) -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="border-t flex-shrink-0 px-4 py-2" style="background: var(--bg-base); border-color: var(--border);" bind:this={timelineContainer} onmouseenter={loadTimelineIfNeeded}>
 		<svg width="100%" height={TIMELINE_HEIGHT} class="select-none">
 			<!-- Base line -->
 			<line
