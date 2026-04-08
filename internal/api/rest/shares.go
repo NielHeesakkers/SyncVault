@@ -291,22 +291,27 @@ func (s *Server) handlePublicShare(w http.ResponseWriter, r *http.Request) {
 <script>
 function downloadFile() {
 	const pw = document.getElementById('share-password');
-	const body = pw ? JSON.stringify({password: pw.value}) : '{}';
-	fetch('/s/%s/download', {method:'POST',headers:{'Content-Type':'application/json'},body:body})
-	.then(r => {
-		if (!r.ok) return r.json().then(d => { alert(d.error || 'Download failed'); throw new Error(); });
-		return r.blob();
-	})
-	.then(blob => {
-		const a = document.createElement('a');
-		a.href = URL.createObjectURL(blob);
-		a.download = '%s';
-		a.click();
-	})
-	.catch(() => {});
+	if (pw && pw.value) {
+		// Password protected: use POST with fetch
+		fetch('/s/%s/download', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw.value})})
+		.then(r => {
+			if (!r.ok) return r.json().then(d => { alert(d.error || 'Download failed'); throw new Error(); });
+			return r.blob();
+		})
+		.then(blob => {
+			const a = document.createElement('a');
+			a.href = URL.createObjectURL(blob);
+			a.download = '%s';
+			a.click();
+		})
+		.catch(() => {});
+	} else {
+		// No password: direct streaming download via GET
+		window.location.href = '/s/%s/download';
+	}
 }
 </script>
-</body></html>`, f.Name, f.Name, sizeStr, statusMsg, passwordField, downloadBtn, token, f.Name)
+</body></html>`, f.Name, f.Name, sizeStr, statusMsg, passwordField, downloadBtn, token, f.Name, token)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write([]byte(html))
@@ -356,8 +361,12 @@ func (s *Server) handlePublicDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check password.
+	// Check password (only for POST with body).
 	if sl.PasswordHash != "" {
+		if r.Method == http.MethodGet {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "password required"})
+			return
+		}
 		var req publicDownloadRequest
 		if err := readJSON(r, &req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})

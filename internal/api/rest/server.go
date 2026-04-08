@@ -69,6 +69,7 @@ func (s *Server) setupRoutes() {
 
 	// Public share routes (no auth required).
 	r.Get("/s/{token}", s.handlePublicShare)
+	r.Get("/s/{token}/download", s.handlePublicDownload)
 	r.Post("/s/{token}/download", s.handlePublicDownload)
 
 	// Protected routes.
