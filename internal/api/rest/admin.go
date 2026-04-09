@@ -346,11 +346,21 @@ func (s *Server) handleAdminStorage(w http.ResponseWriter, r *http.Request) {
 	trashSize := s.db.TotalTrashSize()
 	versionsSize := s.db.TotalVersionsSize()
 
+	// Use actual disk space if no quotas are configured
+	diskTotal, diskAvail := s.store.DiskSpace()
+	if totalQuota == 0 && diskTotal > 0 {
+		totalQuota = diskTotal
+	}
+	available := totalQuota - totalUsed
+	if diskAvail > 0 && (available <= 0 || available > diskAvail) {
+		available = diskAvail
+	}
+
 	writeJSON(w, http.StatusOK, storageOverviewResponse{
 		TotalUsers:   len(users),
 		Used:         totalUsed,
 		Total:        totalQuota,
-		Available:    totalQuota - totalUsed,
+		Available:    available,
 		TrashSize:    trashSize,
 		VersionsSize: versionsSize,
 	})

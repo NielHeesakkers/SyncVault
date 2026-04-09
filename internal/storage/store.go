@@ -379,3 +379,15 @@ func (s *Store) Delete(fileHash string) error {
 
 	return nil
 }
+
+// DiskSpace returns the total and available bytes on the filesystem where the store directory lives.
+// Returns (0, 0) if the information is not available.
+func (s *Store) DiskSpace() (total, available int64) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(s.dir, &stat); err != nil {
+		return 0, 0
+	}
+	total = int64(stat.Blocks) * int64(stat.Bsize)
+	available = int64(stat.Bavail) * int64(stat.Bsize)
+	return total, available
+}
