@@ -241,9 +241,9 @@ actor FPAPIClient {
     // MARK: - Auto Re-Auth on 401
 
     private func reAuthenticate() async throws {
-        // Always read fresh credentials from keychain (main app refreshes them)
-        let freshUsername = username ?? SharedConfig.loadFromKeychain(key: "fp_username")
-        let freshPassword = password ?? SharedConfig.loadFromKeychain(key: "fp_password")
+        // Read fresh credentials from shared UserDefaults (falls back to keychain for migration)
+        let freshUsername = username ?? SharedConfig.loadCredential(key: "fp_username") ?? SharedConfig.loadFromKeychain(key: "fp_username")
+        let freshPassword = password ?? SharedConfig.loadCredential(key: "fp_password") ?? SharedConfig.loadFromKeychain(key: "fp_password")
         guard let user = freshUsername, let pass = freshPassword else {
             throw FPAPIError.unauthorized
         }

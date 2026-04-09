@@ -3,8 +3,6 @@ import Security
 
 enum SharedConfig {
     static let appGroupID = "DE59N86W33.com.syncvault.shared"
-    private static let keychainService = "com.syncvault.shared"
-    private static let keychainAccessGroup = "DE59N86W33.com.syncvault.shared"
 
     static var sharedDefaults: UserDefaults {
         UserDefaults(suiteName: appGroupID)!
@@ -27,10 +25,10 @@ enum SharedConfig {
             return client
         }
 
-        // Read fresh credentials from shared keychain
-        let token = loadFromKeychain(key: "access_token")
-        let username = loadFromKeychain(key: "fp_username")
-        let password = loadFromKeychain(key: "fp_password")
+        // Read credentials from shared UserDefaults (no keychain prompt!)
+        let token = loadCredential(key: "access_token")
+        let username = loadCredential(key: "fp_username")
+        let password = loadCredential(key: "fp_password")
 
         let client = FPAPIClient(baseURL: url, token: token, username: username, password: password)
         _cachedClient = client
@@ -43,9 +41,22 @@ enum SharedConfig {
         return sharedDefaults.string(forKey: "onDemandFolderID") ?? ""
     }
 
-    // MARK: - Keychain
+    // MARK: - Credentials (stored in shared UserDefaults, NOT keychain)
+    // This avoids the macOS keychain password prompt on every app update.
+    // The token is short-lived (24h) so UserDefaults security is sufficient.
 
+    static func loadCredential(key: String) -> String? {
+        return sharedDefaults.string(forKey: "cred_\(key)")
+    }
+
+    static func saveCredential(key: String, value: String) {
+        sharedDefaults.set(value, forKey: "cred_\(key)")
+    }
+
+    // Legacy keychain support — read from keychain if UserDefaults is empty (migration)
     static func loadFromKeychain(key: String) -> String? {
+        let keychainService = "com.syncvault.shared"
+        let keychainAccessGroup = "DE59N86W33.com.syncvault.shared"
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
@@ -58,6 +69,11 @@ enum SharedConfig {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         guard status == errSecSuccess, let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    static func saveToKeychain(key: String, value: String) {
+        // Save to UserDefaults instead (no keychain prompt)
+        saveCredential(key: key, value: value)
     }
 
     // MARK: - Progress sharing (extension → app)
@@ -105,19 +121,5 @@ enum SharedConfig {
         // Stale if older than 30 seconds
         if Date().timeIntervalSince1970 - timestamp > 30 { return nil }
         return (action, filename, bytes, total, timestamp)
-    }
-
-    static func saveToKeychain(key: String, value: String) {
-        let data = value.data(using: .utf8)!
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccessGroup as String: keychainAccessGroup
-        ]
-        SecItemDelete(query as CFDictionary)
-        var addQuery = query
-        addQuery[kSecValueData as String] = data
-        SecItemAdd(addQuery as CFDictionary, nil)
     }
 }

@@ -14,6 +14,7 @@ class AppState: ObservableObject {
     private var syncPending = false
     @Published var isPaused = false
     @Published var syncProgress: SyncProgress?
+    @Published var activeSyncTaskName: String?
     @Published var fpProgress: String?  // FileProvider on-demand progress (e.g. "Uploading photo.jpg")
     @Published var fpSpeed: Double = 0  // bytes per second
     private var fpLastBytes: Int64 = 0
@@ -137,13 +138,16 @@ class AppState: ObservableObject {
         KeychainHelper.save(key: "server_password", value: password)
         KeychainHelper.save(key: "saved_username", value: username)
 
-        // Also save token to shared keychain for File Provider extension
-        if let token = KeychainHelper.load(key: "access_token") {
-            KeychainHelper.saveShared(key: "access_token", value: token)
-        }
-        // Save server URL to shared UserDefaults
+        // Save credentials to shared UserDefaults for FileProvider (no keychain prompt on updates)
         let sharedDefaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
         sharedDefaults?.set(url, forKey: "serverURL")
+        if let token = KeychainHelper.load(key: "access_token") {
+            sharedDefaults?.set(token, forKey: "cred_access_token")
+        }
+        sharedDefaults?.set(username, forKey: "cred_fp_username")
+        if let password = KeychainHelper.load(key: "server_password") {
+            sharedDefaults?.set(password, forKey: "cred_fp_password")
+        }
 
         saveConfig()
 
@@ -651,6 +655,7 @@ class AppState: ObservableObject {
         defer {
             isSyncing = false
             syncProgress = nil
+            activeSyncTaskName = nil
             stopSpeedTracking()
             // Re-trigger if changes came in during sync
             if syncPending {
@@ -688,6 +693,7 @@ class AppState: ObservableObject {
         }
 
         for task in syncTasks where task.isEnabled && task.mode != .onDemand {
+            activeSyncTaskName = task.remoteFolderName
             logger.info("Starting task: \(task.remoteFolderName) (remote: \(task.remoteFolderID), local: \(task.localPath), mode: \(task.mode.rawValue))")
 
             // Resolve security-scoped bookmark for folder access
@@ -744,12 +750,16 @@ class AppState: ObservableObject {
                 // ALWAYS pass nil for lastSyncDate on upload_only tasks until initial sync is complete.
                 // This ensures all files get hashed and compared against the server.
                 let effectiveLastSync: Date? = (task.mode == .uploadOnly) ? nil : lastSyncDate
+                let taskName = task.remoteFolderName
+                let taskBasePath = task.localPath
                 let result = try await engine.syncTask(task, changedPaths: changedPaths, lastSyncDate: effectiveLastSync) { [weak self] progress in
                     await MainActor.run { [weak self] in
                         self?.syncProgress = progress
                         self?.syncQueue = progress.pendingFiles
                         // Real-time: add completed files to recently synced immediately
-                        if let item = progress.completedItem {
+                        if var item = progress.completedItem {
+                            item.taskName = taskName
+                            item.localPath = (taskBasePath as NSString).appendingPathComponent(item.filename)
                             self?.recentActivity.insert(item, at: 0)
                             if (self?.recentActivity.count ?? 0) > 20 {
                                 self?.recentActivity = Array(self!.recentActivity.prefix(20))
@@ -780,10 +790,7 @@ class AppState: ObservableObject {
                 let states = await engine.exportSyncStates(taskID: task.id.uuidString)
                 try? await client.saveSyncStates(deviceID: deviceID, taskName: task.remoteFolderName, states: states)
 
-                // Add individual file activity
-                for item in result.fileActivity {
-                    recentActivity.insert(item, at: 0)
-                }
+                // Skip — activity items are already added in real-time via the progress callback
 
                 // Keep only last 20 activity items
                 if recentActivity.count > 20 {
@@ -964,17 +971,19 @@ class AppState: ObservableObject {
     }
 
     /// Refresh FileProvider shared credentials so the extension can re-auth when tokens expire.
+    /// Uses shared UserDefaults instead of keychain to avoid password prompts on app updates.
     private func refreshFileProviderCredentials() {
         guard isConnected else { return }
         let hasOnDemand = syncTasks.contains { $0.isEnabled && $0.mode == .onDemand }
         guard hasOnDemand else { return }
 
+        let shared = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")!
         if let token = KeychainHelper.load(key: "access_token") {
-            KeychainHelper.saveShared(key: "access_token", value: token)
+            shared.set(token, forKey: "cred_access_token")
         }
-        KeychainHelper.saveShared(key: "fp_username", value: username)
+        shared.set(username, forKey: "cred_fp_username")
         if let password = KeychainHelper.load(key: "server_password") {
-            KeychainHelper.saveShared(key: "fp_password", value: password)
+            shared.set(password, forKey: "cred_fp_password")
         }
     }
 
@@ -988,13 +997,13 @@ class AppState: ObservableObject {
         sharedDefaults.set(folderID, forKey: "onDemandFolderID")
         sharedDefaults.set(serverURL, forKey: "serverURL")
 
-        // Share auth credentials with FileProvider extension for re-auth
+        // Share auth credentials with FileProvider extension via UserDefaults (no keychain prompt)
         if let token = KeychainHelper.load(key: "access_token") {
-            KeychainHelper.saveShared(key: "access_token", value: token)
+            sharedDefaults.set(token, forKey: "cred_access_token")
         }
-        KeychainHelper.saveShared(key: "fp_username", value: username)
+        sharedDefaults.set(username, forKey: "cred_fp_username")
         if let password = KeychainHelper.load(key: "server_password") {
-            KeychainHelper.saveShared(key: "fp_password", value: password)
+            sharedDefaults.set(password, forKey: "cred_fp_password")
         }
 
         let domainIdentifier = NSFileProviderDomainIdentifier("com.syncvault.\(username)")
@@ -1028,6 +1037,8 @@ struct ActivityItem: Identifiable {
     let filename: String
     let action: String
     let timestamp: Date
+    var taskName: String = ""
+    var localPath: String = ""
 }
 
 struct TaskResponse: Codable {

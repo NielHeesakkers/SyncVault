@@ -471,7 +471,8 @@ actor SyncEngine {
         }
 
         let total = sortedActions.count
-        let bytesUploaded = ActorCounter(initial: skippedBytes)
+        let bytesUploaded = ActorCounter(initial: skippedBytes)  // For progress bar (includes pre-synced)
+        let bytesTransferred = ActorCounter(initial: 0)  // For speed calculation (only actual transfers)
         let completed = ActorCounter()
         let start = Date()
         let names = sortedActions.map { $0.fileName }
@@ -508,7 +509,7 @@ actor SyncEngine {
                                 currentFile: displayName, action: "Uploading",
                                 bytesTransferred: curBytes, totalBytes: totalBytesToUpload,
                                 filesCompleted: curCompleted, filesTotal: total,
-                                bytesPerSecond: Self.speed(bytes: curBytes, since: start),
+                                bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
                                 pendingFiles: pending
                             ))
 
@@ -519,6 +520,7 @@ actor SyncEngine {
                             // Direct block upload: split into 4MB blocks, upload missing, create file
                             let uploadedHash = try await self.uploadViaBlocks(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize) { blockBytes in
                                 await bytesUploaded.add(blockBytes)
+                                await bytesTransferred.add(blockBytes)
                                 let curB = await bytesUploaded.value
                                 await onProgress(SyncProgress(
                                     currentFile: displayName, action: "Uploading",
@@ -541,13 +543,14 @@ actor SyncEngine {
                                 currentFile: displayName, action: "Downloading",
                                 bytesTransferred: curBytes, totalBytes: totalBytesToUpload,
                                 filesCompleted: curCompleted, filesTotal: total,
-                                bytesPerSecond: Self.speed(bytes: curBytes, since: start),
+                                bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
                                 pendingFiles: pending
                             ))
 
                             let url = URL(fileURLWithPath: localPath)
                             let size = try await self.apiClient.downloadFileToDisk(id: fileID, destination: url)
                             await bytesUploaded.add(size)
+                            await bytesTransferred.add(size)
                             logger.info("Downloaded: \(relativePath) (\(size) bytes)")
                             try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: "", isDir: false)
                             return .downloaded(displayName)
@@ -656,7 +659,7 @@ actor SyncEngine {
                         currentFile: item.filename, action: "Completed",
                         bytesTransferred: curBytes, totalBytes: totalBytesToUpload,
                         filesCompleted: curCompleted, filesTotal: total,
-                        bytesPerSecond: Self.speed(bytes: curBytes, since: start),
+                        bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
                         pendingFiles: [],
                         completedItem: item
                     ))
