@@ -620,9 +620,25 @@ func (s *Server) handleAdminActivity(w http.ResponseWriter, r *http.Request) {
 			q.Limit = limit
 		}
 	}
+	// Support both offset and page-based pagination
 	if offsetStr := r.URL.Query().Get("offset"); offsetStr != "" {
 		if offset, err := strconv.Atoi(offsetStr); err == nil {
 			q.Offset = offset
+		}
+	} else if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if page, err := strconv.Atoi(pageStr); err == nil && page > 1 && q.Limit > 0 {
+			q.Offset = (page - 1) * q.Limit
+		}
+	}
+	// Date range filters (ISO 8601)
+	if from := r.URL.Query().Get("from"); from != "" {
+		if t, err := time.Parse(time.RFC3339, from); err == nil {
+			q.After = &t
+		}
+	}
+	if to := r.URL.Query().Get("to"); to != "" {
+		if t, err := time.Parse(time.RFC3339, to); err == nil {
+			q.Before = &t
 		}
 	}
 
@@ -636,5 +652,40 @@ func (s *Server) handleAdminActivity(w http.ResponseWriter, r *http.Request) {
 		entries = []metadata.ActivityEntry{}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{"activity": entries})
+	// Enrich with usernames and resource names
+	type enrichedEntry struct {
+		ID           string `json:"id"`
+		UserID       string `json:"user_id,omitempty"`
+		Username     string `json:"username,omitempty"`
+		Action       string `json:"action"`
+		ResourceType string `json:"resource_type,omitempty"`
+		ResourceName string `json:"resource_name,omitempty"`
+		Details      string `json:"details,omitempty"`
+		IPAddress    string `json:"ip_address,omitempty"`
+		CreatedAt    string `json:"created_at"`
+	}
+	enriched := make([]enrichedEntry, len(entries))
+	userCache := map[string]string{}
+	for i, e := range entries {
+		enriched[i] = enrichedEntry{
+			ID:           e.ID,
+			UserID:       e.UserID,
+			Action:       e.Action,
+			ResourceType: e.Resource,
+			ResourceName: e.Details,
+			Details:      e.Details,
+			IPAddress:    e.IPAddress,
+			CreatedAt:    e.CreatedAt.Format(time.RFC3339),
+		}
+		if e.UserID != "" {
+			if name, ok := userCache[e.UserID]; ok {
+				enriched[i].Username = name
+			} else if u, err := s.db.GetUserByID(e.UserID); err == nil {
+				userCache[e.UserID] = u.Username
+				enriched[i].Username = u.Username
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"logs": enriched})
 }
