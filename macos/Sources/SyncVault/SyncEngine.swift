@@ -614,32 +614,52 @@ actor SyncEngine {
             }
 
             for await actionResult in group {
+                var completedItem: ActivityItem? = nil
                 switch actionResult {
                 case .uploaded(let name):
                     result.uploaded += 1
-                    result.fileActivity.append(ActivityItem(filename: name, action: "uploaded", timestamp: Date()))
+                    completedItem = ActivityItem(filename: name, action: "uploaded", timestamp: Date())
+                    result.fileActivity.append(completedItem!)
                     await completed.increment()
                 case .downloaded(let name):
                     result.downloaded += 1
-                    result.fileActivity.append(ActivityItem(filename: name, action: "downloaded", timestamp: Date()))
+                    completedItem = ActivityItem(filename: name, action: "downloaded", timestamp: Date())
+                    result.fileActivity.append(completedItem!)
                     await completed.increment()
                 case .markedRemoved(let name):
                     result.deleted += 1
-                    result.fileActivity.append(ActivityItem(filename: name, action: "removed locally", timestamp: Date()))
+                    completedItem = ActivityItem(filename: name, action: "removed locally", timestamp: Date())
+                    result.fileActivity.append(completedItem!)
                     await completed.increment()
                 case .deletedLocal(let name):
                     result.deleted += 1
-                    result.fileActivity.append(ActivityItem(filename: name, action: "deleted", timestamp: Date()))
+                    completedItem = ActivityItem(filename: name, action: "deleted", timestamp: Date())
+                    result.fileActivity.append(completedItem!)
                     await completed.increment()
                 case .conflict(let name):
                     result.conflicts += 1
-                    result.fileActivity.append(ActivityItem(filename: "\(name) (conflict)", action: "downloaded", timestamp: Date()))
+                    completedItem = ActivityItem(filename: "\(name) (conflict)", action: "downloaded", timestamp: Date())
+                    result.fileActivity.append(completedItem!)
                     await completed.increment()
                 case .authFailed:
                     authFailed = true
                 case .error:
                     result.errors += 1
                     await completed.increment()
+                }
+
+                // Notify progress with completed item for real-time UI updates
+                if let item = completedItem {
+                    let curCompleted = Int(await completed.value)
+                    let curBytes = await bytesUploaded.value
+                    await onProgress(SyncProgress(
+                        currentFile: item.filename, action: "Completed",
+                        bytesTransferred: curBytes, totalBytes: totalBytesToUpload,
+                        filesCompleted: curCompleted, filesTotal: total,
+                        bytesPerSecond: Self.speed(bytes: curBytes, since: start),
+                        pendingFiles: [],
+                        completedItem: item
+                    ))
                 }
             }
         }
@@ -1005,6 +1025,7 @@ struct SyncProgress {
     var filesTotal: Int
     var bytesPerSecond: Double
     var pendingFiles: [String]
+    var completedItem: ActivityItem?  // Set when a file just finished
 }
 
 struct SyncResult {

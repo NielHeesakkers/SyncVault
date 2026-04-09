@@ -748,6 +748,13 @@ class AppState: ObservableObject {
                     await MainActor.run { [weak self] in
                         self?.syncProgress = progress
                         self?.syncQueue = progress.pendingFiles
+                        // Real-time: add completed files to recently synced immediately
+                        if let item = progress.completedItem {
+                            self?.recentActivity.insert(item, at: 0)
+                            if (self?.recentActivity.count ?? 0) > 20 {
+                                self?.recentActivity = Array(self!.recentActivity.prefix(20))
+                            }
+                        }
                     }
                 }
 
