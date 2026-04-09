@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -346,8 +347,16 @@ func (s *Server) handleAdminStorage(w http.ResponseWriter, r *http.Request) {
 	trashSize := s.db.TotalTrashSize()
 	versionsSize := s.db.TotalVersionsSize()
 
-	// Use actual disk space if no quotas are configured
+	// Use actual disk space if no quotas are configured.
+	// SYNCVAULT_STORAGE_TOTAL_GB overrides Statfs (useful when Docker bind mounts
+	// report incorrect values for SMB/NFS volumes).
 	diskTotal, diskAvail := s.store.DiskSpace()
+	if envGB := os.Getenv("SYNCVAULT_STORAGE_TOTAL_GB"); envGB != "" {
+		if gb, err := strconv.ParseInt(envGB, 10, 64); err == nil && gb > 0 {
+			diskTotal = gb * 1024 * 1024 * 1024
+			diskAvail = diskTotal - totalUsed
+		}
+	}
 	if totalQuota == 0 && diskTotal > 0 {
 		totalQuota = diskTotal
 	}
