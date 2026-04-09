@@ -741,7 +741,10 @@ class AppState: ObservableObject {
                     changedPaths = nil  // Force full scan
                 }
 
-                let result = try await engine.syncTask(task, changedPaths: changedPaths, lastSyncDate: lastSyncDate) { [weak self] progress in
+                // ALWAYS pass nil for lastSyncDate on upload_only tasks until initial sync is complete.
+                // This ensures all files get hashed and compared against the server.
+                let effectiveLastSync: Date? = (task.mode == .uploadOnly) ? nil : lastSyncDate
+                let result = try await engine.syncTask(task, changedPaths: changedPaths, lastSyncDate: effectiveLastSync) { [weak self] progress in
                     await MainActor.run { [weak self] in
                         self?.syncProgress = progress
                         self?.syncQueue = progress.pendingFiles

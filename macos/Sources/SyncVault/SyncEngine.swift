@@ -148,6 +148,8 @@ actor SyncEngine {
                         continue
                     }
                     actions.append(.upload(localFile.fullPath, relPath, remoteByPath[relPath]?.id))
+                } else {
+                    logger.warning("Failed to hash: \(relPath)")
                 }
                 continue
             }
@@ -716,10 +718,12 @@ actor SyncEngine {
             let name = URL(fileURLWithPath: relativePath).lastPathComponent
 
             // Skip hidden files, system files, and macOS metadata
+            let entryIsDir = enumerator.fileAttributes?[.type] as? FileAttributeType == .typeDirectory
             if name.hasPrefix(".") || name.hasPrefix("._") || name.hasPrefix(".smbdelete") ||
                name == ".DS_Store" || name == "Thumbs.db" || name == "desktop.ini" ||
-               name == "Icon\r" || name == "Icon\r\n" || name.hasPrefix("Icon") && name.count <= 5 {
-                if name.hasPrefix(".") { enumerator.skipDescendants() }
+               name == "Icon\r" || name == "Icon\r\n" || (name.hasPrefix("Icon") && name.count <= 5) {
+                // Only skip descendants for hidden DIRECTORIES, not files
+                if entryIsDir && name.hasPrefix(".") { enumerator.skipDescendants() }
                 continue
             }
 

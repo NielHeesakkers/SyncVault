@@ -946,6 +946,7 @@ func (s *Server) handleCheckHashes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("check-hashes: user=%s hashes=%d", claims.Username, len(req.Hashes))
 	if len(req.Hashes) == 0 {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"existing": []string{}})
 		return
