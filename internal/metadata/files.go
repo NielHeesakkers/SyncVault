@@ -1127,42 +1127,52 @@ func (d *DB) ListFilesRecursive(folderID, ownerID string, isAdmin bool) ([]FileT
 }
 
 // CheckHashes takes a list of content hashes and returns those that already exist in the database.
+// Processes in batches of 500 to stay within SQLite's variable limit.
 func (d *DB) CheckHashes(hashes []string) ([]string, error) {
 	if len(hashes) == 0 {
 		return nil, nil
 	}
 
-	// Build query with placeholders
-	placeholders := ""
-	args := make([]interface{}, len(hashes))
-	for i, h := range hashes {
-		if i > 0 {
-			placeholders += ","
-		}
-		placeholders += "?"
-		args[i] = h
-	}
-
-	query := fmt.Sprintf("SELECT DISTINCT content_hash FROM files WHERE content_hash IN (%s) AND deleted_at IS NULL", placeholders)
-	rows, err := d.db.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("metadata: check hashes: %w", err)
-	}
-	defer rows.Close()
-
 	var existing []string
-	for rows.Next() {
-		var h string
-		if err := rows.Scan(&h); err != nil {
-			return nil, err
+	const batchSize = 500
+	for start := 0; start < len(hashes); start += batchSize {
+		end := start + batchSize
+		if end > len(hashes) {
+			end = len(hashes)
 		}
-		existing = append(existing, h)
+		batch := hashes[start:end]
+
+		placeholders := ""
+		args := make([]interface{}, len(batch))
+		for i, h := range batch {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += "?"
+			args[i] = h
+		}
+
+		query := fmt.Sprintf("SELECT DISTINCT content_hash FROM files WHERE content_hash IN (%s) AND deleted_at IS NULL", placeholders)
+		rows, err := d.db.Query(query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("metadata: check hashes: %w", err)
+		}
+		for rows.Next() {
+			var h string
+			if err := rows.Scan(&h); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			existing = append(existing, h)
+		}
+		rows.Close()
 	}
-	return existing, rows.Err()
+	return existing, nil
 }
 
 // CheckFileHashes takes a list of content hashes and an ownerID, and returns a map of
 // hash -> exists for all requested hashes. Only non-deleted files owned by ownerID are considered.
+// Processes in batches of 500 to stay within SQLite's variable limit.
 func (d *DB) CheckFileHashes(ownerID string, hashes []string) (map[string]bool, error) {
 	result := make(map[string]bool, len(hashes))
 	for _, h := range hashes {
@@ -1172,33 +1182,45 @@ func (d *DB) CheckFileHashes(ownerID string, hashes []string) (map[string]bool, 
 		return result, nil
 	}
 
-	// Build query with placeholders
-	placeholders := ""
-	args := make([]interface{}, 0, len(hashes)+1)
-	args = append(args, ownerID)
-	for i, h := range hashes {
-		if i > 0 {
-			placeholders += ","
+	const batchSize = 500
+	for start := 0; start < len(hashes); start += batchSize {
+		end := start + batchSize
+		if end > len(hashes) {
+			end = len(hashes)
 		}
-		placeholders += "?"
-		args = append(args, h)
-	}
+		batch := hashes[start:end]
 
-	query := fmt.Sprintf("SELECT DISTINCT content_hash FROM files WHERE owner_id = ? AND content_hash IN (%s) AND deleted_at IS NULL", placeholders)
-	rows, err := d.db.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("metadata: check file hashes: %w", err)
-	}
-	defer rows.Close()
+		placeholders := ""
+		args := make([]interface{}, 0, len(batch)+1)
+		args = append(args, ownerID)
+		for i, h := range batch {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += "?"
+			args = append(args, h)
+		}
 
-	for rows.Next() {
-		var h string
-		if err := rows.Scan(&h); err != nil {
+		query := fmt.Sprintf("SELECT DISTINCT content_hash FROM files WHERE owner_id = ? AND content_hash IN (%s) AND deleted_at IS NULL", placeholders)
+		rows, err := d.db.Query(query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("metadata: check file hashes: %w", err)
+		}
+
+		for rows.Next() {
+			var h string
+			if err := rows.Scan(&h); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			result[h] = true
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
 			return nil, err
 		}
-		result[h] = true
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 // SearchFiles searches for files by name (case-insensitive LIKE match) for a given owner.
