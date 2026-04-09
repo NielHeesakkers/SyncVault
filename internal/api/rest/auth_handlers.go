@@ -108,6 +108,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_ = s.db.LogActivity(user.ID, "login", "", "", "", r.RemoteAddr)
+
 	writeJSON(w, http.StatusOK, loginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,

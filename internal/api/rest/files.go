@@ -145,6 +145,12 @@ func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	action := "create_file"
+	if req.IsDir {
+		action = "create_folder"
+	}
+	_ = s.db.LogActivity(claims.UserID, action, "file", f.ID, req.Name, r.RemoteAddr)
+
 	writeJSON(w, http.StatusCreated, toFileResponse(*f))
 }
 
@@ -321,6 +327,8 @@ func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	f, _ := s.db.GetFileByID(id)
+
 	if err := s.db.SoftDeleteFile(id); err != nil {
 		if errors.Is(err, metadata.ErrFileNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
@@ -329,6 +337,13 @@ func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not delete file"})
 		return
 	}
+
+	claims := auth.GetClaims(r.Context())
+	name := id
+	if f != nil {
+		name = f.Name
+	}
+	_ = s.db.LogActivity(claims.UserID, "delete", "file", id, name, r.RemoteAddr)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -843,6 +858,9 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, sanitizeFilename(f.Name)))
+
+	claims := auth.GetClaims(r.Context())
+	_ = s.db.LogActivity(claims.UserID, "download", "file", id, f.Name+" ("+formatSize(f.Size)+")", r.RemoteAddr)
 
 	if err := s.store.Get(f.ContentHash.String, w); err != nil {
 		// Headers already sent; we can't write a JSON error at this point.

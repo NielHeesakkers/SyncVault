@@ -108,5 +108,9 @@ func (s *Server) handleCreateFileFromBlocks(w http.ResponseWriter, r *http.Reque
 	// Create version record for history tracking
 	_, _ = s.db.CreateVersion(f.ID, 1, req.FileHash, "", totalSize, claims.UserID)
 
+	// Log activity
+	sizeStr := formatSize(totalSize)
+	_ = s.db.LogActivity(claims.UserID, "upload", "file", f.ID, req.Filename+" ("+sizeStr+")", r.RemoteAddr)
+
 	writeJSON(w, http.StatusCreated, toFileResponse(*f))
 }

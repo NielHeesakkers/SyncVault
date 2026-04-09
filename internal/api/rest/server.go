@@ -245,6 +245,20 @@ func readJSON(r *http.Request, v interface{}) error {
 	return json.NewDecoder(r.Body).Decode(v)
 }
 
+// formatSize returns a human-readable size string.
+func formatSize(bytes int64) string {
+	switch {
+	case bytes >= 1<<30:
+		return fmt.Sprintf("%.1f GB", float64(bytes)/float64(1<<30))
+	case bytes >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(1<<20))
+	case bytes >= 1<<10:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(1<<10))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
 // checkFileOwnership verifies the authenticated user owns the file (or is admin).
 // Returns the file and true if OK, or writes an error response and returns false.
 func (s *Server) checkFileOwnership(w http.ResponseWriter, r *http.Request, fileID string) (*metadata.File, bool) {
