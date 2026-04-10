@@ -26,11 +26,12 @@ type shareLinkResponse struct {
 	CreatedAt         time.Time  `json:"created_at"`
 }
 
-func (s *Server) toShareLinkResponseWithName(sl metadata.ShareLink) shareLinkResponse {
+func toShareLinkResponse(sl metadata.ShareLink, fileName string) shareLinkResponse {
 	hasPwd := sl.PasswordHash != ""
-	r := shareLinkResponse{
+	return shareLinkResponse{
 		ID:                sl.ID,
 		FileID:            sl.FileID,
+		FileName:          fileName,
 		Token:             sl.Token,
 		HasPassword:       hasPwd,
 		PasswordProtected: hasPwd,
@@ -40,10 +41,27 @@ func (s *Server) toShareLinkResponseWithName(sl metadata.ShareLink) shareLinkRes
 		CreatedBy:         sl.CreatedBy,
 		CreatedAt:         sl.CreatedAt,
 	}
-	if f, err := s.db.GetFileByID(sl.FileID); err == nil {
-		r.FileName = f.Name
+}
+
+// enrichShareLinks resolves file names for a list of share links in a single pass.
+func (s *Server) enrichShareLinks(links []metadata.ShareLink) []shareLinkResponse {
+	// Collect unique file IDs.
+	fileIDs := make(map[string]struct{}, len(links))
+	for _, sl := range links {
+		fileIDs[sl.FileID] = struct{}{}
 	}
-	return r
+	// Batch-load file names.
+	names := make(map[string]string, len(fileIDs))
+	for id := range fileIDs {
+		if f, err := s.db.GetFileByID(id); err == nil {
+			names[id] = f.Name
+		}
+	}
+	result := make([]shareLinkResponse, 0, len(links))
+	for _, sl := range links {
+		result = append(result, toShareLinkResponse(sl, names[sl.FileID]))
+	}
+	return result
 }
 
 // createShareRequest is the body for POST /api/files/{id}/shares.
@@ -58,13 +76,8 @@ func (s *Server) handleCreateShare(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
 	fileID := chi.URLParam(r, "id")
 
-	// Ensure the file exists.
-	if _, err := s.db.GetFileByID(fileID); err != nil {
-		if errors.Is(err, metadata.ErrFileNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get file"})
+	// Verify the file exists and the user owns it (or is admin).
+	if _, ok := s.checkFileOwnership(w, r, fileID); !ok {
 		return
 	}
 
@@ -90,20 +103,19 @@ func (s *Server) handleCreateShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, s.toShareLinkResponseWithName(*sl))
+	fileName := ""
+	if f, err := s.db.GetFileByID(sl.FileID); err == nil {
+		fileName = f.Name
+	}
+	writeJSON(w, http.StatusCreated, toShareLinkResponse(*sl, fileName))
 }
 
 // handleListShares handles GET /api/files/{id}/shares.
 func (s *Server) handleListShares(w http.ResponseWriter, r *http.Request) {
 	fileID := chi.URLParam(r, "id")
 
-	// Ensure the file exists.
-	if _, err := s.db.GetFileByID(fileID); err != nil {
-		if errors.Is(err, metadata.ErrFileNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not get file"})
+	// Verify the file exists and the user owns it (or is admin).
+	if _, ok := s.checkFileOwnership(w, r, fileID); !ok {
 		return
 	}
 
@@ -113,12 +125,7 @@ func (s *Server) handleListShares(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := make([]shareLinkResponse, 0, len(links))
-	for _, sl := range links {
-		result = append(result, s.toShareLinkResponseWithName(sl))
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{"shares": result})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"shares": s.enrichShareLinks(links)})
 }
 
 // handleDeleteShare handles DELETE /api/shares/{id}.
@@ -147,12 +154,7 @@ func (s *Server) handleListMyShares(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := make([]shareLinkResponse, 0, len(links))
-	for _, sl := range links {
-		result = append(result, s.toShareLinkResponseWithName(sl))
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{"shares": result})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"shares": s.enrichShareLinks(links)})
 }
 
 // toggleShareRequest is the body for PUT /api/shares/{id}/toggle.
@@ -199,7 +201,11 @@ func (s *Server) handleToggleShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, s.toShareLinkResponseWithName(*sl))
+	fn := ""
+	if f, err := s.db.GetFileByID(sl.FileID); err == nil {
+		fn = f.Name
+	}
+	writeJSON(w, http.StatusOK, toShareLinkResponse(*sl, fn))
 }
 
 // publicShareResponse is the JSON response for GET /s/{token}.

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
@@ -25,6 +26,24 @@ func (s *Server) handleAdminGetSettings(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, settings)
 }
 
+// allowedSettingPrefixes lists the setting key prefixes that may be updated via the API.
+var allowedSettingPrefixes = []string{
+	"smtp.",
+	"base_url",
+	"backup.",
+	"trash_retention_days",
+	"auto_backup",
+}
+
+func isAllowedSetting(key string) bool {
+	for _, prefix := range allowedSettingPrefixes {
+		if key == prefix || strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // handleAdminPutSettings handles PUT /api/admin/settings.
 func (s *Server) handleAdminPutSettings(w http.ResponseWriter, r *http.Request) {
 	var incoming map[string]string
@@ -34,6 +53,10 @@ func (s *Server) handleAdminPutSettings(w http.ResponseWriter, r *http.Request) 
 	}
 
 	for k, v := range incoming {
+		if !isAllowedSetting(k) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown setting: " + k})
+			return
+		}
 		if err := s.db.SetSetting(k, v); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not save setting: " + k})
 			return

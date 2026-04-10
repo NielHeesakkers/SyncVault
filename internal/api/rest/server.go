@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
@@ -52,6 +53,7 @@ func (s *Server) setupRoutes() {
 	r := s.router
 
 	r.Use(chimiddleware.Recoverer)
+	r.Use(SecurityHeadersMiddleware)
 	r.Use(CORSMiddleware)
 	r.Use(LoggingMiddleware)
 	r.Use(chimiddleware.Compress(5, "application/json", "text/event-stream"))
@@ -301,6 +303,24 @@ func parseTimestamp(s string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("invalid timestamp %q: must be RFC3339 or YYYY-MM-DD", s)
+}
+
+// validateFilename checks that a filename is safe for use as a file or folder name.
+// Returns an error string if invalid, or "" if OK.
+func validateFilename(name string) string {
+	if name == "" {
+		return "name is required"
+	}
+	if len(name) > 255 {
+		return "name must be at most 255 characters"
+	}
+	if strings.ContainsAny(name, "/\x00") {
+		return "name contains invalid characters"
+	}
+	if name == "." || name == ".." {
+		return "name cannot be . or .."
+	}
+	return ""
 }
 
 // sanitizeFilename removes characters that could break Content-Disposition headers.

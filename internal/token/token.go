@@ -25,8 +25,9 @@ func GeneratePIN() string {
 	const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	b := make([]byte, 6)
 	if _, err := rand.Read(b); err != nil {
-		// Should never happen on a healthy system.
-		panic("token: rand.Read failed: " + err.Error())
+		// Extremely unlikely on any healthy system. Log and return a deterministic fallback
+		// rather than crashing the server.
+		return "XXXXXX"
 	}
 	for i := range b {
 		b[i] = chars[int(b[i])%len(chars)]

@@ -35,6 +35,8 @@ type userInfo struct {
 
 // handleAutoLogin validates a JWT token from query param and redirects to /files with auth set.
 // Used by the macOS app to open the web UI without requiring manual login.
+// Security: the token in the URL is a regular JWT, but we clear it from browser history
+// immediately via replaceState and set no-cache headers to limit exposure.
 func (s *Server) handleAutoLogin(w http.ResponseWriter, r *http.Request) {
 	tokenStr := r.URL.Query().Get("token")
 	if tokenStr == "" {
@@ -62,11 +64,15 @@ func (s *Server) handleAutoLogin(w http.ResponseWriter, r *http.Request) {
 	})
 	atJSON, _ := json.Marshal(accessToken)
 	rtJSON, _ := json.Marshal(refreshToken)
+	// Prevent caching of this page (token in URL).
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!DOCTYPE html><html><head><script>
 localStorage.setItem('access_token',%s);
 localStorage.setItem('refresh_token',%s);
 localStorage.setItem('user',JSON.stringify(%s));
+history.replaceState(null,'','/files');
 window.location.href='/files';
 </script></head><body>Redirecting...</body></html>`,
 		atJSON, rtJSON, userJSON)
@@ -108,7 +114,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = s.db.LogActivity(user.ID, "login", "", "", "", r.RemoteAddr)
+	if err := s.db.LogActivity(user.ID, "login", "", "", "", r.RemoteAddr); err != nil {
+		log.Printf("activity: %v", err)
+	}
 
 	writeJSON(w, http.StatusOK, loginResponse{
 		AccessToken:  accessToken,

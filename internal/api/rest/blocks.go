@@ -110,7 +110,9 @@ func (s *Server) handleCreateFileFromBlocks(w http.ResponseWriter, r *http.Reque
 
 	// Log activity
 	sizeStr := formatSize(totalSize)
-	_ = s.db.LogActivity(claims.UserID, "upload", "file", f.ID, req.Filename+" ("+sizeStr+")", r.RemoteAddr)
+	if err := s.db.LogActivity(claims.UserID, "upload", "file", f.ID, req.Filename+" ("+sizeStr+")", r.RemoteAddr); err != nil {
+		log.Printf("activity: %v", err)
+	}
 
 	writeJSON(w, http.StatusCreated, toFileResponse(*f))
 }

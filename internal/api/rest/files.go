@@ -107,6 +107,11 @@ func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if msg := validateFilename(req.Name); msg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		return
+	}
+
 	// Non-admin users cannot create files at root level — must be inside their user folder
 	if req.ParentID == "" && claims.Role != "admin" {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cannot create files at root level"})
@@ -127,7 +132,9 @@ func (s *Server) handleCreateFile(w http.ResponseWriter, r *http.Request) {
 	if req.IsDir {
 		action = "create_folder"
 	}
-	_ = s.db.LogActivity(claims.UserID, action, "file", f.ID, req.Name, r.RemoteAddr)
+	if err := s.db.LogActivity(claims.UserID, action, "file", f.ID, req.Name, r.RemoteAddr); err != nil {
+		log.Printf("activity: %v", err)
+	}
 
 	writeJSON(w, http.StatusCreated, toFileResponse(*f))
 }
@@ -321,7 +328,9 @@ func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	if f != nil {
 		name = f.Name
 	}
-	_ = s.db.LogActivity(claims.UserID, "delete", "file", id, name, r.RemoteAddr)
+	if err := s.db.LogActivity(claims.UserID, "delete", "file", id, name, r.RemoteAddr); err != nil {
+		log.Printf("activity: %v", err)
+	}
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -838,7 +847,9 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, sanitizeFilename(f.Name)))
 
 	claims := auth.GetClaims(r.Context())
-	_ = s.db.LogActivity(claims.UserID, "download", "file", id, f.Name+" ("+formatSize(f.Size)+")", r.RemoteAddr)
+	if err := s.db.LogActivity(claims.UserID, "download", "file", id, f.Name+" ("+formatSize(f.Size)+")", r.RemoteAddr); err != nil {
+		log.Printf("activity: %v", err)
+	}
 
 	if err := s.store.Get(f.ContentHash.String, w); err != nil {
 		// Headers already sent; we can't write a JSON error at this point.

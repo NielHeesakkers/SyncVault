@@ -182,10 +182,15 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	defer zr.Close()
 
+	absDataDir, _ := filepath.Abs(dataDir)
 	for _, f := range zr.File {
 		targetPath := filepath.Join(dataDir, f.Name)
-		// Safety check
-		if strings.Contains(f.Name, "..") {
+		// Path traversal protection: resolve the full path and verify it stays within dataDir.
+		absTarget, _ := filepath.Abs(targetPath)
+		if !strings.HasPrefix(absTarget, absDataDir+string(os.PathSeparator)) && absTarget != absDataDir {
+			continue
+		}
+		if f.FileInfo().IsDir() {
 			continue
 		}
 
@@ -194,7 +199,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		outFile, err := os.Create(targetPath)
+		outFile, err := os.Create(absTarget)
 		if err != nil {
 			rc.Close()
 			continue
@@ -224,6 +229,8 @@ func (s *Server) handleUploadRestore(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = fmt.Sprintf("uploaded-%s.zip", time.Now().UTC().Format("2006-01-02_150405"))
 	}
+	// Sanitize uploaded filename to prevent path traversal.
+	name = filepath.Base(name)
 	backupPath := filepath.Join(s.backupDir(), name)
 	outFile, err := os.Create(backupPath)
 	if err != nil {
@@ -246,16 +253,21 @@ func (s *Server) handleUploadRestore(w http.ResponseWriter, r *http.Request) {
 	}
 	defer zr.Close()
 
+	absDataDir, _ := filepath.Abs(dataDir)
 	for _, f := range zr.File {
-		if strings.Contains(f.Name, "..") {
+		targetPath := filepath.Join(dataDir, f.Name)
+		absTarget, _ := filepath.Abs(targetPath)
+		if !strings.HasPrefix(absTarget, absDataDir+string(os.PathSeparator)) && absTarget != absDataDir {
 			continue
 		}
-		targetPath := filepath.Join(dataDir, f.Name)
+		if f.FileInfo().IsDir() {
+			continue
+		}
 		rc, err := f.Open()
 		if err != nil {
 			continue
 		}
-		out, err := os.Create(targetPath)
+		out, err := os.Create(absTarget)
 		if err != nil {
 			rc.Close()
 			continue
