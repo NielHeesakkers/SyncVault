@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -66,12 +67,23 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// LoggingMiddleware logs the HTTP method, path, response status, and duration.
+// LoggingMiddleware logs each HTTP request. When SYNCVAULT_LOG_FORMAT=json it emits
+// structured JSON lines; otherwise it uses a human-readable format.
 func LoggingMiddleware(next http.Handler) http.Handler {
+	jsonLog := os.Getenv("SYNCVAULT_LOG_FORMAT") == "json"
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rw, r)
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, rw.status, time.Since(start))
+		dur := time.Since(start)
+		if jsonLog {
+			ip := clientIP(r)
+			log.Print(fmt.Sprintf(
+				`{"method":%q,"path":%q,"status":%d,"duration_ms":%d,"ip":%q}`,
+				r.Method, r.URL.Path, rw.status, dur.Milliseconds(), ip,
+			))
+		} else {
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, rw.status, dur)
+		}
 	})
 }

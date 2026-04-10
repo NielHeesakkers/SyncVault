@@ -62,15 +62,17 @@ func (s *Server) setupRoutes() {
 	r.Get("/api/health", s.handleHealth)
 	r.Get("/api/version", s.handleVersion)
 
-	// Auth routes (public).
-	r.Post("/api/auth/login", s.handleLogin)
+	// Auth routes (public) — rate limited to prevent brute force.
+	authLimiter := RateLimitMiddleware(10, 1*time.Minute) // 10 attempts per minute per IP
+	r.With(authLimiter).Post("/api/auth/login", s.handleLogin)
 	r.Post("/api/auth/refresh", s.handleRefresh)
-	r.Post("/api/auth/forgot-password", s.handleForgotPassword)
-	r.Post("/api/auth/reset-password", s.handleResetPassword)
+	r.With(authLimiter).Post("/api/auth/forgot-password", s.handleForgotPassword)
+	r.With(authLimiter).Post("/api/auth/reset-password", s.handleResetPassword)
 	r.Get("/api/auth/auto-login", s.handleAutoLogin)
 
-	// Public share routes (no auth required).
-	r.Get("/s/{token}", s.handlePublicShare)
+	// Public share routes (no auth required) — rate limited.
+	shareLimiter := RateLimitMiddleware(30, 1*time.Minute) // 30 per minute per IP
+	r.With(shareLimiter).Get("/s/{token}", s.handlePublicShare)
 	r.Get("/s/{token}/download", s.handlePublicDownload)
 	r.Post("/s/{token}/download", s.handlePublicDownload)
 

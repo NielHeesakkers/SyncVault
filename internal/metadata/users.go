@@ -135,22 +135,35 @@ func (d *DB) UpdateUser(user *User) error {
 	return nil
 }
 
-// DeleteUser removes the user and all related data.
+// DeleteUser removes the user and all related data within a single transaction.
 func (d *DB) DeleteUser(id string) error {
-	// Remove all related data first
-	d.db.Exec(`DELETE FROM connection_tokens WHERE user_id=?`, id)
-	d.db.Exec(`DELETE FROM password_resets WHERE user_id=?`, id)
-	d.db.Exec(`DELETE FROM retention_policies WHERE sync_task_id IN (SELECT id FROM sync_tasks WHERE user_id=?)`, id)
-	d.db.Exec(`DELETE FROM notifications WHERE user_id=?`, id)
-	d.db.Exec(`DELETE FROM team_permissions WHERE user_id=?`, id)
-	d.db.Exec(`DELETE FROM share_links WHERE created_by=?`, id)
-	d.db.Exec(`DELETE FROM activity_log WHERE user_id=?`, id)
-	d.db.Exec(`DELETE FROM devices WHERE user_id=?`, id)
-	d.db.Exec(`DELETE FROM sync_tasks WHERE user_id=?`, id)
-	d.db.Exec(`DELETE FROM versions WHERE created_by=?`, id)
-	d.db.Exec(`DELETE FROM files WHERE owner_id=?`, id)
+	tx, err := d.db.Begin()
+	if err != nil {
+		return fmt.Errorf("metadata: delete user begin tx: %w", err)
+	}
+	defer tx.Rollback()
 
-	res, err := d.db.Exec(`DELETE FROM users WHERE id=?`, id)
+	// Remove all related data first.
+	cleanupQueries := []string{
+		`DELETE FROM connection_tokens WHERE user_id=?`,
+		`DELETE FROM password_resets WHERE user_id=?`,
+		`DELETE FROM retention_policies WHERE sync_task_id IN (SELECT id FROM sync_tasks WHERE user_id=?)`,
+		`DELETE FROM notifications WHERE user_id=?`,
+		`DELETE FROM team_permissions WHERE user_id=?`,
+		`DELETE FROM share_links WHERE created_by=?`,
+		`DELETE FROM activity_log WHERE user_id=?`,
+		`DELETE FROM devices WHERE user_id=?`,
+		`DELETE FROM sync_tasks WHERE user_id=?`,
+		`DELETE FROM versions WHERE created_by=?`,
+		`DELETE FROM files WHERE owner_id=?`,
+	}
+	for _, q := range cleanupQueries {
+		if _, err := tx.Exec(q, id); err != nil {
+			return fmt.Errorf("metadata: delete user cleanup: %w", err)
+		}
+	}
+
+	res, err := tx.Exec(`DELETE FROM users WHERE id=?`, id)
 	if err != nil {
 		return fmt.Errorf("metadata: delete user: %w", err)
 	}
@@ -158,7 +171,7 @@ func (d *DB) DeleteUser(id string) error {
 	if n == 0 {
 		return ErrUserNotFound
 	}
-	return nil
+	return tx.Commit()
 }
 
 // scanUser scans a single user from a *sql.Row.
