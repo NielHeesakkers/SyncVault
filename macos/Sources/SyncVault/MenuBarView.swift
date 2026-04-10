@@ -271,52 +271,56 @@ struct MenuBarView: View {
             menuSectionHeader("CloudDrive")
 
             ForEach(onDemandTasks) { task in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "icloud.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(.blue)
-                            .frame(width: 16)
-                        Text(task.remoteFolderName)
-                            .font(.system(size: 11, weight: .medium))
-                            .lineLimit(1)
-                        Spacer()
-                        if appState.fpProgress != nil {
-                            Image(systemName: "arrow.up.arrow.down")
-                                .font(.system(size: 9))
+                Button(action: { openCloudDrive() }) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "icloud.fill")
+                                .font(.system(size: 12))
                                 .foregroundColor(.blue)
-                        } else {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 9))
-                                .foregroundColor(Color(white: 0.4))
-                        }
-                    }
-
-                    // FileProvider activity
-                    if let fpStatus = appState.fpProgress {
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text(fpStatus)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Spacer()
-                                if appState.fpSpeed > 100 {
-                                    Text(formatSpeed(appState.fpSpeed))
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundColor(.blue)
-                                }
+                                .frame(width: 16)
+                            Text(task.remoteFolderName)
+                                .font(.system(size: 11, weight: .medium))
+                                .lineLimit(1)
+                            Spacer()
+                            if appState.fpProgress != nil {
+                                Image(systemName: "arrow.up.arrow.down")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.blue)
+                            } else {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(Color(white: 0.4))
                             }
                         }
-                        .padding(.leading, 24)
-                    } else {
-                        Text("Available in Finder")
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(white: 0.4))
+
+                        // FileProvider activity
+                        if let fpStatus = appState.fpProgress {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 6) {
+                                    Text(fpStatus)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                    Spacer()
+                                    if appState.fpSpeed > 100 {
+                                        Text(formatSpeed(appState.fpSpeed))
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .foregroundColor(.blue)
+                                    }
+                                }
+                            }
                             .padding(.leading, 24)
+                        } else {
+                            Text("Available in Finder")
+                                .font(.system(size: 10))
+                                .foregroundColor(Color(white: 0.4))
+                                .padding(.leading, 24)
+                        }
                     }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 14)
@@ -337,24 +341,28 @@ struct MenuBarView: View {
             }
 
             ForEach(backupTasks) { task in
-                HStack(spacing: 8) {
-                    Image(systemName: "folder.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(.orange)
-                        .frame(width: 14)
-                    Text(task.remoteFolderName)
-                        .font(.system(size: 11))
-                        .lineLimit(1)
-                    Spacer()
-                    Circle()
-                        .fill(taskStatusColor(task))
-                        .frame(width: 6, height: 6)
-                    Text(taskStatusLabel(task))
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(white: 0.4))
-                        .frame(width: 55, alignment: .trailing)
+                Button(action: { openTaskFolder(task) }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.orange)
+                            .frame(width: 14)
+                        Text(task.remoteFolderName)
+                            .font(.system(size: 11))
+                            .lineLimit(1)
+                        Spacer()
+                        Circle()
+                            .fill(taskStatusColor(task))
+                            .frame(width: 6, height: 6)
+                        Text(taskStatusLabel(task))
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(white: 0.4))
+                            .frame(width: 55, alignment: .trailing)
+                    }
+                    .padding(.vertical, 1)
+                    .contentShape(Rectangle())
                 }
-                .padding(.vertical, 1)
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 14)
@@ -529,6 +537,33 @@ struct MenuBarView: View {
         if seconds < 3600 { return "\(seconds / 60)m" }
         if seconds < 86400 { return "\(seconds / 3600)h" }
         return "\(seconds / 86400)d"
+    }
+
+    func openTaskFolder(_ task: SyncTask) {
+        // Resolve security-scoped bookmark to get access
+        if let url = appState.resolveBookmark(for: task.localPath) {
+            NSWorkspace.shared.open(url)
+            url.stopAccessingSecurityScopedResource()
+            return
+        }
+        // Fallback: try the path directly
+        let url = URL(fileURLWithPath: task.localPath)
+        if FileManager.default.fileExists(atPath: task.localPath) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func openCloudDrive() {
+        // Open the FileProvider CloudStorage folder in Finder
+        let cloudStoragePath = NSHomeDirectory() + "/Library/CloudStorage/SyncVault-CloudDrive"
+        let url = URL(fileURLWithPath: cloudStoragePath)
+        if FileManager.default.fileExists(atPath: cloudStoragePath) {
+            NSWorkspace.shared.open(url)
+        } else {
+            // Fallback: open CloudStorage root
+            let cloudRoot = NSHomeDirectory() + "/Library/CloudStorage"
+            NSWorkspace.shared.open(URL(fileURLWithPath: cloudRoot))
+        }
     }
 
     func openRecentFile(_ item: ActivityItem) {
