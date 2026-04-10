@@ -129,39 +129,47 @@ struct MenuBarView: View {
                                         .foregroundColor(.secondary)
                                 }
                             }
-                            HStack(spacing: 4) {
-                                Text(progress.currentFile)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                if progress.bytesPerSecond > 100 {
-                                    Text("·")
-                                        .foregroundColor(Color(white: 0.4))
-                                    Text(formatSpeed(progress.bytesPerSecond))
-                                        .font(.system(size: 11, design: .monospaced))
-                                        .foregroundColor(.blue)
-                                }
-                            }
+                            Text(progress.currentFile)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
                         }
                         Spacer()
-                        Text("\(progress.filesCompleted)/\(progress.filesTotal)")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(Color(white: 0.4))
                     }
 
-                    // Progress bar
-                    if progress.totalBytes > 0 {
-                        VStack(spacing: 3) {
-                            ProgressView(value: Double(progress.bytesTransferred), total: Double(max(progress.totalBytes, 1)))
-                                .tint(.blue)
-                                .scaleEffect(y: 0.6)
-                            HStack {
-                                Spacer()
-                                Text("\(formatBytes(progress.bytesTransferred)) / \(formatBytes(progress.totalBytes))")
-                                    .font(.system(size: 9, design: .monospaced))
-                                    .foregroundColor(Color(white: 0.4))
+                    // Per-file bytes + speed
+                    if progress.currentFileTotal > 0 {
+                        HStack(spacing: 4) {
+                            Text("\(formatBytes(progress.currentFileBytes)) / \(formatBytes(progress.currentFileTotal))")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(.secondary)
+                            if progress.bytesPerSecond > 100 {
+                                Text("·")
+                                    .foregroundColor(Color(white: 0.35))
+                                Text(formatSpeed(progress.bytesPerSecond))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.blue)
                             }
+                            Spacer()
+                        }
+
+                        // Progress bar per file
+                        ProgressView(value: Double(progress.currentFileBytes), total: Double(max(progress.currentFileTotal, 1)))
+                            .tint(.blue)
+                            .scaleEffect(y: 0.6)
+                    }
+
+                    // Total files + total bytes
+                    HStack {
+                        Text("\(progress.filesCompleted)/\(progress.filesTotal) files")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(Color(white: 0.4))
+                        Spacer()
+                        if progress.totalBytes > 0 {
+                            Text("\(formatBytes(progress.bytesTransferred)) / \(formatBytes(progress.totalBytes))")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(Color(white: 0.4))
                         }
                     }
                 }

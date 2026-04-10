@@ -1,3 +1,15 @@
+## [2.6.0] — 2026-04-10
+- Menu bar redesign: clear status, file type icons, per-task progress
+- Fix file scanning: was skipping entire folders due to skipDescendants on files
+- Fix tree endpoint 500 for non-admin users
+- Adaptive block size: 4-64 MB based on file size
+- Activity logging for uploads, downloads, logins
+- Real-time Recently Changed with task name
+- Dashboard shows actual disk space
+- Fix check-hashes crash with 33K+ files
+- No more keychain prompt on app updates
+- Request timeout increased for large blocks
+
 ## [2.5.35] — 2026-04-02
 - On-demand bulk upload: app scans CloudStorage and uploads missing files via block upload
 

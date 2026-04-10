@@ -1,9 +1,27 @@
 {
-  "version": "2.5.35",
+  "version": "2.6.0",
   "min_version": "1.0",
-  "release_date": "2026-04-02",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.5.35/SyncVault-2.5.35.dmg",
+  "release_date": "2026-04-10",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.6.0/SyncVault-2.6.0.dmg",
   "history": [
+    {
+      "version": "2.6.0",
+      "date": "2026-04-10",
+      "changes": [
+        "Menu bar redesign: clear status header, file type icons, per-task progress",
+        "Fix file scanning: skipDescendants only for hidden directories (was skipping entire folders)",
+        "Fix tree endpoint 500 for non-admin users (owner_id alias bug)",
+        "Adaptive block size: 4-64 MB based on file size (16x fewer API calls for large files)",
+        "Activity logging: uploads, downloads, logins tracked in Activity Log",
+        "Real-time Recently Changed with task name and clickable files",
+        "Dashboard shows actual disk space instead of NaN",
+        "Fix bookmark directory creation on clean install",
+        "Fix check-hashes crash with 33K+ files (SQLite variable limit)",
+        "Move FileProvider credentials to UserDefaults (no keychain prompt on updates)",
+        "Request timeout increased to 300s for large block uploads",
+        "Accept empty files (Icon files) in from-blocks endpoint"
+      ]
+    },
     {
       "version": "2.5.35",
       "date": "2026-04-02",

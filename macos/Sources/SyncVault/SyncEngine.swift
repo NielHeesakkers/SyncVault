@@ -510,24 +510,29 @@ actor SyncEngine {
                                 bytesTransferred: curBytes, totalBytes: totalBytesToUpload,
                                 filesCompleted: curCompleted, filesTotal: total,
                                 bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
-                                pendingFiles: pending
+                                pendingFiles: pending,
+                                currentFileBytes: 0, currentFileTotal: fileSize
                             ))
 
                             // Ensure parent directories exist on server
                             let parentRelPath = (relativePath as NSString).deletingLastPathComponent
                             let parentID = try await self.ensureRemoteDirectory(parentRelPath, rootID: task.remoteFolderID)
 
-                            // Direct block upload: split into 4MB blocks, upload missing, create file
+                            // Direct block upload: split into blocks, upload missing, create file
+                            let fileBytesSent = ActorCounter(initial: 0)
                             let uploadedHash = try await self.uploadViaBlocks(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize) { blockBytes in
                                 await bytesUploaded.add(blockBytes)
                                 await bytesTransferred.add(blockBytes)
+                                await fileBytesSent.add(blockBytes)
                                 let curB = await bytesUploaded.value
+                                let fileCur = await fileBytesSent.value
                                 await onProgress(SyncProgress(
                                     currentFile: displayName, action: "Uploading",
                                     bytesTransferred: curB, totalBytes: totalBytesToUpload,
                                     filesCompleted: Int(await completed.value), filesTotal: total,
-                                    bytesPerSecond: Self.speed(bytes: curB, since: start),
-                                    pendingFiles: pending
+                                    bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
+                                    pendingFiles: pending,
+                                    currentFileBytes: fileCur, currentFileTotal: fileSize
                                 ))
                             }
 
@@ -1043,6 +1048,8 @@ struct SyncProgress {
     var bytesPerSecond: Double
     var pendingFiles: [String]
     var completedItem: ActivityItem?  // Set when a file just finished
+    var currentFileBytes: Int64 = 0   // Bytes uploaded for current file
+    var currentFileTotal: Int64 = 0   // Total size of current file
 }
 
 struct SyncResult {
