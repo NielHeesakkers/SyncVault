@@ -43,6 +43,7 @@
 		E858017E8757C9E36E52E5AC /* ConnectionTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0C61DE67A8E8BD551AF0FE4 /* ConnectionTab.swift */; };
 		EB4A8CA6F3D18A60B7E394FC /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF107C55783154AA71C89068 /* SettingsView.swift */; };
 		FE0384E8AF172509200EA312 /* RemoteFolderBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 204C64400A8693CBA6D01313 /* RemoteFolderBrowserView.swift */; };
+		AAAA000000000000000A0001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000F0001 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -118,6 +119,7 @@
 		E28CF52AF24FAC1F1B5D8570 /* InfoTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InfoTab.swift; sourceTree = "<group>"; };
 		EF107C55783154AA71C89068 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F1E2C14153ED8339A25D2318 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		AAAA000000000000000F0001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -178,6 +180,7 @@
 		1D3A9D903F39470717591210 /* SyncVault */ = {
 			isa = PBXGroup;
 			children = (
+				AAAA000000000000000F0001 /* Assets.xcassets */,
 				081DEA28A9304552CF3B8A06 /* AddSyncTaskWizardView.swift */,
 				F1E2C14153ED8339A25D2318 /* APIClient.swift */,
 				C5AE6189024BEC7F01E6741A /* AppConfig.swift */,
@@ -257,12 +260,21 @@
 			productReference = 873C48E9CE3D4E740CD9AD16 /* SyncVaultFinderSync.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		AAAA000000000000000R0001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AAAA000000000000000A0001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		419561C4616A8D8BCF8EE1E6 /* SyncVault */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 86CC0F87DFE31CA5E083BC5F /* Build configuration list for PBXNativeTarget "SyncVault" */;
 			buildPhases = (
 				DE06AF8CB0D5B5C8EF4E6106 /* Sources */,
 				EDC0C2CBA058297ED6E5291D /* Frameworks */,
+				AAAA000000000000000R0001 /* Resources */,
 				F672D144067DCA66D769D955 /* Embed Foundation Extensions */,
 			);
 			buildRules = (

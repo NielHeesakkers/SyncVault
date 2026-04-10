@@ -759,7 +759,8 @@ class AppState: ObservableObject {
                         // Real-time: add completed files to recently synced immediately
                         if var item = progress.completedItem {
                             item.taskName = taskName
-                            item.localPath = (taskBasePath as NSString).appendingPathComponent(item.filename)
+                            let relPath = item.relativePath.isEmpty ? item.filename : item.relativePath
+                            item.localPath = (taskBasePath as NSString).appendingPathComponent(relPath)
                             self?.recentActivity.insert(item, at: 0)
                             if (self?.recentActivity.count ?? 0) > 20 {
                                 self?.recentActivity = Array(self!.recentActivity.prefix(20))
@@ -1039,6 +1040,7 @@ struct ActivityItem: Identifiable {
     let timestamp: Date
     var taskName: String = ""
     var localPath: String = ""
+    var relativePath: String = ""  // path relative to task root (e.g. "subdir/file.mov")
 }
 
 struct TaskResponse: Codable {

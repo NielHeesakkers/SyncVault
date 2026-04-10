@@ -9,9 +9,9 @@
       <pubDate>Thu, 10 Apr 2026 15:00:00 +0200</pubDate>
       <enclosure
         url="https://github.com/NielHeesakkers/SyncVault/releases/download/v2.6.0/SyncVault-2.6.0.zip"
-        length="2679097"
+        length="2829755"
         type="application/octet-stream"
-        sparkle:edSignature="XgWTgVKIFLyfwW8bskpVJ6B6pCsGsclixA1F+9YinFYj5Ps905tq4q5neRhN6gKPZM/NZTl+cD5qprx/HD8OCQ==" />
+        sparkle:edSignature="5LZHXx8xHbQjU46MJB7EiFw49ieX+XueDSgVb0a6oAjfYDjUL/v+eGc2iPXVC1cBSn6EoCDocM9knmTLs1GACw==" />
       <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
     </item>
   </channel>

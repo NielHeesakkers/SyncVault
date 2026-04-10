@@ -538,7 +538,7 @@ actor SyncEngine {
 
                             logger.info("Uploaded: \(relativePath) (\(fileSize) bytes, hash: \(uploadedHash))")
                             try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: uploadedHash, isDir: false)
-                            return .uploaded(displayName)
+                            return .uploaded(displayName, relativePath)
 
                         case .download(let fileID, let localPath, let relativePath):
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
@@ -558,13 +558,13 @@ actor SyncEngine {
                             await bytesTransferred.add(size)
                             logger.info("Downloaded: \(relativePath) (\(size) bytes)")
                             try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: "", isDir: false)
-                            return .downloaded(displayName)
+                            return .downloaded(displayName, relativePath)
 
                         case .markRemovedLocally(let fileID, let relativePath):
                             try await self.apiClient.markFileRemovedLocally(id: fileID, removed: true)
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
                             logger.info("Marked removed locally: \(relativePath)")
-                            return .markedRemoved(displayName)
+                            return .markedRemoved(displayName, relativePath)
 
                         case .deleteRemote(let fileID, let relativePath):
                             try await self.apiClient.deleteFile(id: fileID)
@@ -572,7 +572,7 @@ actor SyncEngine {
                             logger.info("Deleted from server: \(relativePath)")
                             try? self.db.removeState(taskID: task.id.uuidString, relativePath: relativePath)
                             try? self.db.removeStatesUnder(taskID: task.id.uuidString, pathPrefix: relativePath)
-                            return .deletedLocal(displayName)
+                            return .deletedLocal(displayName, relativePath)
 
                         case .renameRemote(let fileID, let newName, let oldRelPath, let newRelPath):
                             // Atomic rename on server — no delete + create
@@ -585,14 +585,14 @@ actor SyncEngine {
                             try? self.db.removeState(taskID: task.id.uuidString, relativePath: oldRelPath)
                             try? self.db.removeStatesUnder(taskID: task.id.uuidString, pathPrefix: oldRelPath)
                             try? self.db.updateState(taskID: task.id.uuidString, relativePath: newRelPath, contentHash: "", isDir: true)
-                            return .uploaded(newName)
+                            return .uploaded(newName, newRelPath)
 
                         case .deleteLocal(let path, let relativePath):
                             try FileManager.default.removeItem(atPath: path)
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
                             try? self.db.removeState(taskID: task.id.uuidString, relativePath: relativePath)
                             try? self.db.removeStatesUnder(taskID: task.id.uuidString, pathPrefix: relativePath)
-                            return .deletedLocal(displayName)
+                            return .deletedLocal(displayName, relativePath)
 
                         case .conflict(let localPath, let remoteID, let relativePath):
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
@@ -603,13 +603,13 @@ actor SyncEngine {
                             let _ = try await self.apiClient.downloadFileToDisk(id: remoteID, destination: conflictPath)
                             // Keep local version in place — it will be uploaded normally
                             logger.info("Conflict: saved remote as \(conflictName), keeping local \(displayName)")
-                            return .conflict(displayName)
+                            return .conflict(displayName, relativePath)
 
                         case .createDirectory(let relativePath):
                             let _ = try await self.ensureRemoteDirectory(relativePath, rootID: task.remoteFolderID)
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
                             logger.info("Created dir: \(relativePath)")
-                            return .uploaded(displayName)
+                            return .uploaded(displayName, relativePath)
                         }
                     } catch let error as APIError where error == .unauthorized {
                         logger.info("Auth failed - re-throwing")
@@ -624,29 +624,29 @@ actor SyncEngine {
             for await actionResult in group {
                 var completedItem: ActivityItem? = nil
                 switch actionResult {
-                case .uploaded(let name):
+                case .uploaded(let name, let relPath):
                     result.uploaded += 1
-                    completedItem = ActivityItem(filename: name, action: "uploaded", timestamp: Date())
+                    completedItem = ActivityItem(filename: name, action: "uploaded", timestamp: Date(), relativePath: relPath)
                     result.fileActivity.append(completedItem!)
                     await completed.increment()
-                case .downloaded(let name):
+                case .downloaded(let name, let relPath):
                     result.downloaded += 1
-                    completedItem = ActivityItem(filename: name, action: "downloaded", timestamp: Date())
+                    completedItem = ActivityItem(filename: name, action: "downloaded", timestamp: Date(), relativePath: relPath)
                     result.fileActivity.append(completedItem!)
                     await completed.increment()
-                case .markedRemoved(let name):
+                case .markedRemoved(let name, let relPath):
                     result.deleted += 1
-                    completedItem = ActivityItem(filename: name, action: "removed locally", timestamp: Date())
+                    completedItem = ActivityItem(filename: name, action: "removed locally", timestamp: Date(), relativePath: relPath)
                     result.fileActivity.append(completedItem!)
                     await completed.increment()
-                case .deletedLocal(let name):
+                case .deletedLocal(let name, let relPath):
                     result.deleted += 1
-                    completedItem = ActivityItem(filename: name, action: "deleted", timestamp: Date())
+                    completedItem = ActivityItem(filename: name, action: "deleted", timestamp: Date(), relativePath: relPath)
                     result.fileActivity.append(completedItem!)
                     await completed.increment()
-                case .conflict(let name):
+                case .conflict(let name, let relPath):
                     result.conflicts += 1
-                    completedItem = ActivityItem(filename: "\(name) (conflict)", action: "downloaded", timestamp: Date())
+                    completedItem = ActivityItem(filename: "\(name) (conflict)", action: "downloaded", timestamp: Date(), relativePath: relPath)
                     result.fileActivity.append(completedItem!)
                     await completed.increment()
                 case .authFailed:
@@ -1168,12 +1168,13 @@ actor ActorCounter {
 }
 
 /// Result type for individual sync actions executed in a task group.
+/// The String parameters are (displayName, relativePath).
 private enum SyncActionResult {
-    case uploaded(String)
-    case downloaded(String)
-    case markedRemoved(String)
-    case deletedLocal(String)
-    case conflict(String)
+    case uploaded(String, String)       // displayName, relativePath
+    case downloaded(String, String)     // displayName, relativePath
+    case markedRemoved(String, String)  // displayName, relativePath
+    case deletedLocal(String, String)   // displayName, relativePath
+    case conflict(String, String)       // displayName, relativePath
     case authFailed
     case error
 }

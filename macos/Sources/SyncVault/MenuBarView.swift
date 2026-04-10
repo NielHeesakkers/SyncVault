@@ -554,20 +554,34 @@ struct MenuBarView: View {
     }
 
     func openCloudDrive() {
-        // Open the FileProvider CloudStorage folder in Finder
-        let cloudStoragePath = NSHomeDirectory() + "/Library/CloudStorage/SyncVault-CloudDrive"
-        let url = URL(fileURLWithPath: cloudStoragePath)
-        if FileManager.default.fileExists(atPath: cloudStoragePath) {
-            NSWorkspace.shared.open(url)
-        } else {
-            // Fallback: open CloudStorage root
-            let cloudRoot = NSHomeDirectory() + "/Library/CloudStorage"
-            NSWorkspace.shared.open(URL(fileURLWithPath: cloudRoot))
+        // Find the SyncVault CloudStorage folder (name varies: SyncVault-<DisplayName>)
+        let cloudRoot = NSHomeDirectory() + "/Library/CloudStorage"
+        if let contents = try? FileManager.default.contentsOfDirectory(atPath: cloudRoot) {
+            if let syncVaultDir = contents.first(where: { $0.hasPrefix("SyncVault") }) {
+                NSWorkspace.shared.open(URL(fileURLWithPath: (cloudRoot as NSString).appendingPathComponent(syncVaultDir)))
+                return
+            }
         }
+        // Fallback: open CloudStorage root
+        NSWorkspace.shared.open(URL(fileURLWithPath: cloudRoot))
     }
 
     func openRecentFile(_ item: ActivityItem) {
-        // Try localPath first (set during sync)
+        // Try to open via security-scoped bookmark of the parent task folder.
+        // The localPath is taskBasePath + relativePath — we need bookmark access to taskBasePath.
+        for task in appState.syncTasks where task.isEnabled {
+            if !item.localPath.isEmpty && item.localPath.hasPrefix(task.localPath) {
+                if let taskURL = appState.resolveBookmark(for: task.localPath) {
+                    let fileURL = URL(fileURLWithPath: item.localPath)
+                    if FileManager.default.fileExists(atPath: item.localPath) {
+                        NSWorkspace.shared.open(fileURL)
+                    }
+                    taskURL.stopAccessingSecurityScopedResource()
+                    return
+                }
+            }
+        }
+        // Fallback: try localPath directly
         if !item.localPath.isEmpty {
             let url = URL(fileURLWithPath: item.localPath)
             if FileManager.default.fileExists(atPath: item.localPath) {
@@ -575,11 +589,15 @@ struct MenuBarView: View {
                 return
             }
         }
-        // Fallback: search in task folders
+        // Last resort: search in task folders by filename
         for task in appState.syncTasks where task.isEnabled {
-            let fullPath = (task.localPath as NSString).appendingPathComponent(item.filename)
-            if FileManager.default.fileExists(atPath: fullPath) {
-                NSWorkspace.shared.open(URL(fileURLWithPath: fullPath))
+            if let taskURL = appState.resolveBookmark(for: task.localPath) {
+                let relPath = item.relativePath.isEmpty ? item.filename : item.relativePath
+                let fullPath = (task.localPath as NSString).appendingPathComponent(relPath)
+                if FileManager.default.fileExists(atPath: fullPath) {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: fullPath))
+                }
+                taskURL.stopAccessingSecurityScopedResource()
                 return
             }
         }
