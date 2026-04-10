@@ -11,6 +11,7 @@ APP="$BUILD_DIR/SyncVault.app"
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
 ENT_APP="$SCRIPT_DIR/Sources/SyncVault/SyncVault.entitlements"
 ENT_FP="$SCRIPT_DIR/FileProvider/FileProvider.entitlements"
+ENT_FS="$SCRIPT_DIR/FinderSync/FinderSync.entitlements"
 SIGN_UPDATE="$SCRIPT_DIR/.build/artifacts/sparkle/Sparkle/bin/sign_update"
 
 VERSION=$(defaults read "$SCRIPT_DIR/Sources/SyncVault/Info.plist" CFBundleShortVersionString)
@@ -37,13 +38,13 @@ codesign --force --sign "$CERT" --timestamp --options runtime "$SPARKLE/Versions
 codesign --force --sign "$CERT" --timestamp --options runtime "$SPARKLE/Versions/B/Autoupdate"
 codesign --force --sign "$CERT" --timestamp --options runtime "$SPARKLE/Versions/B/Updater.app"
 codesign --force --sign "$CERT" --timestamp --options runtime "$SPARKLE"
+codesign --force --sign "$CERT" --timestamp --options runtime --entitlements "$ENT_FS" "$APP/Contents/PlugIns/SyncVaultFinderSync.appex"
 codesign --force --sign "$CERT" --timestamp --options runtime --entitlements "$ENT_FP" "$APP/Contents/PlugIns/SyncVaultFileProvider.appex"
 codesign --force --sign "$CERT" --timestamp --options runtime --entitlements "$ENT_APP" "$APP"
 
-# 4. Verify
-echo "→ Verifying..."
+# 4. Verify code signature (spctl runs after notarization)
+echo "→ Verifying code signature..."
 codesign --verify --deep --strict "$APP"
-spctl --assess --type execute --verbose "$APP" 2>&1
 
 # 5. Create ZIP with ditto (COPYFILE_DISABLE prevents ._ resource forks in zip)
 echo "→ Creating ZIP..."
@@ -70,7 +71,11 @@ xcrun notarytool submit /tmp/SyncVault-$VERSION.dmg --keychain-profile "notaryto
 xcrun stapler staple /tmp/SyncVault-$VERSION.dmg
 cp /tmp/SyncVault-$VERSION.dmg "$SCRIPT_DIR/SyncVault-$VERSION.dmg"
 
-# 9. Sparkle signature
+# 9. Verify notarization
+echo "→ Verifying notarization..."
+spctl --assess --type execute --verbose "$APP" 2>&1
+
+# 10. Sparkle signature
 echo "→ Sparkle signature:"
 "$SIGN_UPDATE" /tmp/SyncVault-$VERSION.zip
 
