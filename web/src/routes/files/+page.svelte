@@ -41,6 +41,54 @@
 	let loading = $state(false);
 	let selectedDate = $state<string | null>(null);
 	let selectedFile = $state<HistoryFile | null>(null);
+
+	// Sorting
+	type SortKey = 'name' | 'size' | 'version_num' | 'updated_at';
+	let sortKey = $state<SortKey>('name');
+	let sortAsc = $state(true);
+
+	function toggleSort(key: SortKey) {
+		if (sortKey === key) {
+			sortAsc = !sortAsc;
+		} else {
+			sortKey = key;
+			sortAsc = key === 'name'; // name defaults ascending, others descending
+		}
+	}
+
+	function sortedFiles(list: HistoryFile[]): HistoryFile[] {
+		// Directories always first
+		const dirs = list.filter(f => f.is_dir);
+		const regular = list.filter(f => !f.is_dir);
+
+		const compare = (a: HistoryFile, b: HistoryFile): number => {
+			let result = 0;
+			switch (sortKey) {
+				case 'name':
+					result = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+					break;
+				case 'size':
+					result = (a.size || 0) - (b.size || 0);
+					break;
+				case 'version_num':
+					result = (a.version_num || 0) - (b.version_num || 0);
+					break;
+				case 'updated_at':
+					result = (a.updated_at || '').localeCompare(b.updated_at || '');
+					break;
+			}
+			return sortAsc ? result : -result;
+		};
+
+		dirs.sort(compare);
+		regular.sort(compare);
+		return [...dirs, ...regular];
+	}
+
+	function sortIcon(key: SortKey): string {
+		if (sortKey !== key) return '↕';
+		return sortAsc ? '↑' : '↓';
+	}
 	let selectedFileDates = $state<string[]>([]);
 
 	// Timeline dimensions
@@ -599,8 +647,8 @@
 				<p class="text-sm mt-1.5" style="color: var(--text-tertiary);">Upload or sync to get started.</p>
 			</div>
 		{:else}
-			{@const userFiles = breadcrumbs.length <= 1 ? files.filter(f => !f._isTeam) : files}
-			{@const teamFiles = breadcrumbs.length <= 1 ? files.filter(f => f._isTeam) : []}
+			{@const userFiles = sortedFiles(breadcrumbs.length <= 1 ? files.filter(f => !f._isTeam) : files)}
+			{@const teamFiles = sortedFiles(breadcrumbs.length <= 1 ? files.filter(f => f._isTeam) : [])}
 
 			{#if breadcrumbs.length <= 1 && userFiles.length > 0}
 				<p class="px-1 mb-2 text-[10px] font-semibold uppercase tracking-widest" style="color: var(--text-tertiary);">My Files</p>
@@ -612,10 +660,10 @@
 					<thead>
 						<tr style="border-bottom: 1px solid var(--border);">
 							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider w-8" style="color: var(--text-tertiary);"></th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Name</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell" style="color: var(--text-tertiary);">Size</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">Version</th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell" style="color: var(--text-tertiary);">Date</th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider cursor-pointer select-none hover:text-white/60" style="color: var(--text-tertiary);" onclick={() => toggleSort('name')}>Name <span class="opacity-50">{sortIcon('name')}</span></th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell cursor-pointer select-none hover:text-white/60" style="color: var(--text-tertiary);" onclick={() => toggleSort('size')}>Size <span class="opacity-50">{sortIcon('size')}</span></th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell cursor-pointer select-none hover:text-white/60" style="color: var(--text-tertiary);" onclick={() => toggleSort('version_num')}>Version <span class="opacity-50">{sortIcon('version_num')}</span></th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell cursor-pointer select-none hover:text-white/60" style="color: var(--text-tertiary);" onclick={() => toggleSort('updated_at')}>Date <span class="opacity-50">{sortIcon('updated_at')}</span></th>
 							<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Actions</th>
 						</tr>
 					</thead>
