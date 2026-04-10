@@ -873,10 +873,10 @@ actor SyncEngine {
         return try await uploadViaBlocks(fileURL: fileURL, filename: filename, parentID: parentID, fileSize: fileSize)
     }
 
-    /// Upload a file by splitting it into 4 MB blocks, checking which exist, and uploading only missing ones.
-    /// No staging, no assembly — blocks go directly to content-addressable storage.
+    /// Upload a file by splitting it into blocks, checking which exist, and uploading only missing ones.
+    /// Block size scales with file size: 4 MB for small files, up to 64 MB for very large files.
     private func uploadViaBlocks(fileURL: URL, filename: String, parentID: String, fileSize: Int64, onBlockUploaded: ((Int64) async -> Void)? = nil) async throws -> String {
-        let blockSize = 4 * 1024 * 1024  // 4 MB — matches server storage block size
+        let blockSize = Self.blockSizeFor(fileSize: fileSize)
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer { handle.closeFile() }
 
@@ -979,6 +979,20 @@ actor SyncEngine {
             return true
         }) {}
         return hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Adaptive block size: larger files use larger blocks to reduce overhead.
+    /// - < 100 MB: 4 MB blocks (25 blocks max)
+    /// - 100 MB - 1 GB: 8 MB blocks (125 blocks max)
+    /// - 1 GB - 10 GB: 16 MB blocks (625 blocks max)
+    /// - > 10 GB: 64 MB blocks
+    static func blockSizeFor(fileSize: Int64) -> Int {
+        switch fileSize {
+        case ..<(100 * 1024 * 1024):       return 4 * 1024 * 1024   // 4 MB
+        case ..<(1024 * 1024 * 1024):      return 8 * 1024 * 1024   // 8 MB
+        case ..<(10 * 1024 * 1024 * 1024): return 16 * 1024 * 1024  // 16 MB
+        default:                           return 64 * 1024 * 1024  // 64 MB
+        }
     }
 
     private static func speed(bytes: Int64, since: Date) -> Double {
