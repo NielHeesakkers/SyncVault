@@ -9,8 +9,8 @@ actor APIClient {
     init(baseURL: String) {
         self.baseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 300
+        config.timeoutIntervalForRequest = 300
+        config.timeoutIntervalForResource = 3600
         config.httpMaximumConnectionsPerHost = 6
         self.session = URLSession(configuration: config)
     }
