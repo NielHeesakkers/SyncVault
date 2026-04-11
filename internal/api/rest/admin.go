@@ -356,14 +356,10 @@ func (s *Server) handleAdminStorage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var totalUsed, totalQuota int64
+	// Single query for total storage used (instead of N queries per user)
+	totalUsed := s.db.TotalStorageUsed()
+	var totalQuota int64
 	for _, u := range users {
-		used, err := s.db.StorageUsedByUser(u.ID)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not compute storage usage"})
-			return
-		}
-		totalUsed += used
 		totalQuota += u.QuotaBytes
 	}
 

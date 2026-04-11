@@ -28,46 +28,45 @@
 	let serverVersion = $state('');
 
 	onMount(async () => {
-		// Server health
-		try {
-			const res = await fetch('/api/health');
-			if (res.ok) {
-				const data = await res.json();
-				serverOnline = true;
-				serverVersion = data.version || '';
-			}
-		} catch {}
+		// Load everything in parallel — don't block on slow endpoints
+		const healthPromise = fetch('/api/health').then(r => r.ok ? r.json() : null).catch(() => null);
+		const storagePromise = api.get('/api/admin/storage').then(r => r.ok ? r.json() : null).catch(() => null);
+		const activityPromise = api.get('/api/activity?limit=10').then(r => r.ok ? r.json() : null).catch(() => null);
+		const tasksPromise = api.get('/api/tasks').then(r => r.ok ? r.json() : null).catch(() => null);
 
-		// Storage — try admin endpoint first (shows totals), fall back to user endpoint
-		try {
-			const adminRes = await api.get('/api/admin/storage');
-			if (adminRes.ok) {
-				const data = await adminRes.json();
-				storageUsed = data.used || 0;
-				storageQuota = data.total || 0;
-				trashSize = data.trash_size || 0;
-				versionsSize = data.versions_size || 0;
-			} else {
+		const [health, storage, activityData, tasksData] = await Promise.all([
+			healthPromise, storagePromise, activityPromise, tasksPromise
+		]);
+
+		// Server health
+		if (health) {
+			serverOnline = true;
+			serverVersion = health.version || '';
+		}
+
+		// Storage
+		if (storage) {
+			storageUsed = storage.used || 0;
+			storageQuota = storage.total || 0;
+			trashSize = storage.trash_size || 0;
+			versionsSize = storage.versions_size || 0;
+		} else {
+			try {
 				const res = await api.get('/api/me/storage');
 				if (res.ok) {
 					const data = await res.json();
 					storageUsed = data.used || 0;
 					storageQuota = data.quota || 0;
 				}
-			}
-		} catch {}
+			} catch {}
+		}
 		loading = false;
 
 		// Activity
-		try {
-			const res = await api.get('/api/activity?limit=10');
-			if (res.ok) {
-				const data = await res.json();
-				activity = data.events || data.activity || data || [];
-				if (!Array.isArray(activity)) activity = [];
-			}
-		} catch {}
-		// Fallback: if no activity, show recent file changes
+		if (activityData) {
+			activity = activityData.events || activityData.activity || activityData || [];
+			if (!Array.isArray(activity)) activity = [];
+		}
 		if (activity.length === 0) {
 			try {
 				const since = new Date(Date.now() - 30 * 86400000).toISOString();
@@ -87,13 +86,9 @@
 		activityLoading = false;
 
 		// Tasks
-		try {
-			const res = await api.get('/api/tasks');
-			if (res.ok) {
-				const data = await res.json();
-				tasks = Array.isArray(data) ? data : (data.tasks || []);
-			}
-		} catch {}
+		if (tasksData) {
+			tasks = Array.isArray(tasksData) ? tasksData : (tasksData.tasks || []);
+		}
 		tasksLoading = false;
 	});
 

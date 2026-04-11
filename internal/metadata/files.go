@@ -588,7 +588,16 @@ func (d *DB) TotalTrashSize() int64 {
 // TotalVersionsSize returns the total size of all non-latest versions (old versions that retention may clean up).
 func (d *DB) TotalVersionsSize() int64 {
 	var size int64
-	d.db.QueryRow(`SELECT COALESCE(SUM(v.size), 0) FROM versions v WHERE v.version_num < (SELECT MAX(v2.version_num) FROM versions v2 WHERE v2.file_id = v.file_id)`).Scan(&size)
+	d.db.QueryRow(`SELECT COALESCE(SUM(v.size), 0) FROM versions v
+		INNER JOIN (SELECT file_id, MAX(version_num) as max_v FROM versions GROUP BY file_id) m
+		ON v.file_id = m.file_id AND v.version_num < m.max_v`).Scan(&size)
+	return size
+}
+
+// TotalStorageUsed returns the total size of all non-deleted, non-directory files across all users.
+func (d *DB) TotalStorageUsed() int64 {
+	var size int64
+	d.db.QueryRow(`SELECT COALESCE(SUM(size), 0) FROM files WHERE is_dir = 0 AND deleted_at IS NULL`).Scan(&size)
 	return size
 }
 
