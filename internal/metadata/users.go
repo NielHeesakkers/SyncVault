@@ -19,6 +19,8 @@ type User struct {
 	Password           string
 	Role               string
 	QuotaBytes         int64
+	DisplayName        string
+	AvatarHash         string
 	TokenInvalidatedAt *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
@@ -62,7 +64,7 @@ func (d *DB) CreateUser(username, email, password, role string) (*User, error) {
 // GetUserByID returns the user with the given ID.
 func (d *DB) GetUserByID(id string) (*User, error) {
 	return d.scanUser(d.db.QueryRow(
-		`SELECT id, username, email, password, role, quota_bytes, token_invalidated_at, created_at, updated_at
+		`SELECT id, username, email, password, role, quota_bytes, token_invalidated_at, created_at, updated_at, display_name, avatar_hash
 		 FROM users WHERE id = ?`, id,
 	))
 }
@@ -70,7 +72,7 @@ func (d *DB) GetUserByID(id string) (*User, error) {
 // GetUserByUsername returns the user with the given username.
 func (d *DB) GetUserByUsername(username string) (*User, error) {
 	return d.scanUser(d.db.QueryRow(
-		`SELECT id, username, email, password, role, quota_bytes, token_invalidated_at, created_at, updated_at
+		`SELECT id, username, email, password, role, quota_bytes, token_invalidated_at, created_at, updated_at, display_name, avatar_hash
 		 FROM users WHERE username = ?`, username,
 	))
 }
@@ -78,7 +80,7 @@ func (d *DB) GetUserByUsername(username string) (*User, error) {
 // GetUserByEmail returns the user with the given email address.
 func (d *DB) GetUserByEmail(email string) (*User, error) {
 	return d.scanUser(d.db.QueryRow(
-		`SELECT id, username, email, password, role, quota_bytes, token_invalidated_at, created_at, updated_at
+		`SELECT id, username, email, password, role, quota_bytes, token_invalidated_at, created_at, updated_at, display_name, avatar_hash
 		 FROM users WHERE email = ?`, email,
 	))
 }
@@ -86,7 +88,7 @@ func (d *DB) GetUserByEmail(email string) (*User, error) {
 // ListUsers returns all users in the database.
 func (d *DB) ListUsers() ([]User, error) {
 	rows, err := d.db.Query(
-		`SELECT id, username, email, password, role, quota_bytes, token_invalidated_at, created_at, updated_at
+		`SELECT id, username, email, password, role, quota_bytes, token_invalidated_at, created_at, updated_at, display_name, avatar_hash
 		 FROM users ORDER BY username`,
 	)
 	if err != nil {
@@ -116,9 +118,10 @@ func (d *DB) UpdateUserPassword(userID, passwordHash string) error {
 func (d *DB) UpdateUser(user *User) error {
 	user.UpdatedAt = time.Now().UTC()
 	res, err := d.db.Exec(
-		`UPDATE users SET username=?, email=?, password=?, role=?, quota_bytes=?, updated_at=?
+		`UPDATE users SET username=?, email=?, password=?, role=?, quota_bytes=?, display_name=?, avatar_hash=?, updated_at=?
 		 WHERE id=?`,
 		user.Username, user.Email, user.Password, user.Role, user.QuotaBytes,
+		user.DisplayName, user.AvatarHash,
 		user.UpdatedAt.Format(time.RFC3339Nano),
 		user.ID,
 	)
@@ -180,7 +183,7 @@ func (d *DB) scanUser(row *sql.Row) (*User, error) {
 	var createdAt, updatedAt string
 	var tokenInvalidatedAt sql.NullString
 	err := row.Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role,
-		&u.QuotaBytes, &tokenInvalidatedAt, &createdAt, &updatedAt)
+		&u.QuotaBytes, &tokenInvalidatedAt, &createdAt, &updatedAt, &u.DisplayName, &u.AvatarHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
 	}
@@ -202,7 +205,7 @@ func (d *DB) scanUserRow(rows *sql.Rows) (*User, error) {
 	var createdAt, updatedAt string
 	var tokenInvalidatedAt sql.NullString
 	err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.Password, &u.Role,
-		&u.QuotaBytes, &tokenInvalidatedAt, &createdAt, &updatedAt)
+		&u.QuotaBytes, &tokenInvalidatedAt, &createdAt, &updatedAt, &u.DisplayName, &u.AvatarHash)
 	if err != nil {
 		return nil, fmt.Errorf("metadata: scan user row: %w", err)
 	}

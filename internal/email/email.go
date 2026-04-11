@@ -223,6 +223,17 @@ var quotaWarningTmpl = template.Must(template.New("quota_warning").Parse(fmt.Spr
 <p style="margin:16px 0 0;font-size:13px;color:#6b7280">Please free up space or contact your administrator.</p>
 `)))
 
+var shareNotificationTmpl = template.Must(template.New("share_notification").Parse(fmt.Sprintf(emailWrapper, `
+<h2 style="margin:0 0 16px;font-size:18px;font-weight:600;color:#111827">File Shared With You</h2>
+<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#374151"><strong>{{.SharedBy}}</strong> has shared a file with you:</p>
+<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:16px 0;text-align:center">
+<p style="margin:0;font-size:16px;font-weight:600;color:#1e40af">{{.FileName}}</p>
+</div>
+<div style="text-align:center;margin:24px 0">
+<a href="{{.ShareURL}}" style="display:inline-block;padding:12px 32px;background:#2563eb;color:#ffffff;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600">View File</a>
+</div>
+`)))
+
 // SendWelcome sends a welcome email with login credentials to a newly created user.
 // The pin parameter is optional; pass an empty string if no token was generated.
 func (s *Service) SendWelcome(toEmail, username, password, pin string) error {
@@ -383,4 +394,22 @@ func formatBytes(b int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+// SendShareNotification notifies a user that a file/folder has been shared with them.
+func (s *Service) SendShareNotification(toEmail, sharedByName, fileName, shareURL string) error {
+	if !s.enabled {
+		return nil
+	}
+	data := struct {
+		SharedBy string
+		FileName string
+		ShareURL string
+	}{sharedByName, fileName, shareURL}
+
+	body, err := renderTemplate(shareNotificationTmpl, data)
+	if err != nil {
+		return fmt.Errorf("render share notification template: %w", err)
+	}
+	return s.send(toEmail, fmt.Sprintf("SyncVault: %s shared \"%s\" with you", sharedByName, fileName), body)
 }

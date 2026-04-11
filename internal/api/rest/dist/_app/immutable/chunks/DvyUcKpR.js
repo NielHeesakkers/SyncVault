@@ -1,0 +1,1 @@
+import{K as f,q as u,L as _,M as o,m as t,N as g,O as i,y as l,x as d,z as m,P as p}from"./C6n_maKA.js";function x(n,r){let s=null,y=t;var a;if(t){s=m;for(var e=p(document.head);e!==null&&(e.nodeType!==g||e.data!==n);)e=i(e);if(e===null)l(!1);else{var E=i(e);e.remove(),d(E)}}t||(a=document.head.appendChild(f()));try{u(()=>r(a),_|o)}finally{y&&(l(!0),d(s))}}export{x as h};

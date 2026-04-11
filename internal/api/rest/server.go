@@ -82,6 +82,10 @@ func (s *Server) setupRoutes() {
 
 		r.Get("/api/me", s.handleMe)
 		r.Put("/api/me/password", s.handleChangeMyPassword)
+		r.Put("/api/me/profile", s.handleUpdateProfile)
+		r.Post("/api/me/avatar", s.handleUploadAvatar)
+		r.Get("/api/me/avatar", s.handleGetAvatar)
+		r.Get("/api/me/storage", s.handleMyStorage)
 
 		// Admin-only user creation.
 		r.With(auth.RequireAdmin).Post("/api/users", s.handleCreateUser)
@@ -231,10 +235,112 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleMe returns the current authenticated user's claims.
+// handleMe returns the current authenticated user's info including profile data.
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
-	writeJSON(w, http.StatusOK, claims)
+	user, err := s.db.GetUserByID(claims.UserID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, claims) // Fallback to claims
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"id":           user.ID,
+		"username":     user.Username,
+		"email":        user.Email,
+		"role":         user.Role,
+		"display_name": user.DisplayName,
+		"has_avatar":   user.AvatarHash != "",
+	})
+}
+
+// handleUpdateProfile handles PUT /api/me/profile — update display name and email.
+func (s *Server) handleUpdateProfile(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	var req struct {
+		DisplayName string `json:"display_name"`
+		Email       string `json:"email"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	user, err := s.db.GetUserByID(claims.UserID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+		return
+	}
+
+	if req.DisplayName != "" {
+		user.DisplayName = req.DisplayName
+	}
+	if req.Email != "" {
+		user.Email = req.Email
+	}
+	if err := s.db.UpdateUser(user); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update profile"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "profile updated"})
+}
+
+// handleUploadAvatar handles POST /api/me/avatar — upload user avatar image.
+func (s *Server) handleUploadAvatar(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	r.ParseMultipartForm(5 << 20) // 5 MB max
+	file, _, err := r.FormFile("avatar")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no file uploaded"})
+		return
+	}
+	defer file.Close()
+
+	// Store avatar in content-addressable storage
+	hash, _, storeErr := s.store.Put(file)
+	if storeErr != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not store avatar"})
+		return
+	}
+
+	user, err := s.db.GetUserByID(claims.UserID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+		return
+	}
+	user.AvatarHash = hash
+	if err := s.db.UpdateUser(user); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update avatar"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "avatar updated"})
+}
+
+// handleGetAvatar handles GET /api/me/avatar — serve avatar image.
+func (s *Server) handleGetAvatar(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	user, err := s.db.GetUserByID(claims.UserID)
+	if err != nil || user.AvatarHash == "" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	s.store.Get(user.AvatarHash, w)
+}
+
+// handleMyStorage handles GET /api/me/storage — own storage stats.
+func (s *Server) handleMyStorage(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	used, _ := s.db.StorageUsedByUser(claims.UserID)
+	user, _ := s.db.GetUserByID(claims.UserID)
+	quota := int64(0)
+	if user != nil {
+		quota = user.QuotaBytes
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"used":  used,
+		"quota": quota,
+	})
 }
 
 // writeJSON writes v as JSON with the given HTTP status code.

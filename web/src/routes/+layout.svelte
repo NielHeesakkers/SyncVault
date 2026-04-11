@@ -17,7 +17,8 @@
 		Shield,
 		KeyRound,
 		Bell,
-		LayoutDashboard
+		LayoutDashboard,
+		User
 	} from 'lucide-svelte';
 	import { Sun, Moon } from 'lucide-svelte';
 	import { api } from '$lib/api';
@@ -325,6 +326,12 @@
 							style="background: var(--bg-overlay); border-color: var(--border);"
 							onclick={(e) => e.stopPropagation()}
 						>
+							<a
+								href="/account"
+								class="flex items-center gap-2 w-full px-3 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors no-underline"
+							>
+								<User size={14} /> Account
+							</a>
 							<button
 								onclick={openChangePwd}
 								class="flex items-center gap-2 w-full px-3 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"

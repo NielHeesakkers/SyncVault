@@ -107,6 +107,29 @@ func (s *Server) handleCreateShare(w http.ResponseWriter, r *http.Request) {
 	if f, err := s.db.GetFileByID(sl.FileID); err == nil {
 		fileName = f.Name
 	}
+
+	// Send share notification email (async — don't block response)
+	if s.email != nil && s.email.Enabled() && fileName != "" {
+		go func() {
+			baseURL, _ := s.db.GetSetting("base_url")
+			if baseURL == "" {
+				baseURL = "https://" + r.Host
+			}
+			shareURL := fmt.Sprintf("%s/s/%s", baseURL, sl.Token)
+			sharer, _ := s.db.GetUserByID(claims.UserID)
+			sharerName := claims.Username
+			if sharer != nil && sharer.DisplayName != "" {
+				sharerName = sharer.DisplayName
+			}
+			// Notify the file owner if different from the sharer
+			if f, err := s.db.GetFileByID(sl.FileID); err == nil && f.OwnerID != claims.UserID {
+				if owner, err := s.db.GetUserByID(f.OwnerID); err == nil && owner.Email != "" {
+					_ = s.email.SendShareNotification(owner.Email, sharerName, fileName, shareURL)
+				}
+			}
+		}()
+	}
+
 	writeJSON(w, http.StatusCreated, toShareLinkResponse(*sl, fileName))
 }
 

@@ -61,6 +61,8 @@ func Open(path string) (*DB, error) {
 		`ALTER TABLE users ADD COLUMN token_invalidated_at TEXT`,
 		`ALTER TABLE files ADD COLUMN change_rank INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE files ADD COLUMN folder_size INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE users ADD COLUMN avatar_hash TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, m := range migrations {
 		if _, err := rawDB.Exec(m); err != nil {
