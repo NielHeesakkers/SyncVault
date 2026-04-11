@@ -133,6 +133,7 @@ class AppState: ObservableObject {
         self.serverURL = url
         self.username = username
         self.isConnected = true
+        self.lastError = nil
 
         // Save credentials in Keychain for auto-reconnect and re-auth
         KeychainHelper.save(key: "server_password", value: password)
@@ -650,6 +651,7 @@ class AppState: ObservableObject {
         isSyncing = true
         syncPending = false
         syncProgress = nil
+        lastError = nil  // Clear any stale error — sync is starting
         speedHistory = []  // Clear speed history for fresh sync cycle
         startSpeedTracking()
         defer {

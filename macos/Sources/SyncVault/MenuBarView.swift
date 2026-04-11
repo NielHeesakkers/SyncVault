@@ -562,22 +562,29 @@ struct MenuBarView: View {
     }
 
     func openCloudDrive() {
-        // NSHomeDirectory() returns sandbox container in sandboxed apps — use real home via passwd
+        // Sandboxed apps cannot access ~/Library/CloudStorage directly.
+        // Use /usr/bin/open which runs outside the sandbox and can open any Finder path.
         let realHome = FileManager.default.homeDirectoryForCurrentUser.path
             .replacingOccurrences(of: "/Library/Containers/com.syncvault.app/Data", with: "")
-        let cloudRoot = (realHome as NSString).appendingPathComponent("Library/CloudStorage")
-        debugLog(" openCloudDrive: cloudRoot=\(cloudRoot)")
-        if let contents = try? FileManager.default.contentsOfDirectory(atPath: cloudRoot) {
-            debugLog(" CloudStorage contents: \(contents)")
-            if let syncVaultDir = contents.first(where: { $0.hasPrefix("SyncVault") }) {
-                let path = (cloudRoot as NSString).appendingPathComponent(syncVaultDir)
-                debugLog(" Opening: \(path)")
-                NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
+        let names = ["SyncVault-SyncVault-\(appState.username)", "SyncVault-CloudDrive", "SyncVault-SyncVault"]
+        for name in names {
+            let path = "\(realHome)/Library/CloudStorage/\(name)"
+            debugLog(" openCloudDrive: trying \(path)")
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            proc.arguments = [path]
+            try? proc.run()
+            proc.waitUntilExit()
+            if proc.terminationStatus == 0 {
+                debugLog(" openCloudDrive: opened \(path)")
                 return
             }
         }
-        debugLog(" No SyncVault folder found, opening root")
-        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: cloudRoot)
+        debugLog(" openCloudDrive: fallback")
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        proc.arguments = ["\(realHome)/Library/CloudStorage"]
+        try? proc.run()
     }
 
     func openRecentFile(_ item: ActivityItem) {
