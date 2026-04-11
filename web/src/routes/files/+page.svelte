@@ -9,6 +9,7 @@
 	import { showToast } from '$lib/stores';
 	import { formatBytes, formatDate } from '$lib/utils';
 	import BreadcrumbNav from '$lib/components/BreadcrumbNav.svelte';
+	import FilePreview from '$lib/components/FilePreview.svelte';
 
 	interface HistoryFile {
 		id: string;
@@ -90,6 +91,7 @@
 		return sortAsc ? '↑' : '↓';
 	}
 	let selectedFileDates = $state<string[]>([]);
+	let previewFile = $state<HistoryFile | null>(null);
 
 	// Timeline dimensions
 	const TIMELINE_HEIGHT = 80;
@@ -674,7 +676,7 @@
 							<tr
 								class="transition-colors cursor-pointer file-row {selectedFile?.id === file.id ? 'selected-row' : ''}"
 								onclick={() => selectFile(file)}
-								ondblclick={() => { if (file.is_dir) navigateToFolder(file); }}
+								ondblclick={() => { if (file.is_dir) navigateToFolder(file); else previewFile = file; }}
 							>
 								<td class="px-4 py-3.5">
 									<svelte:component this={fi.icon} size={18} style="color: {fi.color};" />
@@ -986,6 +988,10 @@
 		</button>
 	{/snippet}
 </Modal>
+{/if}
+
+{#if previewFile}
+	<FilePreview file={previewFile} onclose={() => previewFile = null} />
 {/if}
 
 <style>
