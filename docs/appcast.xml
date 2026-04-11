@@ -3,6 +3,18 @@
   <channel>
     <title>SyncVault</title>
     <item>
+      <title>Version 2.7.0</title>
+      <sparkle:version>2.7.0</sparkle:version>
+      <sparkle:shortVersionString>2.7.0</sparkle:shortVersionString>
+      <pubDate>Fri, 11 Apr 2026 15:00:00 +0200</pubDate>
+      <enclosure
+        url="https://github.com/NielHeesakkers/SyncVault/releases/download/v2.7.0/SyncVault-2.7.0.zip"
+        length="2837308"
+        type="application/octet-stream"
+        sparkle:edSignature="Pb1CVL8bS/gkJTs3lW9KXbR/Rd0AzbEZnI96fSXFmF9ue5Wrdxa6qIDgSIIpe0oNUV/KCy1VZx8bEnF9VNxuCA==" />
+      <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+    </item>
+    <item>
       <title>Version 2.6.0</title>
       <sparkle:version>2.6.0</sparkle:version>
       <sparkle:shortVersionString>2.6.0</sparkle:shortVersionString>
