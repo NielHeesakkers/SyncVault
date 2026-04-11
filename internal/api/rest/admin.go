@@ -449,6 +449,16 @@ func (s *Server) handleAdminStorageFolders(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]interface{}{"folders": result})
 }
 
+// handleAdminStorageBreakdown handles GET /api/admin/storage/breakdown.
+// Returns storage usage grouped by file type category (Video, Images, Documents, etc.)
+func (s *Server) handleAdminStorageBreakdown(w http.ResponseWriter, r *http.Request) {
+	categories := s.db.StorageBreakdown()
+	if categories == nil {
+		categories = []metadata.StorageCategory{}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"categories": categories})
+}
+
 // handleDownloadToken handles GET /api/admin/users/{id}/token.
 // It returns the encrypted .syncvault file for the specified user.
 func (s *Server) handleDownloadToken(w http.ResponseWriter, r *http.Request) {

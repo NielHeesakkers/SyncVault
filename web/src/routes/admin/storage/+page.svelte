@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { HardDrive, User, FolderTree } from 'lucide-svelte';
+	import { HardDrive, User, FolderTree, PieChart } from 'lucide-svelte';
 	import { api } from '$lib/api';
 	import { showToast } from '$lib/stores';
 	import { formatBytes } from '$lib/utils';
@@ -25,20 +25,46 @@
 		size: number;
 	}
 
+	interface StorageCategory {
+		name: string;
+		count: number;
+		size: number;
+		percentage: number;
+	}
+
 	let overview = $state<StorageOverview | null>(null);
 	let users = $state<UserStorage[]>([]);
 	let teams = $state<TeamStorage[]>([]);
+	let breakdown = $state<StorageCategory[]>([]);
 	let loading = $state(true);
+
+	let breakdownTotal = $derived(breakdown.reduce((s, c) => s + c.size, 0));
+	let donutSegments = $derived(breakdown.map((cat, i) => ({
+		...cat,
+		offset: breakdown.slice(0, i).reduce((s, c) => s + (c.size / (breakdownTotal || 1) * 100), 0),
+		pct: cat.size / (breakdownTotal || 1) * 100
+	})));
+
+	const categoryColors: Record<string, string> = {
+		'Video': '#ec4899',
+		'Images': '#22c55e',
+		'Audio': '#ef4444',
+		'Code & Text': '#3b82f6',
+		'Documents': '#f59e0b',
+		'Archives': '#a855f7',
+		'Other': '#6b7280',
+	};
 
 	onMount(loadStorage);
 
 	async function loadStorage() {
 		loading = true;
 		try {
-			const [overviewRes, usersRes, teamsRes] = await Promise.all([
+			const [overviewRes, usersRes, teamsRes, breakdownRes] = await Promise.all([
 				api.get('/api/admin/storage'),
 				api.get('/api/admin/storage/users'),
-				api.get('/api/teams')
+				api.get('/api/teams'),
+				api.get('/api/admin/storage/breakdown')
 			]);
 
 			if (overviewRes.ok) {
@@ -49,6 +75,10 @@
 				users = (data.users || data || []).sort(
 					(a: UserStorage, b: UserStorage) => b.storage_used - a.storage_used
 				);
+			}
+			if (breakdownRes.ok) {
+				const data = await breakdownRes.json();
+				breakdown = data.categories || [];
 			}
 			if (teamsRes.ok) {
 				const data = await teamsRes.json();
@@ -137,6 +167,55 @@
 				<p class="text-sm" style="color: var(--text-tertiary);">Storage data unavailable.</p>
 			{/if}
 		</div>
+
+		<!-- Storage breakdown by file type -->
+		{#if breakdown.length > 0}
+		<div class="rounded-xl border p-6" style="background: var(--bg-elevated); border-color: var(--border);">
+			<div class="flex items-center gap-3 mb-5">
+				<div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: rgba(168,85,247,0.15);">
+					<PieChart size={16} class="text-purple-400" />
+				</div>
+				<h2 class="text-sm font-semibold text-[var(--text-primary)]">Storage by File Type</h2>
+			</div>
+
+			<div class="flex flex-col md:flex-row items-center gap-8">
+				<!-- SVG Donut Chart -->
+				<div class="relative w-48 h-48 flex-shrink-0">
+					<svg viewBox="0 0 42 42" class="w-full h-full">
+						{#each donutSegments as seg}
+							<circle
+								cx="21" cy="21" r="15.9155"
+								fill="none"
+								stroke={categoryColors[seg.name] || '#6b7280'}
+								stroke-width="3.5"
+								stroke-dasharray="{seg.pct} {100 - seg.pct}"
+								stroke-dashoffset="{-seg.offset}"
+								transform="rotate(-90 21 21)"
+								class="transition-all duration-300"
+							/>
+						{/each}
+					</svg>
+					<div class="absolute inset-0 flex flex-col items-center justify-center">
+						<span class="text-lg font-bold" style="color: var(--text-primary);">{breakdown.length}</span>
+						<span class="text-[10px]" style="color: var(--text-tertiary);">categories</span>
+					</div>
+				</div>
+
+				<!-- Legend + details -->
+				<div class="flex-1 w-full space-y-2">
+					{#each breakdown as cat}
+						<div class="flex items-center gap-3 py-1.5">
+							<div class="w-3 h-3 rounded-sm flex-shrink-0" style="background: {categoryColors[cat.name] || '#6b7280'};"></div>
+							<span class="text-sm flex-1" style="color: var(--text-secondary);">{cat.name}</span>
+							<span class="text-xs tabular-nums" style="color: var(--text-tertiary);">{cat.count} files</span>
+							<span class="text-sm font-medium tabular-nums w-20 text-right" style="color: var(--text-primary);">{formatBytes(cat.size)}</span>
+							<span class="text-xs tabular-nums w-12 text-right" style="color: var(--text-tertiary);">{cat.percentage.toFixed(1)}%</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+		</div>
+		{/if}
 
 		<!-- Per user -->
 		<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">

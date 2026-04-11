@@ -193,6 +193,7 @@ func (s *Server) setupRoutes() {
 			r.Get("/api/admin/storage", s.handleAdminStorage)
 			r.Get("/api/admin/storage/users", s.handleAdminStorageUsers)
 			r.Get("/api/admin/storage/folders", s.handleAdminStorageFolders)
+			r.Get("/api/admin/storage/breakdown", s.handleAdminStorageBreakdown)
 			r.Get("/api/admin/activity", s.handleAdminActivity)
 			r.Get("/api/admin/settings", s.handleAdminGetSettings)
 			r.Put("/api/admin/settings", s.handleAdminPutSettings)

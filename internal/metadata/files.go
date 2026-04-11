@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -633,6 +634,81 @@ func (d *DB) StorageUsedByUser(userID string) (int64, error) {
 		return 0, nil
 	}
 	return total.Int64, nil
+}
+
+// StorageCategory holds aggregated storage stats for a file type category.
+type StorageCategory struct {
+	Name       string `json:"name"`
+	Count      int    `json:"count"`
+	Size       int64  `json:"size"`
+	Percentage float64 `json:"percentage"`
+}
+
+// StorageBreakdown returns storage usage grouped by file type category.
+func (d *DB) StorageBreakdown() []StorageCategory {
+	rows, err := d.db.Query(`SELECT COALESCE(mime_type, ''), COUNT(*), COALESCE(SUM(size), 0) FROM files WHERE is_dir = 0 AND deleted_at IS NULL GROUP BY mime_type`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	// Aggregate by category
+	catMap := map[string]StorageCategory{}
+	var total int64
+	for rows.Next() {
+		var mime string
+		var count int
+		var size int64
+		if rows.Scan(&mime, &count, &size) != nil {
+			continue
+		}
+		cat := mimeToCategory(mime)
+		entry := catMap[cat]
+		entry.Name = cat
+		entry.Count += count
+		entry.Size += size
+		catMap[cat] = entry
+		total += size
+	}
+
+	// Convert to slice with percentages, sorted by size desc
+	result := make([]StorageCategory, 0, len(catMap))
+	for _, c := range catMap {
+		if total > 0 {
+			c.Percentage = float64(c.Size) / float64(total) * 100
+		}
+		result = append(result, c)
+	}
+	// Sort by size descending
+	for i := 0; i < len(result); i++ {
+		for j := i + 1; j < len(result); j++ {
+			if result[j].Size > result[i].Size {
+				result[i], result[j] = result[j], result[i]
+			}
+		}
+	}
+	return result
+}
+
+func mimeToCategory(mime string) string {
+	switch {
+	case strings.HasPrefix(mime, "video/"):
+		return "Video"
+	case strings.HasPrefix(mime, "image/"):
+		return "Images"
+	case strings.HasPrefix(mime, "audio/"):
+		return "Audio"
+	case strings.HasPrefix(mime, "text/"), strings.Contains(mime, "javascript"), strings.Contains(mime, "json"), strings.Contains(mime, "xml"), strings.Contains(mime, "yaml"):
+		return "Code & Text"
+	case strings.Contains(mime, "pdf"), strings.Contains(mime, "document"), strings.Contains(mime, "msword"), strings.Contains(mime, "presentation"), strings.Contains(mime, "spreadsheet"), strings.Contains(mime, "officedocument"):
+		return "Documents"
+	case strings.Contains(mime, "zip"), strings.Contains(mime, "compressed"), strings.Contains(mime, "archive"), strings.Contains(mime, "tar"), strings.Contains(mime, "gzip"):
+		return "Archives"
+	case mime == "" || mime == "application/octet-stream":
+		return "Other"
+	default:
+		return "Other"
+	}
 }
 
 // FolderSizeEntry holds a folder's ID, name, and total size of its contents.
