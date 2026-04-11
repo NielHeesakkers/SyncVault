@@ -219,7 +219,7 @@ func (s *Server) setupRoutes() {
 	r.NotFound(ServeSPA().ServeHTTP)
 }
 
-const AppVersion = "2.6.0"
+const AppVersion = "2.7.0"
 
 // handleHealth returns a simple health check response, including storage status.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

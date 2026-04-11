@@ -1,11 +1,11 @@
 {
-  "version": "2.6.0",
+  "version": "2.7.0",
   "min_version": "1.0",
   "release_date": "2026-04-10",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.6.0/SyncVault-2.6.0.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.7.0/SyncVault-2.7.0.dmg",
   "history": [
     {
-      "version": "2.6.0",
+      "version": "2.7.0",
       "date": "2026-04-10",
       "changes": [
         "Menu bar redesign: clear status header, file type icons, per-task progress",

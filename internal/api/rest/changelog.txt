@@ -1,3 +1,15 @@
+## [2.7.0] — 2026-04-11
+- File preview: code/text with syntax highlighting, images, PDF, video, audio
+- User profile page: avatar upload, display name, email, storage usage
+- Storage breakdown: donut chart by file type (Video, Images, Documents, etc.)
+- Email notifications: auto-notify when files are shared
+- Sortable columns in file browser (name, size, version, date)
+- Light mode fix: all pages readable in light and dark mode
+- Security: path traversal fix, CORS, rate limiting, share auth, settings whitelist
+- Performance: SQLite 8 connections, 256MB mmap, composite indexes, parallel dashboard
+- Small file optimization: direct upload for files < 1MB (3→1 round-trip)
+- SPA caching: immutable assets cached 1 year, compression for HTML/CSS/JS
+
 ## [2.6.0] — 2026-04-10
 - Menu bar redesign: clear status, file type icons, per-task progress
 - Fix file scanning: was skipping entire folders due to skipDescendants on files
