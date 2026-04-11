@@ -482,7 +482,7 @@ struct MenuBarView: View {
         if !task.isEnabled { return "paused" }
         if task.mode == .onDemand { return "on-demand" }
         if appState.isSyncing && appState.activeSyncTaskName == task.remoteFolderName { return "syncing" }
-        return "idle"
+        return "synced"
     }
 
     func fileTypeIcon(for filename: String) -> (symbol: String, color: Color) {
