@@ -184,7 +184,7 @@
 				<div class="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
 					<Shield size={14} class="text-white" />
 				</div>
-				<span class="text-sm font-semibold tracking-tight text-white">SyncVault</span>
+				<span class="text-sm font-semibold tracking-tight" style="color: var(--text-primary);">SyncVault</span>
 			</div>
 
 			<!-- Navigation -->
@@ -196,8 +196,8 @@
 								href={item.href}
 								class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 relative
 								{isActive(item.href)
-									? 'text-white'
-									: 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'}"
+									? 'text-[var(--text-primary)]'
+									: 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}"
 								style={isActive(item.href) ? 'background: var(--sidebar-active-bg);' : ''}
 							>
 								{#if isActive(item.href)}
@@ -222,8 +222,8 @@
 										href={item.href}
 										class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 relative
 										{isActive(item.href)
-											? 'text-white'
-											: 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'}"
+											? 'text-[var(--text-primary)]'
+											: 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}"
 										style={isActive(item.href) ? 'background: var(--sidebar-active-bg);' : ''}
 									>
 										{#if isActive(item.href)}
@@ -245,7 +245,7 @@
 				<div class="px-1 mb-1 flex items-center gap-1">
 					<button
 						onclick={() => theme.toggle()}
-						class="flex items-center justify-center w-8 h-8 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/[0.04] transition-all duration-150"
+						class="flex items-center justify-center w-8 h-8 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-all duration-150"
 						title={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
 					>
 						{#if $theme === 'dark'}
@@ -257,7 +257,7 @@
 					<div class="relative inline-block">
 						<button
 							onclick={(e) => { e.stopPropagation(); showNotifications = !showNotifications; if (showNotifications) { markAllRead(); } }}
-							class="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-all duration-150 text-white/40 hover:text-white/70 hover:bg-white/[0.04]"
+							class="flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-all duration-150 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
 						>
 							<Bell size={15} />
 							<span class="text-xs">Notifications</span>
@@ -287,7 +287,7 @@
 													<button onclick={() => acceptNotification(notif.id)}
 														class="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-500 transition-colors">Accept</button>
 													<button onclick={() => declineNotification(notif.id)}
-														class="px-3 py-1 text-xs font-medium border rounded-md hover:bg-white/5 transition-colors" style="color: var(--text-secondary); border-color: var(--border);">Decline</button>
+														class="px-3 py-1 text-xs font-medium border rounded-md hover:bg-[var(--bg-hover)] transition-colors" style="color: var(--text-secondary); border-color: var(--border);">Decline</button>
 												</div>
 											{:else if notif.acted}
 												<span class="text-xs text-green-500 mt-1 inline-block">Accepted</span>
@@ -304,18 +304,18 @@
 				<div class="relative">
 					<button
 						onclick={(e) => { e.stopPropagation(); userMenuOpen = !userMenuOpen; }}
-						class="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg transition-all duration-150 hover:bg-white/[0.04] group"
+						class="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg transition-all duration-150 hover:bg-[var(--bg-hover)] group"
 					>
 						<div class="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0">
 							{getUserInitials(user?.username)}
 						</div>
 						<div class="flex-1 min-w-0 text-left">
-							<p class="text-xs font-medium text-white/80 truncate">{user?.username ?? ''}</p>
+							<p class="text-xs font-medium text-[var(--text-primary)] truncate">{user?.username ?? ''}</p>
 							{#if serverVersion}
-								<p class="text-[10px] text-white/25">v{serverVersion}</p>
+								<p class="text-[10px] text-[var(--text-tertiary)]">v{serverVersion}</p>
 							{/if}
 						</div>
-						<ChevronDown size={12} class="text-white/30 group-hover:text-white/50 transition-colors flex-shrink-0" />
+						<ChevronDown size={12} class="text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)] transition-colors flex-shrink-0" />
 					</button>
 
 					{#if userMenuOpen}
@@ -327,7 +327,7 @@
 						>
 							<button
 								onclick={openChangePwd}
-								class="flex items-center gap-2 w-full px-3 py-2 text-sm text-white/60 hover:text-white hover:bg-white/[0.05] transition-colors"
+								class="flex items-center gap-2 w-full px-3 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
 							>
 								<KeyRound size={14} /> Change Password
 							</button>
@@ -380,7 +380,7 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showChangePwd = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all duration-150" style="border-color: var(--border);">Cancel</button>
+			<button onclick={() => (showChangePwd = false)} class="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] border rounded-lg hover:bg-[var(--bg-hover)] transition-all duration-150" style="border-color: var(--border);">Cancel</button>
 			<button
 				onclick={doChangePassword}
 				disabled={changingPwd || !changePwdForm.current_password || !changePwdForm.new_password || changePwdForm.new_password !== changePwdForm.confirm_password}

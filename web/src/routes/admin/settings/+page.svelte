@@ -416,7 +416,7 @@
 
 <div class="p-6 max-w-3xl" style="background: var(--bg-base); min-height: 100%;">
 	<div class="mb-6">
-		<h1 class="text-base font-semibold text-white">Settings</h1>
+		<h1 class="text-base font-semibold" style="color: var(--text-primary);">Settings</h1>
 		<p class="text-sm mt-1" style="color: var(--text-tertiary);">Server configuration and system info.</p>
 	</div>
 
@@ -449,7 +449,7 @@
 		<div class="space-y-4">
 			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 				<div class="px-5 py-4 border-b" style="border-color: var(--border);">
-					<h3 class="text-sm font-semibold text-white/70">Server</h3>
+					<h3 class="text-sm font-semibold text-[var(--text-secondary)]">Server</h3>
 				</div>
 				<div class="px-5 py-4">
 					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);" for="base-url">Base URL</label>
@@ -460,7 +460,7 @@
 
 			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 				<div class="px-5 py-4 border-b" style="border-color: var(--border);">
-					<h3 class="text-sm font-semibold text-white/70">Trash</h3>
+					<h3 class="text-sm font-semibold text-[var(--text-secondary)]">Trash</h3>
 				</div>
 				<div class="px-5 py-4">
 					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);" for="trash-days">Retention period (days)</label>
@@ -483,7 +483,7 @@
 			<div class="px-5 py-5 space-y-5">
 				<div class="flex items-center justify-between">
 					<div>
-						<p class="text-sm font-medium text-white/70">Enable SMTP</p>
+						<p class="text-sm font-medium text-[var(--text-secondary)]">Enable SMTP</p>
 						<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Send emails for welcome, password reset, quota warnings</p>
 					</div>
 					<button role="switch" aria-checked={smtpEnabled}
@@ -545,13 +545,13 @@
 		<div class="fixed inset-0 z-50 flex items-center justify-center" style="background: rgba(0,0,0,0.70); backdrop-filter: blur(4px);" onclick={() => (showTestEmail = false)}>
 			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 			<div class="rounded-xl shadow-2xl border p-6 w-96 space-y-4" style="background: var(--bg-overlay); border-color: var(--border);" onclick={(e) => e.stopPropagation()}>
-				<h3 class="text-base font-semibold text-white">Send Test Email</h3>
+				<h3 class="text-base font-semibold" style="color: var(--text-primary);">Send Test Email</h3>
 				<div>
 					<label class="block text-xs font-medium mb-1.5" style="color: var(--text-secondary);" for="test-email">Email address</label>
 					<input id="test-email" type="email" bind:value={testEmailAddress} placeholder="you@example.com" />
 				</div>
 				<div class="flex justify-end gap-2.5">
-					<button onclick={() => (showTestEmail = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Cancel</button>
+					<button onclick={() => (showTestEmail = false)} class="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] border rounded-lg hover:bg-[var(--bg-hover)] transition-all" style="border-color: var(--border);">Cancel</button>
 					<button onclick={sendTestEmail} disabled={testing || !testEmailAddress}
 						class="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-all duration-200"
 						style="{emailResult === 'success' ? 'background: #22c55e;' : emailResult === 'error' ? 'background: #ef4444;' : 'background: #2563eb;'}">
@@ -569,7 +569,7 @@
 				<div class="px-5 py-5">
 					<div class="flex items-center justify-between mb-4">
 						<div>
-							<p class="text-sm font-medium text-white/70">Automatic backup</p>
+							<p class="text-sm font-medium text-[var(--text-secondary)]">Automatic backup</p>
 							<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Creates a backup of all settings, users, teams, and metadata</p>
 						</div>
 						<button role="switch" aria-checked={backupAutoEnabled}
@@ -597,7 +597,7 @@
 					<div class="flex items-center gap-2">
 						<input type="file" accept=".zip" bind:this={fileInput} onchange={uploadRestore} class="hidden" />
 						<button onclick={() => fileInput.click()}
-							class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">
+							class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-[var(--text-secondary)] border rounded-lg hover:bg-[var(--bg-hover)] transition-all" style="border-color: var(--border);">
 							<Upload size={13} /> Restore from file
 						</button>
 						<button onclick={createBackup} disabled={backupCreating}
@@ -623,7 +623,7 @@
 						{#each backups as backup}
 							<tr class="backup-row">
 								<td class="px-4 py-3.5">
-									<span class="text-sm font-medium text-white/70">{backup.name}</span>
+									<span class="text-sm font-medium text-[var(--text-secondary)]">{backup.name}</span>
 								</td>
 								<td class="px-4 py-3.5">
 									<span class="text-sm" style="color: var(--text-tertiary);">{formatBytes(backup.size)}</span>
@@ -638,7 +638,7 @@
 											<Download size={13} /> Download
 										</button>
 										<button onclick={() => restoreBackup(backup.name)} title="Restore"
-											class="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md transition-all text-white/50 hover:bg-white/5">
+											class="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md transition-all text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)]">
 											<Upload size={13} /> Restore
 										</button>
 										<button onclick={() => deleteBackup(backup.name)} title="Delete"
@@ -661,17 +661,17 @@
 			<!-- Calendar -->
 			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 				<div class="px-5 py-4 border-b" style="border-color: var(--border);">
-					<h3 class="text-sm font-semibold text-white/70">Select cutoff date</h3>
-					<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Files and versions created <strong class="text-white/50">before</strong> the selected date will be deleted.</p>
+					<h3 class="text-sm font-semibold text-[var(--text-secondary)]">Select cutoff date</h3>
+					<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Files and versions created <strong class="text-[var(--text-tertiary)]">before</strong> the selected date will be deleted.</p>
 				</div>
 				<div class="px-5 py-4">
 					<!-- Month navigation -->
 					<div class="flex items-center justify-between mb-3">
-						<button onclick={prevMonth} class="p-1 rounded hover:bg-white/5 transition-colors" style="color: var(--text-secondary);">
+						<button onclick={prevMonth} class="p-1 rounded hover:bg-[var(--bg-hover)] transition-colors" style="color: var(--text-secondary);">
 							<ChevronLeft size={16} />
 						</button>
-						<span class="text-sm font-medium text-white/70">{MONTH_NAMES[calendarViewMonth]} {calendarViewYear}</span>
-						<button onclick={nextMonth} class="p-1 rounded hover:bg-white/5 transition-colors" style="color: var(--text-secondary);">
+						<span class="text-sm font-medium text-[var(--text-secondary)]">{MONTH_NAMES[calendarViewMonth]} {calendarViewYear}</span>
+						<button onclick={nextMonth} class="p-1 rounded hover:bg-[var(--bg-hover)] transition-colors" style="color: var(--text-secondary);">
 							<ChevronRight size={16} />
 						</button>
 					</div>
@@ -710,7 +710,7 @@
 
 					{#if cleanupSelectedDate}
 						<p class="mt-3 text-xs" style="color: var(--text-tertiary);">
-							Selected: <span class="font-semibold text-white/60">{cleanupSelectedDate}</span>
+							Selected: <span class="font-semibold text-[var(--text-secondary)]">{cleanupSelectedDate}</span>
 						</p>
 					{/if}
 				</div>
@@ -722,14 +722,14 @@
 					<label class="flex items-center gap-3 cursor-pointer">
 						<input type="checkbox" bind:checked={cleanupIncludeVersions} class="w-4 h-4 rounded accent-blue-500" />
 						<div>
-							<p class="text-sm font-medium text-white/70">Include old versions</p>
+							<p class="text-sm font-medium text-[var(--text-secondary)]">Include old versions</p>
 							<p class="text-xs" style="color: var(--text-tertiary);">Also delete stored file versions created before the cutoff date</p>
 						</div>
 					</label>
 					<label class="flex items-center gap-3 cursor-pointer">
 						<input type="checkbox" bind:checked={cleanupOnlyDeleted} class="w-4 h-4 rounded accent-blue-500" />
 						<div>
-							<p class="text-sm font-medium text-white/70">Only deleted files (trash)</p>
+							<p class="text-sm font-medium text-[var(--text-secondary)]">Only deleted files (trash)</p>
 							<p class="text-xs" style="color: var(--text-tertiary);">Only target files that are already in the trash</p>
 						</div>
 					</label>
@@ -740,7 +740,7 @@
 			{#if cleanupSelectedDate}
 			<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 				<div class="px-5 py-4">
-					<h3 class="text-sm font-semibold text-white/70 mb-2">Preview</h3>
+					<h3 class="text-sm font-semibold text-[var(--text-secondary)] mb-2">Preview</h3>
 					{#if cleanupPreviewLoading}
 						<div class="flex items-center gap-2 text-sm" style="color: var(--text-tertiary);">
 							<span class="animate-spin inline-block w-3 h-3 border-2 border-white/20 border-t-white/60 rounded-full"></span>
@@ -748,9 +748,9 @@
 						</div>
 					{:else if cleanupPreview}
 						<p class="text-sm" style="color: var(--text-secondary);">
-							<span class="font-semibold text-white/75">{cleanupPreview.files_count.toLocaleString()}</span> files,
-							<span class="font-semibold text-white/75">{cleanupPreview.versions_count.toLocaleString()}</span> versions,
-							<span class="font-semibold text-white/75">{formatBytes(cleanupPreview.total_bytes)}</span> will be deleted.
+							<span class="font-semibold text-[var(--text-primary)]">{cleanupPreview.files_count.toLocaleString()}</span> files,
+							<span class="font-semibold text-[var(--text-primary)]">{cleanupPreview.versions_count.toLocaleString()}</span> versions,
+							<span class="font-semibold text-[var(--text-primary)]">{formatBytes(cleanupPreview.total_bytes)}</span> will be deleted.
 						</p>
 					{:else}
 						<p class="text-sm" style="color: var(--text-tertiary);">No data.</p>
@@ -783,7 +783,7 @@
 	{:else if activeTab === 'changelog'}
 		<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 			<div class="px-5 py-4 border-b" style="border-color: var(--border);">
-				<p class="text-sm" style="color: var(--text-tertiary);">Current version: <span class="font-semibold text-white/80">{currentVersion || 'unknown'}</span></p>
+				<p class="text-sm" style="color: var(--text-tertiary);">Current version: <span class="font-semibold text-[var(--text-primary)]">{currentVersion || 'unknown'}</span></p>
 			</div>
 			<div>
 				{#if changelogVersions.length === 0}
@@ -792,7 +792,7 @@
 					{#each changelogVersions as ver, i}
 						<div class="px-5 py-4 {i < changelogVersions.length - 1 ? 'border-b' : ''}" style="border-color: var(--border);">
 							<div class="flex items-center gap-3 mb-2">
-								<span class="text-sm font-bold text-white/80">v{ver.version}</span>
+								<span class="text-sm font-bold text-[var(--text-primary)]">v{ver.version}</span>
 								<span class="text-xs" style="color: var(--text-tertiary);">{ver.date}</span>
 							</div>
 							<ul class="space-y-1">
@@ -813,9 +813,9 @@
 	{:else if activeTab === 'opensource'}
 		<div class="rounded-xl border overflow-hidden mb-4" style="background: var(--bg-elevated); border-color: var(--border);">
 			<div class="px-5 py-5">
-				<h3 class="text-sm font-semibold text-white/80 mb-2">About SyncVault</h3>
+				<h3 class="text-sm font-semibold text-[var(--text-primary)] mb-2">About SyncVault</h3>
 				<p class="text-sm" style="color: var(--text-secondary);">SyncVault is an open-source file sync and backup solution, built as an alternative to Synology Drive.</p>
-				<p class="text-sm mt-2" style="color: var(--text-secondary);">Created by <span class="font-medium text-white/70">Niel Heesakkers</span> — vibe-coded with <a href="https://claude.ai" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 transition-colors">Claude</a> by Anthropic.</p>
+				<p class="text-sm mt-2" style="color: var(--text-secondary);">Created by <span class="font-medium text-[var(--text-secondary)]">Niel Heesakkers</span> — vibe-coded with <a href="https://claude.ai" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 transition-colors">Claude</a> by Anthropic.</p>
 				<p class="text-sm mt-3" style="color: var(--text-tertiary);">Version {currentVersion || 'unknown'}</p>
 				<p class="text-sm mt-2" style="color: var(--text-tertiary);">Contact: <a href="mailto:development@heesakkers.com" class="text-blue-400 hover:text-blue-300 transition-colors">development@heesakkers.com</a></p>
 			</div>
@@ -823,7 +823,7 @@
 
 		<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 			<div class="px-5 py-4 border-b" style="border-color: var(--border);">
-				<h3 class="text-sm font-semibold text-white/70">Open Source Libraries</h3>
+				<h3 class="text-sm font-semibold text-[var(--text-secondary)]">Open Source Libraries</h3>
 			</div>
 			<table class="min-w-full">
 				<thead>

@@ -111,7 +111,7 @@
 
 <div class="p-6" style="background: var(--bg-base); min-height: 100%;">
 	<div class="mb-6">
-		<h1 class="text-base font-semibold text-white">Activity Log</h1>
+		<h1 class="text-base font-semibold" style="color: var(--text-primary);">Activity Log</h1>
 		<p class="text-sm mt-1" style="color: var(--text-tertiary);">Audit trail of all user actions.</p>
 	</div>
 
@@ -148,7 +148,7 @@
 				<button onclick={applyFilters} class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg px-3 py-2 transition-all duration-150">
 					<Filter size={13} /> Apply
 				</button>
-				<button onclick={clearFilters} class="text-sm text-white/50 hover:text-white/80 border rounded-lg px-3 py-2 hover:bg-white/5 transition-all duration-150" style="border-color: var(--border);">
+				<button onclick={clearFilters} class="text-sm text-[var(--text-secondary)] border rounded-lg px-3 py-2 hover:bg-[var(--bg-hover)] transition-all duration-150" style="border-color: var(--border);">
 					Clear
 				</button>
 			</div>
@@ -203,7 +203,7 @@
 									<div class="w-6 h-6 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-400 text-[10px] font-bold flex-shrink-0">
 										{(log.username ?? '?')[0].toUpperCase()}
 									</div>
-									<span class="text-sm text-white/70">{log.username ?? log.user_id ?? '—'}</span>
+									<span class="text-sm text-[var(--text-secondary)]">{log.username ?? log.user_id ?? '—'}</span>
 								</div>
 							</td>
 							<td class="px-4 py-3.5">
@@ -214,7 +214,7 @@
 							<td class="px-4 py-3.5 hidden sm:table-cell">
 								{#if log.resource_name}
 									<div>
-										<p class="text-sm text-white/60 truncate max-w-48">{log.resource_name}</p>
+										<p class="text-sm text-[var(--text-secondary)] truncate max-w-48">{log.resource_name}</p>
 										{#if log.resource_type}
 											<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">{log.resource_type}</p>
 										{/if}

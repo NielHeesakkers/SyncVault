@@ -251,7 +251,7 @@
 <div class="p-6 space-y-5" style="background: var(--bg-base); min-height: 100%;">
 	<div class="flex items-center justify-between">
 		<div>
-			<h1 class="text-base font-semibold text-white">Teams</h1>
+			<h1 class="text-base font-semibold" style="color: var(--text-primary);">Teams</h1>
 			<p class="text-sm mt-1" style="color: var(--text-tertiary);">Manage team access and permissions.</p>
 		</div>
 		<button
@@ -277,7 +277,7 @@
 		{:else if teams.length === 0}
 			<div class="text-center py-16">
 				<FolderTree size={40} style="color: var(--text-tertiary); margin: 0 auto 12px;" />
-				<p class="text-sm font-medium text-white/40">No teams yet</p>
+				<p class="text-sm font-medium text-[var(--text-tertiary)]">No teams yet</p>
 				<p class="text-xs mt-1" style="color: var(--text-tertiary);">Create a team to manage group access.</p>
 			</div>
 		{:else}
@@ -296,7 +296,7 @@
 									<ChevronRight size={14} style="color: var(--text-tertiary); flex-shrink: 0;" />
 								{/if}
 								<FolderTree size={16} class="text-blue-400 flex-shrink-0" />
-								<span class="text-sm font-medium text-white/80 truncate">{team.name}</span>
+								<span class="text-sm font-medium text-[var(--text-primary)] truncate">{team.name}</span>
 								<span class="text-xs flex-shrink-0" style="color: var(--text-tertiary);">
 									{team.member_count ?? teamMembers[team.id]?.length ?? 0} members
 								</span>
@@ -355,7 +355,7 @@
 											{#each teamMembers[team.id] as member}
 												<tr class="member-row">
 													<td class="px-10 py-2.5">
-														<span class="text-sm text-white/60">{member.username}</span>
+														<span class="text-sm text-[var(--text-secondary)]">{member.username}</span>
 													</td>
 													<td class="px-4 py-2.5">
 														<select
@@ -403,7 +403,7 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showCreate = false)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: var(--bg-active); border: 1px solid var(--border);">Cancel</button>
+			<button onclick={() => (showCreate = false)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-[var(--text-secondary)]" style="background: var(--bg-active); border: 1px solid var(--border);">Cancel</button>
 			<button onclick={createTeam} disabled={creating || !newTeamName.trim()} class="rounded-lg px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-all duration-150">
 				{creating ? 'Creating…' : 'Create'}
 			</button>
@@ -436,7 +436,7 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showAddMember = null)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: var(--bg-active); border: 1px solid var(--border);">Cancel</button>
+			<button onclick={() => (showAddMember = null)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-[var(--text-secondary)]" style="background: var(--bg-active); border: 1px solid var(--border);">Cancel</button>
 			<button onclick={addMember} disabled={addingMember || !addMemberUserId} class="rounded-lg px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-all duration-150">
 				{addingMember ? 'Adding…' : 'Add Member'}
 			</button>
@@ -467,7 +467,7 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showEditTeam = false)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: var(--bg-active); border: 1px solid var(--border);">Cancel</button>
+			<button onclick={() => (showEditTeam = false)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-[var(--text-secondary)]" style="background: var(--bg-active); border: 1px solid var(--border);">Cancel</button>
 			<button onclick={saveEditTeam} disabled={editingTeam || !editTeamName.trim()} class="rounded-lg px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-all duration-150">
 				{editingTeam ? 'Saving…' : 'Save'}
 			</button>
@@ -495,7 +495,7 @@
 					>
 						<input type="radio" bind:group={deleteAction} value="delete" />
 						<div>
-							<span class="text-sm font-medium text-white/70">Delete folder and all files</span>
+							<span class="text-sm font-medium text-[var(--text-secondary)]">Delete folder and all files</span>
 							<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Everything in Team-{deleteTeamTarget.name} will be permanently deleted</p>
 						</div>
 					</label>
@@ -506,7 +506,7 @@
 					>
 						<input type="radio" bind:group={deleteAction} value="transfer" />
 						<div>
-							<span class="text-sm font-medium text-white/70">Transfer folder to a user</span>
+							<span class="text-sm font-medium text-[var(--text-secondary)]">Transfer folder to a user</span>
 							<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">The folder becomes a personal folder of the selected user</p>
 						</div>
 					</label>
@@ -527,12 +527,13 @@
 		{/snippet}
 		{#snippet footer()}
 			<button onclick={() => { showDeleteTeam = false; deleteTeamTarget = null; }}
-				class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80"
+				class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-[var(--text-secondary)]"
 				style="background: var(--bg-active); border: 1px solid var(--border);">Cancel</button>
 			<button onclick={deleteTeam}
 				disabled={deleteAction === 'transfer' && !transferUserId}
 				class="rounded-lg px-4 py-2 text-sm font-medium text-white transition-all duration-150 disabled:opacity-50"
-				style="{deleteAction === 'delete' ? 'background: rgba(239,68,68,0.80);' : 'background: #2563eb;'}">
+				style="{deleteAction === 'delete' ? 'background: rgba(239,68,68,0.80);' : 'background: #2563eb;'}"
+>
 				{deleteAction === 'delete' ? 'Delete Team & Files' : 'Transfer & Delete Team'}
 			</button>
 		{/snippet}

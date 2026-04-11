@@ -74,7 +74,7 @@
 
 <div class="p-6" style="background: var(--bg-base); min-height: 100%;">
 	<div class="mb-6">
-		<h1 class="text-base font-semibold text-white">Shared Links</h1>
+		<h1 class="text-base font-semibold" style="color: var(--text-primary);">Shared Links</h1>
 		<p class="text-sm mt-1" style="color: var(--text-tertiary);">Links you have created to share files externally.</p>
 	</div>
 
@@ -117,7 +117,7 @@
 					{#each links as link}
 						<tr class="shared-row">
 							<td class="px-4 py-3.5">
-								<span class="text-sm font-medium text-white/70">{link.file_name || 'Unknown file'}</span>
+								<span class="text-sm font-medium text-[var(--text-secondary)]">{link.file_name || 'Unknown file'}</span>
 							</td>
 							<td class="px-4 py-3.5">
 								<div class="flex items-center gap-2">
@@ -145,14 +145,14 @@
 									<button
 										onclick={() => copyLink(link)}
 										title="Copy link"
-										class="p-1.5 text-white/30 hover:text-blue-400 rounded-md hover:bg-blue-500/10 transition-all"
+										class="p-1.5 text-[var(--text-tertiary)] hover:text-blue-400 rounded-md hover:bg-blue-500/10 transition-all"
 									>
 										<Copy size={14} />
 									</button>
 									<button
 										onclick={() => confirmDelete(link)}
 										title="Delete link"
-										class="p-1.5 text-white/30 hover:text-red-400 rounded-md hover:bg-red-500/10 transition-all"
+										class="p-1.5 text-[var(--text-tertiary)] hover:text-red-400 rounded-md hover:bg-red-500/10 transition-all"
 									>
 										<Trash2 size={14} />
 									</button>

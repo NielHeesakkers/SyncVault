@@ -605,7 +605,7 @@
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-3">
 				<FolderOpen size={20} class="text-blue-400 flex-shrink-0" />
-				<h1 class="text-base font-semibold text-white">Files</h1>
+				<h1 class="text-base font-semibold" style="color: var(--text-primary);">Files</h1>
 				{#if selectedDate}
 					<span class="text-sm" style="color: var(--text-tertiary);">— {formatSelectedDate(selectedDate)}</span>
 				{/if}
@@ -643,7 +643,7 @@
 				<div class="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style="background: var(--bg-active);">
 					<FolderOpen size={28} style="color: var(--text-tertiary);" />
 				</div>
-				<p class="text-base font-medium text-white/40">No files yet</p>
+				<p class="text-base font-medium text-[var(--text-tertiary)]">No files yet</p>
 				<p class="text-sm mt-1.5" style="color: var(--text-tertiary);">Upload or sync to get started.</p>
 			</div>
 		{:else}
@@ -660,10 +660,10 @@
 					<thead>
 						<tr style="border-bottom: 1px solid var(--border);">
 							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider w-8" style="color: var(--text-tertiary);"></th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider cursor-pointer select-none hover:text-white/60" style="color: var(--text-tertiary);" onclick={() => toggleSort('name')}>Name <span class="opacity-50">{sortIcon('name')}</span></th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell cursor-pointer select-none hover:text-white/60" style="color: var(--text-tertiary);" onclick={() => toggleSort('size')}>Size <span class="opacity-50">{sortIcon('size')}</span></th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell cursor-pointer select-none hover:text-white/60" style="color: var(--text-tertiary);" onclick={() => toggleSort('version_num')}>Version <span class="opacity-50">{sortIcon('version_num')}</span></th>
-							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell cursor-pointer select-none hover:text-white/60" style="color: var(--text-tertiary);" onclick={() => toggleSort('updated_at')}>Date <span class="opacity-50">{sortIcon('updated_at')}</span></th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider cursor-pointer select-none hover:text-[var(--text-secondary)]" style="color: var(--text-tertiary);" onclick={() => toggleSort('name')}>Name <span class="opacity-50">{sortIcon('name')}</span></th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden sm:table-cell cursor-pointer select-none hover:text-[var(--text-secondary)]" style="color: var(--text-tertiary);" onclick={() => toggleSort('size')}>Size <span class="opacity-50">{sortIcon('size')}</span></th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell cursor-pointer select-none hover:text-[var(--text-secondary)]" style="color: var(--text-tertiary);" onclick={() => toggleSort('version_num')}>Version <span class="opacity-50">{sortIcon('version_num')}</span></th>
+							<th class="px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wider hidden md:table-cell cursor-pointer select-none hover:text-[var(--text-secondary)]" style="color: var(--text-tertiary);" onclick={() => toggleSort('updated_at')}>Date <span class="opacity-50">{sortIcon('updated_at')}</span></th>
 							<th class="px-4 py-3 text-right text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Actions</th>
 						</tr>
 					</thead>
@@ -681,9 +681,9 @@
 								</td>
 								<td class="px-4 py-3.5">
 									<div class="flex items-center gap-2">
-										<span class="text-sm font-medium text-white/80">{file.name}</span>
+										<span class="text-sm font-medium text-[var(--text-primary)]">{file.name}</span>
 										{#if file.removed_locally}
-											<span class="text-[10px] text-white/30 border rounded px-1.5 py-0.5" style="border-color: var(--border);">Removed locally</span>
+											<span class="text-[10px] text-[var(--text-tertiary)] border rounded px-1.5 py-0.5" style="border-color: var(--border);">Removed locally</span>
 										{/if}
 									</div>
 								</td>
@@ -766,7 +766,7 @@
 										<FolderOpen size={18} style="color: #3b82f6;" />
 									</td>
 									<td class="px-4 py-3.5">
-										<span class="text-sm font-medium text-white/80">{file.name.replace('Team-', '')}</span>
+										<span class="text-sm font-medium text-[var(--text-primary)]">{file.name.replace('Team-', '')}</span>
 									</td>
 									<td class="px-4 py-3.5 hidden sm:table-cell">
 										<span class="text-sm" style="color: var(--text-tertiary);">{file.size ? formatBytes(file.size) : '—'}</span>
@@ -886,7 +886,7 @@
 			] as field}
 				<div class="flex items-center justify-between gap-4">
 					<div class="flex-1">
-						<span class="text-sm font-medium text-white/70">{field.label}</span>
+						<span class="text-sm font-medium text-[var(--text-secondary)]">{field.label}</span>
 						<span class="text-xs ml-1" style="color: var(--text-tertiary);">— {field.desc}</span>
 					</div>
 					<div class="flex items-center gap-2 w-28">
@@ -900,7 +900,7 @@
 		</div>
 	{/snippet}
 	{#snippet footer()}
-		<button onclick={() => (showRetention = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Cancel</button>
+		<button onclick={() => (showRetention = false)} class="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Cancel</button>
 		<button onclick={saveRetention} disabled={retentionSaving} class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-lg transition-all">
 			{retentionSaving ? 'Saving…' : 'Save'}
 		</button>
@@ -952,7 +952,7 @@
 		</div>
 	{/snippet}
 	{#snippet footer()}
-		<button onclick={() => (showShare = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">{shareUrl ? 'Close' : 'Cancel'}</button>
+		<button onclick={() => (showShare = false)} class="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">{shareUrl ? 'Close' : 'Cancel'}</button>
 		{#if !shareUrl}
 			<button onclick={createShare} disabled={shareCreating} class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded-lg transition-all">
 				{shareCreating ? 'Creating…' : 'Create Share Link'}
@@ -975,12 +975,12 @@
 					</div>
 				</div>
 			{/if}
-			<p class="text-sm" style="color: var(--text-secondary);">Are you sure you want to delete <span class="font-semibold text-white/80">"{deleteFolderTarget.name}"</span> and all its contents?</p>
+			<p class="text-sm" style="color: var(--text-secondary);">Are you sure you want to delete <span class="font-semibold text-[var(--text-primary)]">"{deleteFolderTarget.name}"</span> and all its contents?</p>
 			<p class="text-xs" style="color: var(--text-tertiary);">This will move the folder and all files inside to the trash.</p>
 		</div>
 	{/snippet}
 	{#snippet footer()}
-		<button onclick={() => (showDeleteFolder = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Cancel</button>
+		<button onclick={() => (showDeleteFolder = false)} class="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Cancel</button>
 		<button onclick={confirmDeleteFolder} disabled={deletingFolder} class="px-4 py-2 text-sm font-medium rounded-lg transition-all bg-red-600/10 text-red-400 hover:bg-red-600/20 border border-red-500/20">
 			{deletingFolder ? 'Deleting…' : 'Delete'}
 		</button>

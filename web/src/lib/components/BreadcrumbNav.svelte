@@ -17,10 +17,10 @@
 <nav aria-label="Breadcrumb" class="flex items-center gap-1 text-sm">
 	{#each items as item, i}
 		{#if i > 0}
-			<ChevronRight size={12} style="color: rgba(255,255,255,0.20); flex-shrink: 0;" />
+			<ChevronRight size={12} style="color: var(--text-tertiary); flex-shrink: 0;" />
 		{/if}
 		{#if i === items.length - 1}
-			<span class="text-white/70 font-medium truncate max-w-xs">{item.name}</span>
+			<span class="text-[var(--text-secondary)] font-medium truncate max-w-xs">{item.name}</span>
 		{:else}
 			<button
 				onclick={() => onclick(item)}

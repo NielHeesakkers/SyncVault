@@ -199,7 +199,7 @@
 <div class="p-6" style="background: var(--bg-base); min-height: 100%;">
 	<div class="mb-6 flex items-center justify-between">
 		<div>
-			<h1 class="text-base font-semibold text-white">Users</h1>
+			<h1 class="text-base font-semibold" style="color: var(--text-primary);">Users</h1>
 			<p class="text-sm mt-1" style="color: var(--text-tertiary);">{users.length} user{users.length !== 1 ? 's' : ''} total</p>
 		</div>
 		<button onclick={openCreate}
@@ -253,7 +253,7 @@
 										{user.username[0].toUpperCase()}
 									</div>
 									<div>
-										<p class="text-sm font-medium text-white/80">{user.username}</p>
+										<p class="text-sm font-medium text-[var(--text-primary)]">{user.username}</p>
 										<p class="text-xs" style="color: var(--text-tertiary);">{user.email}</p>
 									</div>
 								</div>
@@ -275,7 +275,7 @@
 							<td class="px-4 py-3.5">
 								<div class="flex items-center justify-end gap-1">
 									<button onclick={(e) => { e.stopPropagation(); openEdit(user); }}
-										title="Edit user" class="p-1.5 text-white/25 hover:text-blue-400 rounded-md hover:bg-blue-500/10 transition-all">
+										title="Edit user" class="p-1.5 text-[var(--text-tertiary)] hover:text-blue-400 rounded-md hover:bg-blue-500/10 transition-all">
 										<Edit2 size={14} />
 									</button>
 								</div>
@@ -318,7 +318,7 @@
 						<div class="space-y-2 border rounded-lg p-3" style="border-color: var(--border); background: var(--bg-hover);">
 							{#each teams as team}
 								<div class="flex items-center justify-between gap-3">
-									<span class="text-sm text-white/60">{team.name}</span>
+									<span class="text-sm text-[var(--text-secondary)]">{team.name}</span>
 									<select value={createTeamSelections[team.id] || ''}
 										onchange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v) createTeamSelections[team.id] = v; else delete createTeamSelections[team.id]; createTeamSelections = { ...createTeamSelections }; }}
 										style="width: auto;">
@@ -335,7 +335,7 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showCreate = false)} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Cancel</button>
+			<button onclick={() => (showCreate = false)} class="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] border rounded-lg hover:bg-[var(--bg-hover)] transition-all" style="border-color: var(--border);">Cancel</button>
 			<button onclick={createUser} disabled={creating || !createForm.username || !createForm.password}
 				class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg transition-all">
 				{creating ? 'Creating…' : 'Create'}
@@ -401,7 +401,7 @@
 							<div class="space-y-2 border rounded-lg p-3" style="border-color: var(--border); background: var(--bg-hover);">
 								{#each teams as team}
 									<div class="flex items-center justify-between gap-3">
-										<span class="text-sm text-white/60">{team.name}</span>
+										<span class="text-sm text-[var(--text-secondary)]">{team.name}</span>
 										<select value={editTeamSelections[team.id] || ''}
 											onchange={(e) => { const v = (e.target as HTMLSelectElement).value; if (v) editTeamSelections[team.id] = v; else delete editTeamSelections[team.id]; editTeamSelections = { ...editTeamSelections }; }}
 											style="width: auto;">
@@ -436,7 +436,7 @@
 						<Key size={20} style="color: var(--text-tertiary); flex-shrink: 0;" />
 						<div class="flex-1">
 							{#if editTarget.has_token}
-								<p class="text-sm font-medium text-white/70">Token available</p>
+								<p class="text-sm font-medium text-[var(--text-secondary)]">Token available</p>
 								<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">One-time download — will be invalidated after download</p>
 							{:else}
 								<p class="text-sm font-medium" style="color: var(--text-tertiary);">No active token</p>
@@ -474,7 +474,7 @@
 							style="{deleteAction === 'delete' ? 'border-color: rgba(239,68,68,0.30); background: rgba(239,68,68,0.06);' : 'border-color: var(--border); background: var(--bg-hover);'}">
 							<input type="radio" bind:group={deleteAction} value="delete" />
 							<div>
-								<span class="text-sm font-medium text-white/70">Delete all files</span>
+								<span class="text-sm font-medium text-[var(--text-secondary)]">Delete all files</span>
 								<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">All files, versions, and shared links will be permanently deleted</p>
 							</div>
 						</label>
@@ -482,7 +482,7 @@
 							style="{deleteAction === 'transfer' ? 'border-color: rgba(59,130,246,0.30); background: rgba(59,130,246,0.06);' : 'border-color: var(--border); background: var(--bg-hover);'}">
 							<input type="radio" bind:group={deleteAction} value="transfer" />
 							<div>
-								<span class="text-sm font-medium text-white/70">Transfer files to another user</span>
+								<span class="text-sm font-medium text-[var(--text-secondary)]">Transfer files to another user</span>
 								<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">The user's folder will be moved to another user's home folder</p>
 							</div>
 						</label>
@@ -515,14 +515,14 @@
 		{/snippet}
 		{#snippet footer()}
 			{#if editTab === 'details'}
-				<button onclick={() => { showEdit = false; editTarget = null; }} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Cancel</button>
+				<button onclick={() => { showEdit = false; editTarget = null; }} class="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] border rounded-lg hover:bg-[var(--bg-hover)] transition-all" style="border-color: var(--border);">Cancel</button>
 				<button onclick={saveEdit}
 					disabled={editing || !!(editForm.newPassword && editForm.newPassword !== editForm.confirmPassword)}
 					class="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg transition-all">
 					{editing ? 'Saving…' : 'Save'}
 				</button>
 			{:else}
-				<button onclick={() => { showEdit = false; editTarget = null; }} class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all" style="border-color: var(--border);">Close</button>
+				<button onclick={() => { showEdit = false; editTarget = null; }} class="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] border rounded-lg hover:bg-[var(--bg-hover)] transition-all" style="border-color: var(--border);">Close</button>
 			{/if}
 		{/snippet}
 	</Modal>

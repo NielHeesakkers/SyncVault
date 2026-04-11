@@ -351,7 +351,7 @@
 		<div class="fixed inset-0 z-40 pointer-events-none flex items-center justify-center" style="background: rgba(59,130,246,0.08); border: 3px dashed rgba(59,130,246,0.40);">
 			<div class="rounded-xl px-8 py-6 text-center" style="background: var(--bg-overlay); border: 1px solid var(--border);">
 				<Upload size={36} class="mx-auto mb-3 text-blue-400" />
-				<p class="text-base font-semibold text-white">Drop files to upload</p>
+				<p class="text-base font-semibold" style="color: var(--text-primary);">Drop files to upload</p>
 			</div>
 		</div>
 	{/if}
@@ -363,31 +363,31 @@
 			<!-- Search bar -->
 			<div class="relative">
 				<div class="flex items-center rounded-lg border transition-all duration-150" style="background: var(--bg-hover); border-color: var(--border);">
-					<Search size={14} class="ml-2.5 text-white/40 flex-shrink-0" />
+					<Search size={14} class="ml-2.5 text-[var(--text-tertiary)] flex-shrink-0" />
 					<input
 						type="text"
 						bind:value={searchQuery}
 						oninput={onSearchInput}
 						placeholder="Search files..."
-						class="bg-transparent border-none text-sm text-white/80 placeholder:text-white/30 px-2 py-1.5 w-40 focus:w-56 transition-all duration-200 outline-none"
+						class="bg-transparent border-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] px-2 py-1.5 w-40 focus:w-56 transition-all duration-200 outline-none"
 					/>
 					{#if searchQuery}
-						<button onclick={clearSearch} class="mr-1.5 p-0.5 rounded hover:bg-white/10 transition-colors">
-							<X size={12} class="text-white/40" />
+						<button onclick={clearSearch} class="mr-1.5 p-0.5 rounded hover:bg-[var(--bg-hover)] transition-colors">
+							<X size={12} class="text-[var(--text-tertiary)]" />
 						</button>
 					{/if}
 				</div>
 				{#if searchActive}
 					<div class="absolute top-full right-0 mt-1 w-80 max-h-80 overflow-auto rounded-xl border z-50" style="background: var(--bg-overlay); border-color: var(--border); box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
 						{#if searching}
-							<div class="px-4 py-3 text-sm text-white/40 text-center">Searching...</div>
+							<div class="px-4 py-3 text-sm text-[var(--text-tertiary)] text-center">Searching...</div>
 						{:else if searchResults.length === 0}
-							<div class="px-4 py-3 text-sm text-white/40 text-center">No results found</div>
+							<div class="px-4 py-3 text-sm text-[var(--text-tertiary)] text-center">No results found</div>
 						{:else}
 							{#each searchResults as result}
 								{@const fi = getFileIcon(result)}
 								<button
-									class="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-white/[0.04] transition-colors"
+									class="flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-[var(--bg-hover)] transition-colors"
 									onclick={() => {
 										clearSearch();
 										if (result.type === 'folder') {
@@ -399,7 +399,7 @@
 								>
 									<svelte:component this={fi.icon} size={15} style="color: {fi.color};" />
 									<div class="flex-1 min-w-0">
-										<p class="text-sm text-white/75 truncate">{result.name}</p>
+										<p class="text-sm text-[var(--text-secondary)] truncate">{result.name}</p>
 										<p class="text-[10px]" style="color: var(--text-tertiary);">{result.type === 'folder' ? 'Folder' : formatBytes(result.size)}</p>
 									</div>
 								</button>
@@ -422,7 +422,7 @@
 			</button>
 			<button
 				onclick={() => (showNewFolder = true)}
-				class="flex items-center gap-2 text-sm font-medium rounded-lg px-3.5 py-2 transition-all duration-150 text-white/60 hover:text-white/80"
+				class="flex items-center gap-2 text-sm font-medium rounded-lg px-3.5 py-2 transition-all duration-150 text-[var(--text-secondary)]"
 				style="background: var(--bg-hover); border: 1px solid var(--border);"
 			>
 				<FolderPlus size={14} /> New Folder
@@ -459,7 +459,7 @@
 		{:else if items.length === 0}
 			<div class="text-center py-24">
 				<FolderOpen size={48} style="color: var(--text-tertiary); margin: 0 auto 16px;" />
-				<p class="text-sm font-medium text-white/40">This folder is empty</p>
+				<p class="text-sm font-medium text-[var(--text-tertiary)]">This folder is empty</p>
 				<p class="text-xs mt-1.5" style="color: var(--text-tertiary);">Upload files or create a folder to get started.</p>
 			</div>
 		{:else}
@@ -492,7 +492,7 @@
 									<svelte:component this={fi.icon} size={17} style="color: {fi.color};" />
 								</td>
 								<td class="px-4 py-3.5">
-									<span class="text-sm font-medium text-white/75">{item.name}</span>
+									<span class="text-sm font-medium text-[var(--text-secondary)]">{item.name}</span>
 								</td>
 								<td class="px-4 py-3.5 hidden sm:table-cell">
 									<span class="text-sm" style="color: var(--text-tertiary);">
@@ -530,17 +530,17 @@
 		onclick={(e) => e.stopPropagation()}
 	>
 		{#if contextMenu.item.type === 'file'}
-			<button onclick={() => { openPreview(contextMenu!.item); closeContextMenu(); }} class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-white/70">
+			<button onclick={() => { openPreview(contextMenu!.item); closeContextMenu(); }} class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-[var(--text-secondary)]">
 				<Eye size={14} style="color: var(--text-tertiary);" /> Preview
 			</button>
-			<button onclick={() => { downloadFile(contextMenu!.item); }} class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-white/70">
+			<button onclick={() => { downloadFile(contextMenu!.item); }} class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-[var(--text-secondary)]">
 				<Download size={14} style="color: var(--text-tertiary);" /> Download
 			</button>
 		{/if}
-		<button onclick={() => startRename(contextMenu!.item)} class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-white/70">
+		<button onclick={() => startRename(contextMenu!.item)} class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-[var(--text-secondary)]">
 			<Edit2 size={14} style="color: var(--text-tertiary);" /> Rename
 		</button>
-		<button class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-white/70" onclick={closeContextMenu}>
+		<button class="context-item flex items-center gap-2 w-full px-4 py-2 text-sm text-[var(--text-secondary)]" onclick={closeContextMenu}>
 			<Move size={14} style="color: var(--text-tertiary);" /> Move
 		</button>
 		<div style="border-top: 1px solid var(--border); margin: 4px 0;"></div>
@@ -567,7 +567,7 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => { showNewFolder = false; newFolderName = ''; }} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: var(--bg-hover); border: 1px solid var(--border);">Cancel</button>
+			<button onclick={() => { showNewFolder = false; newFolderName = ''; }} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-[var(--text-secondary)]" style="background: var(--bg-hover); border: 1px solid var(--border);">Cancel</button>
 			<button onclick={createFolder} disabled={creatingFolder || !newFolderName.trim()} class="rounded-lg px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-all duration-150">
 				{creatingFolder ? 'Creating…' : 'Create'}
 			</button>
@@ -584,7 +584,7 @@
 			</div>
 		{/snippet}
 		{#snippet footer()}
-			<button onclick={() => (showRename = false)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-white/60 hover:text-white/80" style="background: var(--bg-hover); border: 1px solid var(--border);">Cancel</button>
+			<button onclick={() => (showRename = false)} class="rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 text-[var(--text-secondary)]" style="background: var(--bg-hover); border: 1px solid var(--border);">Cancel</button>
 			<button onclick={doRename} disabled={!renameName.trim()} class="rounded-lg px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white transition-all duration-150">Rename</button>
 		{/snippet}
 	</Modal>
@@ -619,20 +619,20 @@
 					{#if previewFile}
 						{@const pfi = getFileIcon(previewFile)}
 						<svelte:component this={pfi.icon} size={17} style="color: {pfi.color};" />
-						<span class="text-sm font-medium text-white/80 truncate">{previewFile.name}</span>
+						<span class="text-sm font-medium text-[var(--text-primary)] truncate">{previewFile.name}</span>
 					{/if}
 				</div>
 				<div class="flex items-center gap-2 flex-shrink-0">
 					<button
 						onclick={() => { downloadFile(previewFile!); }}
-						class="flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5 transition-all duration-150 text-white/60 hover:text-white/80"
+						class="flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-1.5 transition-all duration-150 text-[var(--text-secondary)]"
 						style="background: var(--bg-hover); border: 1px solid var(--border);"
 					>
 						<Download size={12} /> Download
 					</button>
 					<button
 						onclick={closePreview}
-						class="p-1.5 rounded-lg transition-colors text-white/40 hover:text-white/80 hover:bg-white/10"
+						class="p-1.5 rounded-lg transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
 					>
 						<X size={16} />
 					</button>
@@ -671,7 +671,7 @@
 						{#if previewFile}
 						{@const ficon = getFileIcon(previewFile)}
 						<svelte:component this={ficon.icon} size={48} style="color: {ficon.color}; opacity: 0.6;" />
-						<h3 class="text-base font-semibold text-white/80 mt-4">{previewFile.name}</h3>
+						<h3 class="text-base font-semibold text-[var(--text-primary)] mt-4">{previewFile.name}</h3>
 						{/if}
 						<div class="mt-3 space-y-1 text-center">
 							<p class="text-sm" style="color: var(--text-tertiary);">Size: {formatBytes(previewFile.size)}</p>

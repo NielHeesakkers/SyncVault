@@ -26,14 +26,14 @@
 >
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div class="absolute inset-0" onclick={oncancel}></div>
-	<div class="relative z-10 w-full max-w-sm rounded-xl shadow-2xl border p-6" style="background: #1a1a1d; border-color: rgba(255,255,255,0.10);">
-		<h2 class="text-base font-semibold text-white mb-2">{title}</h2>
-		<p class="text-sm mb-6" style="color: rgba(255,255,255,0.55);">{message}</p>
+	<div class="relative z-10 w-full max-w-sm rounded-xl shadow-2xl border p-6" style="background: var(--bg-overlay); border-color: var(--border);">
+		<h2 class="text-base font-semibold mb-2" style="color: var(--text-primary);">{title}</h2>
+		<p class="text-sm mb-6" style="color: var(--text-secondary);">{message}</p>
 		<div class="flex justify-end gap-2.5">
 			<button
 				onclick={oncancel}
-				class="px-4 py-2 text-sm font-medium text-white/60 border rounded-lg hover:bg-white/5 transition-all duration-150"
-				style="border-color: rgba(255,255,255,0.10);"
+				class="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] border rounded-lg hover:bg-[var(--bg-hover)] transition-all duration-150"
+				style="border-color: var(--border);"
 			>
 				Cancel
 			</button>

@@ -207,7 +207,7 @@
 <div class="p-6 max-w-6xl mx-auto">
 	<!-- Header -->
 	<div class="mb-8">
-		<h1 class="text-xl font-semibold text-white">
+		<h1 class="text-xl font-semibold" style="color: var(--text-primary);">
 			Welcome back{user?.username ? `, ${user.username}` : ''}
 		</h1>
 		<div class="flex items-center gap-2 mt-1.5">
@@ -248,7 +248,7 @@
 							{/each}
 						</svg>
 						<div class="absolute inset-0 flex flex-col items-center justify-center">
-							<span class="text-base font-bold text-white">{formatBytes(storageUsed)}</span>
+							<span class="text-base font-bold" style="color: var(--text-primary);">{formatBytes(storageUsed)}</span>
 							<span class="text-[10px]" style="color: var(--text-tertiary);">total</span>
 						</div>
 					</div>
@@ -259,7 +259,7 @@
 									<div class="w-2.5 h-2.5 rounded-full" style="background: {seg.color};"></div>
 									<span class="text-xs" style="color: var(--text-tertiary);">{seg.label}</span>
 								</div>
-								<span class="text-xs font-medium text-white/70">{formatBytes(seg.size)}</span>
+								<span class="text-xs font-medium text-[var(--text-secondary)]">{formatBytes(seg.size)}</span>
 							</div>
 						{/each}
 					</div>
@@ -275,14 +275,14 @@
 			<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
 				<button
 					onclick={() => goto('/files')}
-					class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-white/10 hover:bg-white/[0.04] text-left group"
+					class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-[var(--border)] hover:bg-[var(--bg-hover)] text-left group"
 					style="border-color: var(--border-strong);"
 				>
 					<div class="w-8 h-8 rounded-lg bg-blue-500/15 flex items-center justify-center flex-shrink-0">
 						<FolderOpen size={16} class="text-blue-400" />
 					</div>
 					<div>
-						<p class="text-sm font-medium text-white/80 group-hover:text-white transition-colors">Open Files</p>
+						<p class="text-sm font-medium text-[var(--text-primary)] transition-colors">Open Files</p>
 						<p class="text-xs" style="color: var(--text-tertiary);">Browse your files</p>
 					</div>
 				</button>
@@ -290,56 +290,56 @@
 				{#if user?.role === 'admin'}
 					<button
 						onclick={() => goto('/admin/users')}
-						class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-white/10 hover:bg-white/[0.04] text-left group"
+						class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-[var(--border)] hover:bg-[var(--bg-hover)] text-left group"
 						style="border-color: var(--border-strong);"
 					>
 						<div class="w-8 h-8 rounded-lg bg-purple-500/15 flex items-center justify-center flex-shrink-0">
 							<Users size={16} class="text-purple-400" />
 						</div>
 						<div>
-							<p class="text-sm font-medium text-white/80 group-hover:text-white transition-colors">Manage Users</p>
+							<p class="text-sm font-medium text-[var(--text-primary)] transition-colors">Manage Users</p>
 							<p class="text-xs" style="color: var(--text-tertiary);">Add and manage users</p>
 						</div>
 					</button>
 
 					<button
 						onclick={() => goto('/admin/settings')}
-						class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-white/10 hover:bg-white/[0.04] text-left group"
+						class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-[var(--border)] hover:bg-[var(--bg-hover)] text-left group"
 						style="border-color: var(--border-strong);"
 					>
 						<div class="w-8 h-8 rounded-lg bg-green-500/15 flex items-center justify-center flex-shrink-0">
 							<Settings size={16} class="text-green-400" />
 						</div>
 						<div>
-							<p class="text-sm font-medium text-white/80 group-hover:text-white transition-colors">Settings</p>
+							<p class="text-sm font-medium text-[var(--text-primary)] transition-colors">Settings</p>
 							<p class="text-xs" style="color: var(--text-tertiary);">Configure server</p>
 						</div>
 					</button>
 				{:else}
 					<button
 						onclick={() => goto('/shared')}
-						class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-white/10 hover:bg-white/[0.04] text-left group"
+						class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-[var(--border)] hover:bg-[var(--bg-hover)] text-left group"
 						style="border-color: var(--border-strong);"
 					>
 						<div class="w-8 h-8 rounded-lg bg-yellow-500/15 flex items-center justify-center flex-shrink-0">
 							<Activity size={16} class="text-yellow-400" />
 						</div>
 						<div>
-							<p class="text-sm font-medium text-white/80 group-hover:text-white transition-colors">Shared Links</p>
+							<p class="text-sm font-medium text-[var(--text-primary)] transition-colors">Shared Links</p>
 							<p class="text-xs" style="color: var(--text-tertiary);">Manage shared files</p>
 						</div>
 					</button>
 
 					<button
 						onclick={() => goto('/trash')}
-						class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-white/10 hover:bg-white/[0.04] text-left group"
+						class="flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-all duration-150 hover:border-[var(--border)] hover:bg-[var(--bg-hover)] text-left group"
 						style="border-color: var(--border-strong);"
 					>
 						<div class="w-8 h-8 rounded-lg bg-red-500/15 flex items-center justify-center flex-shrink-0">
 							<HardDrive size={16} class="text-red-400" />
 						</div>
 						<div>
-							<p class="text-sm font-medium text-white/80 group-hover:text-white transition-colors">Trash</p>
+							<p class="text-sm font-medium text-[var(--text-primary)] transition-colors">Trash</p>
 							<p class="text-xs" style="color: var(--text-tertiary);">Deleted files</p>
 						</div>
 					</button>
@@ -385,7 +385,7 @@
 							<div class="flex items-start gap-3 py-2.5 {i < activity.length - 1 ? 'border-b' : ''}" style="border-color: var(--border);">
 								<div class="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style="background: {acolor};"></div>
 								<div class="flex-1 min-w-0">
-									<p class="text-xs text-white/70 truncate">{getActivityLabel(event)}</p>
+									<p class="text-xs text-[var(--text-secondary)] truncate">{getActivityLabel(event)}</p>
 									<p class="text-[10px] mt-0.5" style="color: var(--text-tertiary);">{formatActivityTime(event.created_at || event.timestamp)}</p>
 								</div>
 							</div>
@@ -426,7 +426,7 @@
 							{@const statusLabel = getTaskStatusLabel(task.status || task.state || '')}
 							<div class="rounded-lg p-3 border" style="background: var(--bg-hover); border-color: var(--border);">
 								<div class="flex items-center justify-between mb-1">
-									<p class="text-sm font-medium text-white/80 truncate max-w-[180px]">{task.name || task.folder_name || 'Sync task'}</p>
+									<p class="text-sm font-medium text-[var(--text-primary)] truncate max-w-[180px]">{task.name || task.folder_name || 'Sync task'}</p>
 									<div class="flex items-center gap-1.5 flex-shrink-0">
 										<span class="w-1.5 h-1.5 rounded-full" style="background: {statusColor};"></span>
 										<span class="text-xs" style="color: {statusColor};">{statusLabel}</span>

@@ -131,7 +131,7 @@
 <div class="p-6" style="background: var(--bg-base); min-height: 100%;">
 	<div class="mb-6 flex items-center justify-between">
 		<div>
-			<h1 class="text-base font-semibold text-white">Trash</h1>
+			<h1 class="text-base font-semibold" style="color: var(--text-primary);">Trash</h1>
 			<p class="text-sm mt-1" style="color: var(--text-tertiary);">Files here will be permanently deleted after 30 days.</p>
 		</div>
 		{#if items.length > 0}
@@ -212,7 +212,7 @@
 							</td>
 							<td class="px-4 py-3.5">
 								<div>
-									<p class="text-sm font-medium text-white/70">{item.name}</p>
+									<p class="text-sm font-medium text-[var(--text-secondary)]">{item.name}</p>
 									{#if item.original_path}
 										<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">{item.original_path}</p>
 									{/if}

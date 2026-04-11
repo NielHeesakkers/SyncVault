@@ -90,7 +90,7 @@
 
 <div class="p-6 space-y-5" style="background: var(--bg-base); min-height: 100%;">
 	<div>
-		<h1 class="text-base font-semibold text-white">Storage</h1>
+		<h1 class="text-base font-semibold" style="color: var(--text-primary);">Storage</h1>
 		<p class="text-sm mt-1" style="color: var(--text-tertiary);">System-wide storage usage overview.</p>
 	</div>
 
@@ -115,13 +115,13 @@
 				<div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background: rgba(59,130,246,0.15);">
 					<HardDrive size={16} class="text-blue-400" />
 				</div>
-				<h2 class="text-sm font-semibold text-white/80">Total Storage</h2>
+				<h2 class="text-sm font-semibold text-[var(--text-primary)]">Total Storage</h2>
 			</div>
 			{#if overview}
 				<StorageBar used={overview.used} total={overview.total} />
 				<div class="grid grid-cols-3 gap-4 mt-5">
 					<div class="text-center">
-						<p class="text-xl font-bold text-white">{formatBytes(overview.used)}</p>
+						<p class="text-xl font-bold" style="color: var(--text-primary);">{formatBytes(overview.used)}</p>
 						<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Used</p>
 					</div>
 					<div class="text-center">
@@ -129,7 +129,7 @@
 						<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Available</p>
 					</div>
 					<div class="text-center">
-						<p class="text-xl font-bold text-white">{formatBytes(overview.total)}</p>
+						<p class="text-xl font-bold" style="color: var(--text-primary);">{formatBytes(overview.total)}</p>
 						<p class="text-xs mt-0.5" style="color: var(--text-tertiary);">Total</p>
 					</div>
 				</div>
@@ -142,7 +142,7 @@
 		<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 			<div class="px-5 py-4 border-b flex items-center gap-2" style="border-color: var(--border);">
 				<User size={15} class="text-blue-400" />
-				<h2 class="text-sm font-semibold text-white/70">Storage by User</h2>
+				<h2 class="text-sm font-semibold text-[var(--text-secondary)]">Storage by User</h2>
 			</div>
 			{#if users.length === 0}
 				<div class="text-center py-10 text-sm" style="color: var(--text-tertiary);">No user data available.</div>
@@ -163,11 +163,11 @@
 										<div class="w-7 h-7 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-400 text-[10px] font-bold flex-shrink-0">
 											{user.username[0].toUpperCase()}
 										</div>
-										<span class="text-sm font-medium text-white/70">{user.username}</span>
+										<span class="text-sm font-medium text-[var(--text-secondary)]">{user.username}</span>
 									</div>
 								</td>
 								<td class="px-4 py-3.5">
-									<span class="text-sm text-white/60">{formatBytes(user.storage_used)}</span>
+									<span class="text-sm text-[var(--text-secondary)]">{formatBytes(user.storage_used)}</span>
 								</td>
 								<td class="px-4 py-3.5 hidden md:table-cell">
 									{#if user.storage_quota}
@@ -190,7 +190,7 @@
 		<div class="rounded-xl border overflow-hidden" style="background: var(--bg-elevated); border-color: var(--border);">
 			<div class="px-5 py-4 border-b flex items-center gap-2" style="border-color: var(--border);">
 				<FolderTree size={15} class="text-blue-400" />
-				<h2 class="text-sm font-semibold text-white/70">Storage by Team</h2>
+				<h2 class="text-sm font-semibold text-[var(--text-secondary)]">Storage by Team</h2>
 			</div>
 			<table class="min-w-full">
 				<thead>
@@ -206,11 +206,11 @@
 							<td class="px-4 py-3.5">
 								<div class="flex items-center gap-2">
 									<FolderTree size={14} class="text-blue-400" />
-									<span class="text-sm font-medium text-white/70">{team.name}</span>
+									<span class="text-sm font-medium text-[var(--text-secondary)]">{team.name}</span>
 								</div>
 							</td>
 							<td class="px-4 py-3.5">
-								<span class="text-sm text-white/60">{formatBytes(team.size)}</span>
+								<span class="text-sm text-[var(--text-secondary)]">{formatBytes(team.size)}</span>
 							</td>
 							<td class="px-4 py-3.5 hidden md:table-cell">
 								{#if overview?.used && overview.used > 0}

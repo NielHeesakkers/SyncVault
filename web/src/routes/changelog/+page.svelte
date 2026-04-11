@@ -33,7 +33,7 @@
 
 <div class="p-6 max-w-2xl" style="background: var(--bg-base); min-height: 100%;">
 	<div class="mb-6">
-		<h1 class="text-base font-semibold text-white">Changelog</h1>
+		<h1 class="text-base font-semibold" style="color: var(--text-primary);">Changelog</h1>
 		<p class="text-sm mt-1" style="color: var(--text-tertiary);">
 			Current version: <span class="font-mono text-blue-400">v{currentVersion}</span>
 		</p>
@@ -59,7 +59,7 @@
 					<div class="px-5 py-4 border-b flex items-center justify-between" style="border-color: var(--border);">
 						<div class="flex items-center gap-2.5">
 							<BookOpen size={15} class="text-blue-400" />
-							<span class="text-sm font-semibold text-white/80">v{ver.version}</span>
+							<span class="text-sm font-semibold text-[var(--text-primary)]">v{ver.version}</span>
 							{#if ver.version === currentVersion}
 								<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full" style="background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.20);">current</span>
 							{/if}
