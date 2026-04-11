@@ -220,44 +220,42 @@ struct MenuBarView: View {
             menuSectionHeader("Recently Changed")
 
             ForEach(Array(appState.recentActivity.prefix(5))) { item in
-                Button(action: { openRecentFile(item) }) {
-                    HStack(spacing: 8) {
-                        let icon = fileTypeIcon(for: item.filename)
-                        Image(systemName: icon.symbol)
-                            .font(.system(size: 12))
-                            .foregroundColor(icon.color)
-                            .frame(width: 16)
+                HStack(spacing: 8) {
+                    let icon = fileTypeIcon(for: item.filename)
+                    Image(systemName: icon.symbol)
+                        .font(.system(size: 12))
+                        .foregroundColor(icon.color)
+                        .frame(width: 16)
 
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(item.filename)
-                                .font(.system(size: 11))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .foregroundColor(.primary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.filename)
+                            .font(.system(size: 11))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .foregroundColor(.primary)
 
-                            HStack(spacing: 0) {
-                                if !item.taskName.isEmpty {
-                                    Text(item.taskName)
-                                        .foregroundColor(.secondary)
-                                    Text(" · ")
-                                        .foregroundColor(Color(white: 0.35))
-                                }
-                                Text(item.action.capitalized)
+                        HStack(spacing: 0) {
+                            if !item.taskName.isEmpty {
+                                Text(item.taskName)
                                     .foregroundColor(.secondary)
                                 Text(" · ")
                                     .foregroundColor(Color(white: 0.35))
-                                Text(timeAgo(item.timestamp))
-                                    .foregroundColor(Color(white: 0.4))
                             }
-                            .font(.system(size: 10))
+                            Text(item.action.capitalized)
+                                .foregroundColor(.secondary)
+                            Text(" · ")
+                                .foregroundColor(Color(white: 0.35))
+                            Text(timeAgo(item.timestamp))
+                                .foregroundColor(Color(white: 0.4))
                         }
-
-                        Spacer()
+                        .font(.system(size: 10))
                     }
-                    .padding(.vertical, 3)
-                    .contentShape(Rectangle())
+
+                    Spacer()
                 }
-                .buttonStyle(.plain)
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
+                .onTapGesture { openRecentFile(item) }
             }
         }
         .padding(.horizontal, 14)
@@ -271,56 +269,54 @@ struct MenuBarView: View {
             menuSectionHeader("CloudDrive")
 
             ForEach(onDemandTasks) { task in
-                Button(action: { openCloudDrive() }) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "icloud.fill")
-                                .font(.system(size: 12))
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "icloud.fill")
+                            .font(.system(size: 12))
+                            .foregroundColor(.blue)
+                            .frame(width: 16)
+                        Text(task.remoteFolderName)
+                            .font(.system(size: 11, weight: .medium))
+                            .lineLimit(1)
+                        Spacer()
+                        if appState.fpProgress != nil {
+                            Image(systemName: "arrow.up.arrow.down")
+                                .font(.system(size: 9))
                                 .foregroundColor(.blue)
-                                .frame(width: 16)
-                            Text(task.remoteFolderName)
-                                .font(.system(size: 11, weight: .medium))
-                                .lineLimit(1)
-                            Spacer()
-                            if appState.fpProgress != nil {
-                                Image(systemName: "arrow.up.arrow.down")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.blue)
-                            } else {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(Color(white: 0.4))
-                            }
-                        }
-
-                        // FileProvider activity
-                        if let fpStatus = appState.fpProgress {
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack(spacing: 6) {
-                                    Text(fpStatus)
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                    Spacer()
-                                    if appState.fpSpeed > 100 {
-                                        Text(formatSpeed(appState.fpSpeed))
-                                            .font(.system(size: 10, design: .monospaced))
-                                            .foregroundColor(.blue)
-                                    }
-                                }
-                            }
-                            .padding(.leading, 24)
                         } else {
-                            Text("Available in Finder")
-                                .font(.system(size: 10))
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9))
                                 .foregroundColor(Color(white: 0.4))
-                                .padding(.leading, 24)
                         }
                     }
-                    .contentShape(Rectangle())
+
+                    // FileProvider activity
+                    if let fpStatus = appState.fpProgress {
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text(fpStatus)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                if appState.fpSpeed > 100 {
+                                    Text(formatSpeed(appState.fpSpeed))
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                        }
+                        .padding(.leading, 24)
+                    } else {
+                        Text("Available in Finder")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(white: 0.4))
+                            .padding(.leading, 24)
+                    }
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .onTapGesture { openCloudDrive() }
             }
         }
         .padding(.horizontal, 14)
@@ -539,68 +535,91 @@ struct MenuBarView: View {
         return "\(seconds / 86400)d"
     }
 
-    func openTaskFolder(_ task: SyncTask) {
-        // Resolve security-scoped bookmark to get access
-        if let url = appState.resolveBookmark(for: task.localPath) {
-            NSWorkspace.shared.open(url)
-            url.stopAccessingSecurityScopedResource()
-            return
+    private func debugLog(_ msg: String) {
+        let path = NSHomeDirectory() + "/syncvault-debug.log"
+        let line = "\(Date()): \(msg)\n"
+        if let handle = FileHandle(forWritingAtPath: path) {
+            handle.seekToEndOfFile()
+            handle.write(line.data(using: .utf8)!)
+            handle.closeFile()
+        } else {
+            try? line.write(toFile: path, atomically: true, encoding: .utf8)
         }
-        // Fallback: try the path directly
-        let url = URL(fileURLWithPath: task.localPath)
-        if FileManager.default.fileExists(atPath: task.localPath) {
-            NSWorkspace.shared.open(url)
+    }
+
+    func openTaskFolder(_ task: SyncTask) {
+        debugLog("openTaskFolder: \(task.localPath)")
+        if let url = appState.resolveBookmark(for: task.localPath) {
+            debugLog(" Bookmark resolved: \(url.path)")
+            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: url.path)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                url.stopAccessingSecurityScopedResource()
+            }
+        } else {
+            debugLog(" No bookmark, trying direct: \(task.localPath)")
+            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: task.localPath)
         }
     }
 
     func openCloudDrive() {
-        // Find the SyncVault CloudStorage folder (name varies: SyncVault-<DisplayName>)
-        let cloudRoot = NSHomeDirectory() + "/Library/CloudStorage"
+        // NSHomeDirectory() returns sandbox container in sandboxed apps — use real home via passwd
+        let realHome = FileManager.default.homeDirectoryForCurrentUser.path
+            .replacingOccurrences(of: "/Library/Containers/com.syncvault.app/Data", with: "")
+        let cloudRoot = (realHome as NSString).appendingPathComponent("Library/CloudStorage")
+        debugLog(" openCloudDrive: cloudRoot=\(cloudRoot)")
         if let contents = try? FileManager.default.contentsOfDirectory(atPath: cloudRoot) {
+            debugLog(" CloudStorage contents: \(contents)")
             if let syncVaultDir = contents.first(where: { $0.hasPrefix("SyncVault") }) {
-                NSWorkspace.shared.open(URL(fileURLWithPath: (cloudRoot as NSString).appendingPathComponent(syncVaultDir)))
+                let path = (cloudRoot as NSString).appendingPathComponent(syncVaultDir)
+                debugLog(" Opening: \(path)")
+                NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: path)
                 return
             }
         }
-        // Fallback: open CloudStorage root
-        NSWorkspace.shared.open(URL(fileURLWithPath: cloudRoot))
+        debugLog(" No SyncVault folder found, opening root")
+        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: cloudRoot)
     }
 
     func openRecentFile(_ item: ActivityItem) {
-        // Try to open via security-scoped bookmark of the parent task folder.
-        // The localPath is taskBasePath + relativePath — we need bookmark access to taskBasePath.
-        for task in appState.syncTasks where task.isEnabled {
-            if !item.localPath.isEmpty && item.localPath.hasPrefix(task.localPath) {
-                if let taskURL = appState.resolveBookmark(for: task.localPath) {
-                    let fileURL = URL(fileURLWithPath: item.localPath)
-                    if FileManager.default.fileExists(atPath: item.localPath) {
-                        NSWorkspace.shared.open(fileURL)
-                    }
-                    taskURL.stopAccessingSecurityScopedResource()
-                    return
-                }
-            }
-        }
-        // Fallback: try localPath directly
-        if !item.localPath.isEmpty {
-            let url = URL(fileURLWithPath: item.localPath)
-            if FileManager.default.fileExists(atPath: item.localPath) {
-                NSWorkspace.shared.open(url)
-                return
-            }
-        }
-        // Last resort: search in task folders by filename
-        for task in appState.syncTasks where task.isEnabled {
+        debugLog(" openRecentFile: filename=\(item.filename) localPath=\(item.localPath) relativePath=\(item.relativePath)")
+        for task in appState.syncTasks where task.isEnabled && task.mode != .onDemand {
             if let taskURL = appState.resolveBookmark(for: task.localPath) {
+                // Try direct paths first
                 let relPath = item.relativePath.isEmpty ? item.filename : item.relativePath
                 let fullPath = (task.localPath as NSString).appendingPathComponent(relPath)
+                if !item.localPath.isEmpty && FileManager.default.fileExists(atPath: item.localPath) {
+                    debugLog(" Found at localPath: \(item.localPath)")
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: item.localPath)])
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { taskURL.stopAccessingSecurityScopedResource() }
+                    return
+                }
                 if FileManager.default.fileExists(atPath: fullPath) {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: fullPath))
+                    debugLog(" Found at fullPath: \(fullPath)")
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: fullPath)])
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { taskURL.stopAccessingSecurityScopedResource() }
+                    return
+                }
+                // Recursive search: find the file anywhere in the task folder
+                if let found = findFile(named: item.filename, in: task.localPath) {
+                    debugLog(" Found recursively: \(found)")
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: found)])
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { taskURL.stopAccessingSecurityScopedResource() }
+                    return
                 }
                 taskURL.stopAccessingSecurityScopedResource()
-                return
             }
         }
+        debugLog(" No file found for \(item.filename)")
+    }
+
+    private func findFile(named filename: String, in directory: String) -> String? {
+        let enumerator = FileManager.default.enumerator(atPath: directory)
+        while let path = enumerator?.nextObject() as? String {
+            if (path as NSString).lastPathComponent == filename {
+                return (directory as NSString).appendingPathComponent(path)
+            }
+        }
+        return nil
     }
 }
 

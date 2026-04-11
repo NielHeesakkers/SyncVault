@@ -478,7 +478,7 @@ actor SyncEngine {
         let names = sortedActions.map { $0.fileName }
         var authFailed = false
 
-        let semaphore = DynamicSemaphore(initialLimit: 4)
+        let semaphore = DynamicSemaphore(initialLimit: 8)
 
         await withTaskGroup(of: (SyncActionResult).self) { group in
             for (i, action) in sortedActions.enumerated() {
@@ -518,22 +518,40 @@ actor SyncEngine {
                             let parentRelPath = (relativePath as NSString).deletingLastPathComponent
                             let parentID = try await self.ensureRemoteDirectory(parentRelPath, rootID: task.remoteFolderID)
 
-                            // Direct block upload: split into blocks, upload missing, create file
-                            let fileBytesSent = ActorCounter(initial: 0)
-                            let uploadedHash = try await self.uploadViaBlocks(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize) { blockBytes in
-                                await bytesUploaded.add(blockBytes)
-                                await bytesTransferred.add(blockBytes)
-                                await fileBytesSent.add(blockBytes)
-                                let curB = await bytesUploaded.value
-                                let fileCur = await fileBytesSent.value
+                            var uploadedHash: String
+
+                            if fileSize < 1_000_000 && fileSize > 0 {
+                                // Small file: direct multipart upload (1 round-trip instead of 3)
+                                let f = try await self.apiClient.uploadFileDirect(fileURL: fileURL, parentID: parentID)
+                                uploadedHash = f.contentHash ?? ""
+                                await bytesUploaded.add(fileSize)
+                                await bytesTransferred.add(fileSize)
                                 await onProgress(SyncProgress(
                                     currentFile: displayName, action: "Uploading",
-                                    bytesTransferred: curB, totalBytes: totalBytesToUpload,
+                                    bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
                                     filesCompleted: Int(await completed.value), filesTotal: total,
                                     bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
                                     pendingFiles: pending,
-                                    currentFileBytes: fileCur, currentFileTotal: fileSize
+                                    currentFileBytes: fileSize, currentFileTotal: fileSize
                                 ))
+                            } else {
+                                // Large file: block-based upload with deduplication
+                                let fileBytesSent = ActorCounter(initial: 0)
+                                uploadedHash = try await self.uploadViaBlocks(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize) { blockBytes in
+                                    await bytesUploaded.add(blockBytes)
+                                    await bytesTransferred.add(blockBytes)
+                                    await fileBytesSent.add(blockBytes)
+                                    let curB = await bytesUploaded.value
+                                    let fileCur = await fileBytesSent.value
+                                    await onProgress(SyncProgress(
+                                        currentFile: displayName, action: "Uploading",
+                                        bytesTransferred: curB, totalBytes: totalBytesToUpload,
+                                        filesCompleted: Int(await completed.value), filesTotal: total,
+                                        bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
+                                        pendingFiles: pending,
+                                        currentFileBytes: fileCur, currentFileTotal: fileSize
+                                    ))
+                                }
                             }
 
                             logger.info("Uploaded: \(relativePath) (\(fileSize) bytes, hash: \(uploadedHash))")

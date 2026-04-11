@@ -289,6 +289,35 @@ actor APIClient {
         throw lastError!
     }
 
+    /// Direct multipart file upload (single round-trip). Best for small files (< 1MB).
+    func uploadFileDirect(fileURL: URL, parentID: String) async throws -> ServerFile {
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/upload")!)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.timeoutInterval = 300
+
+        var body = Data()
+        // parent_id field
+        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"parent_id\"\r\n\r\n\(parentID)\r\n".data(using: .utf8)!)
+        // file field
+        let fileData = try Data(contentsOf: fileURL)
+        let filename = fileURL.lastPathComponent
+        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+            throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
+        }
+        return try JSONDecoder().decode(ServerFile.self, from: data)
+    }
+
     /// Create a file on the server from pre-uploaded blocks.
     func createFileFromBlocks(filename: String, parentID: String, fileHash: String, blocks: [[String: Any]]) async throws -> ServerFile {
         let body: [String: Any] = [
