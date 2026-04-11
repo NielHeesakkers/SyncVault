@@ -601,6 +601,24 @@ func (d *DB) TotalStorageUsed() int64 {
 	return size
 }
 
+// StorageUsedByAllUsers returns storage used per user in a single query (avoids N+1).
+func (d *DB) StorageUsedByAllUsers() map[string]int64 {
+	result := make(map[string]int64)
+	rows, err := d.db.Query(`SELECT owner_id, COALESCE(SUM(size), 0) FROM files WHERE is_dir = 0 AND deleted_at IS NULL GROUP BY owner_id`)
+	if err != nil {
+		return result
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var uid string
+		var size int64
+		if rows.Scan(&uid, &size) == nil {
+			result[uid] = size
+		}
+	}
+	return result
+}
+
 // StorageUsedByUser returns the sum of sizes of all non-deleted, non-directory files owned by userID.
 func (d *DB) StorageUsedByUser(userID string) (int64, error) {
 	var total sql.NullInt64
@@ -626,13 +644,12 @@ type FolderSizeEntry struct {
 
 // ListTopFoldersBySize returns top-level folders ordered by total file size descending.
 func (d *DB) ListTopFoldersBySize() ([]FolderSizeEntry, error) {
+	// Use pre-computed folder_size column (recursive total) instead of joining children
 	rows, err := d.db.Query(
-		`SELECT f.id, f.name, COALESCE(SUM(c.size), 0) as total_size
-		 FROM files f
-		 LEFT JOIN files c ON c.parent_id = f.id AND c.is_dir = 0 AND c.deleted_at IS NULL
-		 WHERE f.is_dir = 1 AND f.parent_id IS NULL AND f.deleted_at IS NULL
-		 GROUP BY f.id, f.name
-		 ORDER BY total_size DESC
+		`SELECT id, name, folder_size
+		 FROM files
+		 WHERE is_dir = 1 AND parent_id IS NULL AND deleted_at IS NULL
+		 ORDER BY folder_size DESC
 		 LIMIT 50`,
 	)
 	if err != nil {

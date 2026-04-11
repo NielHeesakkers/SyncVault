@@ -56,7 +56,7 @@ func (s *Server) setupRoutes() {
 	r.Use(SecurityHeadersMiddleware)
 	r.Use(CORSMiddleware)
 	r.Use(LoggingMiddleware)
-	r.Use(chimiddleware.Compress(5, "application/json", "text/event-stream"))
+	r.Use(chimiddleware.Compress(6, "application/json", "text/html", "text/css", "text/javascript", "application/javascript", "text/event-stream", "image/svg+xml"))
 
 	// Public routes.
 	r.Get("/api/health", s.handleHealth)

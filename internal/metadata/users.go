@@ -324,6 +324,23 @@ func (d *DB) HasConnectionToken(userID string) bool {
 	return count > 0
 }
 
+// UsersWithTokens returns a set of user IDs that have unused connection tokens (batch query).
+func (d *DB) UsersWithTokens() map[string]bool {
+	result := make(map[string]bool)
+	rows, err := d.db.Query(`SELECT user_id FROM connection_tokens WHERE used = 0`)
+	if err != nil {
+		return result
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var uid string
+		if rows.Scan(&uid) == nil {
+			result[uid] = true
+		}
+	}
+	return result
+}
+
 // RefreshConnectionToken regenerates a token for a user (admin action). Returns new PIN.
 func (d *DB) RefreshConnectionToken(userID string) error {
 	// Just reset the used flag — the caller will generate new encrypted data

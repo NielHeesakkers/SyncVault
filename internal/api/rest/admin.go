@@ -152,22 +152,20 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Batch queries: 2 queries for all users instead of 2N
+	storageMap := s.db.StorageUsedByAllUsers()
+	tokenMap := s.db.UsersWithTokens()
+
 	result := make([]adminUserResponse, 0, len(users))
 	for _, u := range users {
-		used, err := s.db.StorageUsedByUser(u.ID)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not compute storage usage"})
-			return
-		}
-		hasToken := s.db.HasConnectionToken(u.ID)
 		result = append(result, adminUserResponse{
 			ID:          u.ID,
 			Username:    u.Username,
 			Email:       u.Email,
 			Role:        u.Role,
 			QuotaBytes:  u.QuotaBytes,
-			StorageUsed: used,
-			HasToken:    hasToken,
+			StorageUsed: storageMap[u.ID],
+			HasToken:    tokenMap[u.ID],
 			CreatedAt:   u.CreatedAt,
 			UpdatedAt:   u.UpdatedAt,
 		})
@@ -410,17 +408,13 @@ func (s *Server) handleAdminStorageUsers(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	storageMap := s.db.StorageUsedByAllUsers()
 	result := make([]storageUserEntry, 0, len(users))
 	for _, u := range users {
-		used, err := s.db.StorageUsedByUser(u.ID)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not compute storage usage"})
-			return
-		}
 		result = append(result, storageUserEntry{
 			ID:           u.ID,
 			Username:     u.Username,
-			StorageUsed:  used,
+			StorageUsed:  storageMap[u.ID],
 			StorageQuota: u.QuotaBytes,
 		})
 	}

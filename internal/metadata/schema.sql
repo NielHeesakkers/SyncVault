@@ -200,12 +200,18 @@ CREATE INDEX IF NOT EXISTS idx_files_parent_id    ON files(parent_id);
 CREATE INDEX IF NOT EXISTS idx_files_owner_id     ON files(owner_id);
 CREATE INDEX IF NOT EXISTS idx_files_owner_size   ON files(owner_id, is_dir, deleted_at, size);
 CREATE INDEX IF NOT EXISTS idx_files_deleted_at   ON files(deleted_at);
+-- Composite indexes for common query patterns (ListChildren, storage calculations)
+CREATE INDEX IF NOT EXISTS idx_files_parent_deleted ON files(parent_id, deleted_at, is_dir, name);
+CREATE INDEX IF NOT EXISTS idx_files_storage       ON files(is_dir, deleted_at, size);
 CREATE INDEX IF NOT EXISTS idx_versions_file_id   ON versions(file_id);
 CREATE INDEX IF NOT EXISTS idx_versions_file_time ON versions(file_id, created_at, version_num);
+CREATE INDEX IF NOT EXISTS idx_versions_file_num  ON versions(file_id, version_num DESC);
 CREATE INDEX IF NOT EXISTS idx_versions_created   ON versions(created_at);
 CREATE INDEX IF NOT EXISTS idx_devices_user_id    ON devices(user_id);
 CREATE INDEX IF NOT EXISTS idx_activity_user_id   ON activity_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_activity_created   ON activity_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_activity_composite ON activity_log(user_id, action, created_at);
 CREATE INDEX IF NOT EXISTS idx_share_token        ON share_links(token);
 CREATE INDEX IF NOT EXISTS idx_upload_sessions_user ON upload_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_file_blocks_file   ON file_blocks(file_id);
+CREATE INDEX IF NOT EXISTS idx_conn_tokens_user   ON connection_tokens(user_id);

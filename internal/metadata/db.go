@@ -27,14 +27,20 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("metadata: open db: %w", err)
 	}
 
-	// Single writer to prevent SQLITE_BUSY on WAL with multiple connections.
-	rawDB.SetMaxOpenConns(1)
+	// Allow multiple readers + 1 writer for WAL mode concurrency.
+	rawDB.SetMaxOpenConns(8)
+	rawDB.SetMaxIdleConns(4)
 
-	// Configure pragmas.
+	// Configure pragmas for maximum performance in WAL mode.
 	pragmas := []string{
 		"PRAGMA journal_mode=WAL;",
 		"PRAGMA busy_timeout=5000;",
 		"PRAGMA foreign_keys=ON;",
+		"PRAGMA synchronous=NORMAL;",    // Safe in WAL mode, much faster writes
+		"PRAGMA cache_size=-20000;",     // 20 MB page cache (negative = KB)
+		"PRAGMA temp_store=MEMORY;",     // Temp tables in RAM
+		"PRAGMA mmap_size=268435456;",   // 256 MB memory-mapped I/O
+		"PRAGMA wal_autocheckpoint=1000;", // Checkpoint after 1000 pages
 	}
 	for _, p := range pragmas {
 		if _, err := rawDB.Exec(p); err != nil {
@@ -75,33 +81,38 @@ func Open(path string) (*DB, error) {
 	// Background migration: sync files.size with latest version size.
 	// Runs async so it doesn't block server startup or requests.
 	go func() {
-		time.Sleep(2 * time.Minute) // Wait for server to handle initial requests before heavy migrations
+		time.Sleep(5 * time.Second) // Brief delay to let server start handling requests
+
+		// Only sync file sizes if there are mismatches (rare after initial migration)
 		var needsSizeSync int
-		rawDB.QueryRow(`SELECT COUNT(*) FROM files WHERE is_dir = 0 AND size = 0 AND id IN (SELECT file_id FROM versions WHERE size > 0 LIMIT 1)`).Scan(&needsSizeSync)
+		rawDB.QueryRow(`SELECT EXISTS(SELECT 1 FROM files WHERE is_dir = 0 AND size = 0 AND id IN (SELECT file_id FROM versions WHERE size > 0 LIMIT 1))`).Scan(&needsSizeSync)
 		if needsSizeSync > 0 {
 			log.Printf("metadata: syncing files.size in background...")
 			rawDB.Exec(`UPDATE files SET size = (SELECT v.size FROM versions v WHERE v.file_id = files.id ORDER BY v.version_num DESC LIMIT 1), content_hash = (SELECT v.content_hash FROM versions v WHERE v.file_id = files.id ORDER BY v.version_num DESC LIMIT 1) WHERE is_dir = 0 AND size = 0 AND id IN (SELECT DISTINCT file_id FROM versions WHERE size > 0)`)
 			log.Printf("metadata: files.size sync complete")
 		}
 
-		// Backfill folder_size for all directories.
-		// Runs multiple rounds so parent folders pick up children's updated sizes.
-		for round := 0; round < 15; round++ {
-			rawDB.Exec(`
-				UPDATE files SET folder_size = (
-					SELECT COALESCE(SUM(
-						CASE WHEN c.is_dir = 1 THEN c.folder_size
-						ELSE COALESCE(
-							(SELECT v.size FROM versions v WHERE v.file_id = c.id ORDER BY v.version_num DESC LIMIT 1),
-							c.size
-						) END
-					), 0)
-					FROM files c WHERE c.parent_id = files.id AND c.deleted_at IS NULL
-				)
-				WHERE is_dir = 1 AND deleted_at IS NULL
-			`)
+		// Backfill folder_size only if needed (check for zero-size directories with children)
+		var needsFolderFix int
+		rawDB.QueryRow(`SELECT EXISTS(SELECT 1 FROM files WHERE is_dir = 1 AND folder_size = 0 AND deleted_at IS NULL AND id IN (SELECT parent_id FROM files WHERE deleted_at IS NULL AND (size > 0 OR folder_size > 0) LIMIT 1))`).Scan(&needsFolderFix)
+		if needsFolderFix > 0 {
+			log.Printf("metadata: folder_size backfill starting...")
+			for round := 0; round < 15; round++ {
+				res, _ := rawDB.Exec(`
+					UPDATE files SET folder_size = (
+						SELECT COALESCE(SUM(
+							CASE WHEN c.is_dir = 1 THEN c.folder_size ELSE c.size END
+						), 0)
+						FROM files c WHERE c.parent_id = files.id AND c.deleted_at IS NULL
+					)
+					WHERE is_dir = 1 AND deleted_at IS NULL
+				`)
+				if n, _ := res.RowsAffected(); n == 0 {
+					break // No more changes
+				}
+			}
+			log.Printf("metadata: folder_size backfill complete")
 		}
-		log.Printf("metadata: folder_size backfill complete")
 	}()
 
 	// Smart Retention: apply default policies to existing tasks and enforce periodically.
