@@ -4,6 +4,23 @@ import os
 
 private let logger = Logger(subsystem: "com.syncvault.app", category: "SyncEngine")
 
+/// File-based logger for debugging (os.Logger doesn't show in sandboxed apps)
+func syncLog(_ msg: String) {
+    let ts = ISO8601DateFormatter().string(from: Date())
+    let line = "\(ts) \(msg)\n"
+    let logDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        .appendingPathComponent("SyncVault")
+    try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
+    let logFile = logDir.appendingPathComponent("sync_live.log")
+    if let handle = try? FileHandle(forWritingTo: logFile) {
+        handle.seekToEndOfFile()
+        handle.write(line.data(using: .utf8)!)
+        handle.closeFile()
+    } else {
+        try? line.write(to: logFile, atomically: true, encoding: .utf8)
+    }
+}
+
 actor SyncEngine {
     private let apiClient: APIClient
     private let db: SyncDatabase
@@ -509,6 +526,7 @@ actor SyncEngine {
                             indicesToRemove.insert(entry.index)
                         }
                         logger.info("Batch uploaded \(batch.count) small files to parent \(parentID)")
+                        syncLog("Batch uploaded \(batch.count) small files")
                     }
                 }
             }
@@ -604,6 +622,7 @@ actor SyncEngine {
                             }
 
                             logger.info("Uploaded: \(relativePath) (\(fileSize) bytes, hash: \(uploadedHash))")
+                            syncLog("Uploaded: \(relativePath) (\(fileSize) bytes)")
                             try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: uploadedHash, isDir: false)
                             return .uploaded(displayName, relativePath)
 
@@ -889,6 +908,7 @@ actor SyncEngine {
         }
 
         logger.info("Scan complete: hashed \(hashCount) files, skipped \(skipCount) unchanged files")
+        syncLog("Scan complete: \(files.count) files found, hashed \(hashCount), skipped \(skipCount) (mtime cache hit)")
         return files
     }
 
@@ -1016,6 +1036,7 @@ actor SyncEngine {
         }
 
         logger.info("File \(filename): \(existingHashes.count) blocks exist, \(missingBlocks.count) to upload")
+        syncLog("File \(filename): \(blocks.count) blocks (\(blockSize/1024/1024)MB each), \(existingHashes.count) exist, \(missingBlocks.count) to upload")
 
         // 3. Upload missing blocks — 10 in parallel
         if !missingBlocks.isEmpty {
@@ -1037,6 +1058,9 @@ actor SyncEngine {
 
                         let blockStart = Date()
                         try await APIClient.uploadBlock(baseURL: base, token: token, hash: block.hash, data: data)
+                        let blockDuration = Date().timeIntervalSince(blockStart)
+                        let blockSpeed = Double(data.count) / blockDuration
+                        syncLog("Block \(block.index): \(data.count) bytes in \(String(format: "%.1f", blockDuration))s = \(String(format: "%.0f", blockSpeed / 1024)) KB/s")
 
                         // Rate limiting: sleep if we uploaded faster than the limit allows
                         if uploadLimit > 0 {
@@ -1214,11 +1238,14 @@ actor DynamicSemaphore {
 
     /// Returns the optimal parallelism level for a given file size
     static func parallelismFor(fileSize: Int64) -> Int {
+        // Controls how many FILES upload in parallel (not blocks within a file).
+        // Large files already have 10 parallel block uploads internally,
+        // so keep file parallelism low to avoid I/O contention on storage.
         switch fileSize {
-        case ..<(10 * 1024 * 1024):          return 2   // < 10 MB
-        case ..<(100 * 1024 * 1024):         return 4   // 10-100 MB
-        case ..<(1024 * 1024 * 1024):        return 8   // 100 MB - 1 GB
-        default:                              return 16  // > 1 GB
+        case ..<(1 * 1024 * 1024):           return 8   // < 1 MB: many small files in parallel
+        case ..<(10 * 1024 * 1024):          return 4   // 1-10 MB
+        case ..<(100 * 1024 * 1024):         return 2   // 10-100 MB
+        default:                              return 1   // > 100 MB: one large file at a time
         }
     }
 

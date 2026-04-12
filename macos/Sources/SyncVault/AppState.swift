@@ -7,6 +7,14 @@ private let logger = Logger(subsystem: "com.syncvault.app", category: "AppState"
 
 let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.1"
 
+/// Shared file-based sync log (readable via tail -f from terminal)
+let syncLogFile: URL = {
+    let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        .appendingPathComponent("SyncVault")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir.appendingPathComponent("sync_live.log")
+}()
+
 @MainActor
 class AppState: ObservableObject {
     @Published var isConnected = false
