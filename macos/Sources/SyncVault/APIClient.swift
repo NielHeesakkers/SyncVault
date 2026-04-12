@@ -383,6 +383,71 @@ actor APIClient {
         return result.files
     }
 
+    // MARK: - Delta Sync
+
+    /// Block signature from server (256KB block with weak + strong hash)
+    struct BlockSignature: Codable {
+        let index: Int
+        let weak_hash: UInt32
+        let strong_hash: String
+    }
+
+    struct BlocksResponse: Codable {
+        let file_id: String
+        let block_size: Int
+        let blocks: [BlockSignature]
+    }
+
+    /// Fetch block signatures for an existing file (for delta comparison)
+    func getBlockSignatures(fileID: String) async throws -> BlocksResponse {
+        let response: BlocksResponse = try await get("/api/files/\(fileID)/blocks")
+        return response
+    }
+
+    /// Upload delta — only changed blocks. Much faster than full upload for modified files.
+    func uploadDelta(fileID: String, reuseBlocks: [Int], newBlocksData: Data, newBlockEntries: [(index: Int, offset: Int)]) async throws -> ServerFile {
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/\(fileID)/delta")!)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.timeoutInterval = 3600
+
+        // Build manifest JSON
+        struct DeltaManifest: Codable {
+            let reuse_blocks: [Int]
+            let new_blocks: [NewBlock]
+        }
+        struct NewBlock: Codable {
+            let index: Int
+            let offset: Int64
+        }
+        let manifest = DeltaManifest(
+            reuse_blocks: reuseBlocks,
+            new_blocks: newBlockEntries.map { NewBlock(index: $0.index, offset: Int64($0.offset)) }
+        )
+        let manifestJSON = try JSONEncoder().encode(manifest)
+
+        var body = Data()
+        // Manifest part
+        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"manifest\"\r\n\r\n".data(using: .utf8)!)
+        body.append(manifestJSON)
+        body.append("\r\n".data(using: .utf8)!)
+        // Data part (only new/changed blocks)
+        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"data\"; filename=\"delta.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+        body.append(newBlocksData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+            throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
+        }
+        return try JSONDecoder().decode(ServerFile.self, from: data)
+    }
+
     /// Create a file on the server from pre-uploaded blocks.
     func createFileFromBlocks(filename: String, parentID: String, fileHash: String, blocks: [[String: Any]]) async throws -> ServerFile {
         let body: [String: Any] = [

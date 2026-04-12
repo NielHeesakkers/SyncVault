@@ -587,19 +587,46 @@ actor SyncEngine {
 
                             var uploadedHash: String
 
-                            // Streaming upload: single HTTP request, streamed from disk.
-                            // No block protocol overhead — like Synology Drive.
-                            syncLog("Uploading \(displayName) (\(fileSize) bytes) via streaming")
-                            let uploadStart = Date()
-                            let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID)
-                            uploadedHash = f.contentHash ?? ""
-                            let uploadDuration = Date().timeIntervalSince(uploadStart)
-                            let speed = Double(fileSize) / max(uploadDuration, 0.001)
-                            syncLog("Uploaded \(displayName) in \(String(format: "%.1f", uploadDuration))s = \(String(format: "%.0f", speed / 1024)) KB/s")
-                            await bytesUploaded.add(fileSize)
-                            await bytesTransferred.add(fileSize)
+                            // Delta Sync: if file already exists on server (remoteFileID != nil)
+                            // and is > 1MB, try delta upload (only send changed bytes).
+                            let didDelta: Bool
+                            if let remoteID = remoteFileID, fileSize > 1_000_000 {
+                                didDelta = true
+                                syncLog("Delta check: \(displayName) (\(fileSize) bytes, remoteID=\(remoteID))")
+                                let uploadStart = Date()
+                                do {
+                                    let deltaResult = try await self.deltaUpload(fileURL: fileURL, remoteFileID: remoteID, fileSize: fileSize)
+                                    uploadedHash = deltaResult.hash
+                                    let deltaBytes = deltaResult.bytesSent
+                                    let uploadDuration = Date().timeIntervalSince(uploadStart)
+                                    let saved = fileSize - deltaBytes
+                                    let pct = Double(saved) / Double(fileSize) * 100
+                                    syncLog("Delta uploaded \(displayName): sent \(deltaBytes) bytes instead of \(fileSize) (saved \(String(format: "%.0f", pct))%) in \(String(format: "%.1f", uploadDuration))s")
+                                    await bytesUploaded.add(fileSize)
+                                    await bytesTransferred.add(deltaBytes)
+                                } catch {
+                                    // Delta failed — fall back to full upload
+                                    syncLog("Delta failed for \(displayName): \(error.localizedDescription), falling back to full upload")
+                                    let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID)
+                                    uploadedHash = f.contentHash ?? ""
+                                    await bytesUploaded.add(fileSize)
+                                    await bytesTransferred.add(fileSize)
+                                }
+                            } else {
+                                didDelta = false
+                                // Full streaming upload for new files or small files
+                                syncLog("Uploading \(displayName) (\(fileSize) bytes) via streaming")
+                                let uploadStart = Date()
+                                let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID)
+                                uploadedHash = f.contentHash ?? ""
+                                let uploadDuration = Date().timeIntervalSince(uploadStart)
+                                let speed = Double(fileSize) / max(uploadDuration, 0.001)
+                                syncLog("Uploaded \(displayName) in \(String(format: "%.1f", uploadDuration))s = \(String(format: "%.0f", speed / 1024)) KB/s")
+                                await bytesUploaded.add(fileSize)
+                                await bytesTransferred.add(fileSize)
+                            }
                             await onProgress(SyncProgress(
-                                currentFile: displayName, action: "Uploading",
+                                currentFile: displayName, action: didDelta ? "Delta sync" : "Uploading",
                                 bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
                                 filesCompleted: Int(await completed.value), filesTotal: total,
                                 bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
@@ -987,6 +1014,100 @@ actor SyncEngine {
 
     /// Upload a file by splitting it into blocks, checking which exist, and uploading only missing ones.
     /// Block size scales with file size: 4 MB for small files, up to 64 MB for very large files.
+    // MARK: - Delta Sync (rsync-style)
+
+    struct DeltaResult {
+        let hash: String
+        let bytesSent: Int64
+    }
+
+    /// Delta upload: fetch server block signatures, compare with local file,
+    /// send only changed blocks. Falls back to full upload if delta is > 70% of file.
+    private func deltaUpload(fileURL: URL, remoteFileID: String, fileSize: Int64) async throws -> DeltaResult {
+        // 1. Get block signatures from server
+        let blocksResponse = try await apiClient.getBlockSignatures(fileID: remoteFileID)
+        let blockSize = blocksResponse.block_size
+        let serverBlocks = blocksResponse.blocks
+
+        if serverBlocks.isEmpty {
+            throw NSError(domain: "DeltaSync", code: 1, userInfo: [NSLocalizedDescriptionKey: "No server blocks available"])
+        }
+
+        // 2. Build weak hash lookup table: weakHash → [(index, strongHash)]
+        var weakLookup: [UInt32: [(index: Int, strongHash: String)]] = [:]
+        for block in serverBlocks {
+            var entries = weakLookup[block.weak_hash] ?? []
+            entries.append((index: block.index, strongHash: block.strong_hash))
+            weakLookup[block.weak_hash] = entries
+        }
+
+        // 3. Scan local file and compare blocks
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { handle.closeFile() }
+
+        var reuseBlocks: [Int] = []
+        var newBlocksData = Data()
+        var newBlockEntries: [(index: Int, offset: Int)] = []
+        var blockIndex = 0
+
+        while true {
+            let data = handle.readData(ofLength: blockSize)
+            if data.isEmpty { break }
+
+            // Compute weak hash of this block
+            var a: UInt32 = 0, b: UInt32 = 0
+            let mod: UInt32 = 65521
+            for byte in data {
+                a = (a + UInt32(byte)) % mod
+                b = (b + a) % mod
+            }
+            let weakHash = (b << 16) | a
+
+            // Check if server has this block
+            var matched = false
+            if let candidates = weakLookup[weakHash] {
+                // Weak hash match — verify with strong hash
+                let strongHash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
+                for candidate in candidates {
+                    if candidate.strongHash == strongHash {
+                        reuseBlocks.append(candidate.index)
+                        matched = true
+                        break
+                    }
+                }
+            }
+
+            if !matched {
+                // Block changed — include in delta
+                newBlockEntries.append((index: blockIndex, offset: newBlocksData.count))
+                newBlocksData.append(data)
+            }
+
+            blockIndex += 1
+        }
+
+        let totalBlocks = blockIndex
+        let changedBlocks = newBlockEntries.count
+        let reuseCount = reuseBlocks.count
+
+        syncLog("Delta: \(totalBlocks) blocks total, \(reuseCount) reuse, \(changedBlocks) changed (\(newBlocksData.count) bytes to send)")
+
+        // 4. Fallback: if more than 70% changed, full upload is more efficient
+        if totalBlocks > 0 && Double(changedBlocks) / Double(totalBlocks) > 0.7 {
+            throw NSError(domain: "DeltaSync", code: 2, userInfo: [NSLocalizedDescriptionKey: "Delta too large (\(changedBlocks)/\(totalBlocks) blocks changed), falling back to full upload"])
+        }
+
+        // 5. Upload delta
+        let result = try await apiClient.uploadDelta(
+            fileID: remoteFileID,
+            reuseBlocks: reuseBlocks,
+            newBlocksData: newBlocksData,
+            newBlockEntries: newBlockEntries
+        )
+
+        return DeltaResult(hash: result.contentHash ?? "", bytesSent: Int64(newBlocksData.count))
+    }
+
     private func uploadViaBlocks(fileURL: URL, filename: String, parentID: String, fileSize: Int64, onBlockUploaded: ((Int64) async -> Void)? = nil) async throws -> String {
         let blockSize = Self.blockSizeFor(fileSize: fileSize)
         let handle = try FileHandle(forReadingFrom: fileURL)

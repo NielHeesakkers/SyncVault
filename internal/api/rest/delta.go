@@ -153,7 +153,7 @@ func (s *Server) handleGetBlocks(w http.ResponseWriter, r *http.Request) {
 			err  error
 		}{sigs, err}
 	}()
-	if err := s.store.Get(f.ContentHash.String, pw); err != nil {
+	if err := s.store.GetDirect(f.ContentHash.String, pw); err != nil {
 		pw.CloseWithError(err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not read file content"})
 		return
@@ -257,7 +257,7 @@ func (s *Server) handleDeltaUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Read the existing file into memory.
 	var existingBuf bytes.Buffer
-	if err := s.store.Get(f.ContentHash.String, &existingBuf); err != nil {
+	if err := s.store.GetDirect(f.ContentHash.String, &existingBuf); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not read existing file content"})
 		return
 	}
@@ -328,7 +328,7 @@ func (s *Server) handleDeltaUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store the reconstructed file.
-	contentHash, size, err := s.store.Put(&reconstructed)
+	contentHash, size, err := s.store.PutDirect(&reconstructed)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not store reconstructed file"})
 		return
@@ -353,7 +353,7 @@ func (s *Server) handleDeltaUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Compute and cache block signatures for the new version.
 	var newContentBuf bytes.Buffer
-	if err := s.store.Get(contentHash, &newContentBuf); err == nil {
+	if err := s.store.GetDirect(contentHash, &newContentBuf); err == nil {
 		newSigs := computeBlockSignatures(newContentBuf.Bytes())
 		dbBlocks := make([]metadata.FileBlock, len(newSigs))
 		for i, sig := range newSigs {
