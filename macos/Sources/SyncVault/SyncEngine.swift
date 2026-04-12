@@ -587,39 +587,25 @@ actor SyncEngine {
 
                             var uploadedHash: String
 
-                            if fileSize < 1_000_000 && fileSize > 0 {
-                                // Small file: direct multipart upload (1 round-trip instead of 3)
-                                let f = try await self.apiClient.uploadFileDirect(fileURL: fileURL, parentID: parentID)
-                                uploadedHash = f.contentHash ?? ""
-                                await bytesUploaded.add(fileSize)
-                                await bytesTransferred.add(fileSize)
-                                await onProgress(SyncProgress(
-                                    currentFile: displayName, action: "Uploading",
-                                    bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
-                                    filesCompleted: Int(await completed.value), filesTotal: total,
-                                    bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
-                                    pendingFiles: pending,
-                                    currentFileBytes: fileSize, currentFileTotal: fileSize
-                                ))
-                            } else {
-                                // Large file: block-based upload with deduplication
-                                let fileBytesSent = ActorCounter(initial: 0)
-                                uploadedHash = try await self.uploadViaBlocks(fileURL: fileURL, filename: displayName, parentID: parentID, fileSize: fileSize) { blockBytes in
-                                    await bytesUploaded.add(blockBytes)
-                                    await bytesTransferred.add(blockBytes)
-                                    await fileBytesSent.add(blockBytes)
-                                    let curB = await bytesUploaded.value
-                                    let fileCur = await fileBytesSent.value
-                                    await onProgress(SyncProgress(
-                                        currentFile: displayName, action: "Uploading",
-                                        bytesTransferred: curB, totalBytes: totalBytesToUpload,
-                                        filesCompleted: Int(await completed.value), filesTotal: total,
-                                        bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
-                                        pendingFiles: pending,
-                                        currentFileBytes: fileCur, currentFileTotal: fileSize
-                                    ))
-                                }
-                            }
+                            // Streaming upload: single HTTP request, streamed from disk.
+                            // No block protocol overhead — like Synology Drive.
+                            syncLog("Uploading \(displayName) (\(fileSize) bytes) via streaming")
+                            let uploadStart = Date()
+                            let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID)
+                            uploadedHash = f.contentHash ?? ""
+                            let uploadDuration = Date().timeIntervalSince(uploadStart)
+                            let speed = Double(fileSize) / max(uploadDuration, 0.001)
+                            syncLog("Uploaded \(displayName) in \(String(format: "%.1f", uploadDuration))s = \(String(format: "%.0f", speed / 1024)) KB/s")
+                            await bytesUploaded.add(fileSize)
+                            await bytesTransferred.add(fileSize)
+                            await onProgress(SyncProgress(
+                                currentFile: displayName, action: "Uploading",
+                                bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
+                                filesCompleted: Int(await completed.value), filesTotal: total,
+                                bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
+                                pendingFiles: pending,
+                                currentFileBytes: fileSize, currentFileTotal: fileSize
+                            ))
 
                             logger.info("Uploaded: \(relativePath) (\(fileSize) bytes, hash: \(uploadedHash))")
                             syncLog("Uploaded: \(relativePath) (\(fileSize) bytes)")

@@ -290,33 +290,57 @@ actor APIClient {
         throw lastError!
     }
 
-    /// Direct multipart file upload (single round-trip). Best for small files (< 1MB).
-    func uploadFileDirect(fileURL: URL, parentID: String) async throws -> ServerFile {
+    /// Streaming file upload — streams from disk without loading into memory.
+    /// Works for any file size. Single HTTP request like Synology Drive.
+    func uploadFileStreaming(fileURL: URL, parentID: String) async throws -> ServerFile {
         let boundary = UUID().uuidString
+        let filename = fileURL.lastPathComponent
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path))?[.size] as? Int64 ?? 0
+
+        // Build multipart body as a temporary file (avoids loading file into memory)
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempFile = tempDir.appendingPathComponent(UUID().uuidString + ".multipart")
+        defer { try? FileManager.default.removeItem(at: tempFile) }
+
+        let handle = try FileHandle(forWritingTo: { FileManager.default.createFile(atPath: tempFile.path, contents: nil); return tempFile }())
+
+        // Write multipart header + parent_id field
+        let header = "--\(boundary)\r\nContent-Disposition: form-data; name=\"parent_id\"\r\n\r\n\(parentID)\r\n--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        handle.write(header.data(using: .utf8)!)
+
+        // Stream file content in 4MB chunks (never loads full file)
+        let readHandle = try FileHandle(forReadingFrom: fileURL)
+        defer { readHandle.closeFile() }
+        let chunkSize = 4 * 1024 * 1024
+        while true {
+            let chunk = readHandle.readData(ofLength: chunkSize)
+            if chunk.isEmpty { break }
+            handle.write(chunk)
+        }
+
+        // Write multipart footer
+        handle.write("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        handle.closeFile()
+
+        // Upload the temp file via streaming (URLSession reads from disk)
         var request = URLRequest(url: URL(string: "\(baseURL)/api/files/upload")!)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         if let token = accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        request.timeoutInterval = 300
+        request.timeoutInterval = 3600 // 1 hour for very large files
 
-        var body = Data()
-        // parent_id field
-        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"parent_id\"\r\n\r\n\(parentID)\r\n".data(using: .utf8)!)
-        // file field
-        let fileData = try Data(contentsOf: fileURL)
-        let filename = fileURL.lastPathComponent
-        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
-        body.append(fileData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-
-        request.httpBody = body
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: tempFile)
         guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
             throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
         }
         return try JSONDecoder().decode(ServerFile.self, from: data)
+    }
+
+    /// Direct multipart file upload for small files (loads into memory).
+    func uploadFileDirect(fileURL: URL, parentID: String) async throws -> ServerFile {
+        return try await uploadFileStreaming(fileURL: fileURL, parentID: parentID)
     }
 
     /// Batch upload multiple small files in a single HTTP request.
