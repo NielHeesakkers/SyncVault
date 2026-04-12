@@ -94,6 +94,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/files", s.handleListFiles)
 		r.Post("/api/files", s.handleCreateFile)
 		r.Post("/api/files/upload", s.handleUploadFile)
+		r.Post("/api/files/batch-upload", s.handleBatchUpload)
 		r.Get("/api/files/search", s.handleSearchFiles)
 		// History routes must be registered before {id} routes so they are not caught as an id param.
 		r.Get("/api/files/history", s.handleFilesAtTime)

@@ -237,6 +237,87 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toFileResponse(*f))
 }
 
+// handleBatchUpload handles POST /api/files/batch-upload.
+// Accepts a multipart form with multiple files and a shared parent_id.
+// Much more efficient than individual uploads for many small files (1 HTTP call instead of N).
+func (s *Server) handleBatchUpload(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	r.Body = http.MaxBytesReader(w, r.Body, 100<<20) // 100 MB max total
+
+	reader, err := r.MultipartReader()
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "could not parse multipart"})
+		return
+	}
+
+	var parentID string
+	var results []fileResponse
+
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			break
+		}
+
+		switch part.FormName() {
+		case "parent_id":
+			b, _ := io.ReadAll(part)
+			parentID = string(b)
+		default:
+			filename := part.FileName()
+			if filename == "" {
+				part.Close()
+				continue
+			}
+
+			buf := make([]byte, 512)
+			n, _ := part.Read(buf)
+			mimeType := http.DetectContentType(buf[:n])
+
+			pr, pw := io.Pipe()
+			errCh := make(chan error, 1)
+			var contentHash string
+			var size int64
+			go func() {
+				var putErr error
+				contentHash, size, putErr = s.store.Put(pr)
+				errCh <- putErr
+			}()
+
+			pw.Write(buf[:n])
+			io.Copy(pw, part)
+			pw.Close()
+
+			if putErr := <-errCh; putErr != nil {
+				part.Close()
+				continue
+			}
+
+			f, err := s.db.CreateFile(parentID, claims.UserID, filename, false, size, contentHash, mimeType)
+			if err != nil {
+				part.Close()
+				continue
+			}
+			s.db.CreateVersion(f.ID, 1, contentHash, "", size, claims.UserID)
+
+			if err := s.db.LogActivity(claims.UserID, "upload", "file", f.ID, filename+" ("+formatSize(size)+")", r.RemoteAddr); err != nil {
+				log.Printf("activity: %v", err)
+			}
+
+			results = append(results, toFileResponse(*f))
+		}
+		part.Close()
+	}
+
+	if results == nil {
+		results = []fileResponse{}
+	}
+	writeJSON(w, http.StatusCreated, map[string]interface{}{"files": results})
+}
+
 // updateFileRequest is the body for PUT /api/files/{id}.
 type updateFileRequest struct {
 	Name     string `json:"name"`

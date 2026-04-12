@@ -318,6 +318,46 @@ actor APIClient {
         return try JSONDecoder().decode(ServerFile.self, from: data)
     }
 
+    /// Batch upload multiple small files in a single HTTP request.
+    /// Returns array of created ServerFile objects.
+    func batchUpload(files: [(url: URL, parentID: String)]) async throws -> [ServerFile] {
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/batch-upload")!)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.timeoutInterval = 300
+
+        var body = Data()
+        // Use the first file's parentID as shared parent (all files in same dir)
+        if let first = files.first {
+            body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"parent_id\"\r\n\r\n\(first.parentID)\r\n".data(using: .utf8)!)
+        }
+
+        for file in files {
+            let fileData = try Data(contentsOf: file.url)
+            let filename = file.url.lastPathComponent
+            body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+            body.append(fileData)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        request.httpBody = body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+            throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
+        }
+
+        struct BatchResponse: Codable {
+            let files: [ServerFile]
+        }
+        let result = try JSONDecoder().decode(BatchResponse.self, from: data)
+        return result.files
+    }
+
     /// Create a file on the server from pre-uploaded blocks.
     func createFileFromBlocks(filename: String, parentID: String, fileHash: String, blocks: [[String: Any]]) async throws -> ServerFile {
         let body: [String: Any] = [

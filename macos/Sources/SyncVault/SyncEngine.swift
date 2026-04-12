@@ -82,7 +82,7 @@ actor SyncEngine {
 
         // 2. Scan local files — only hash files modified since lastSyncDate (Phase 3 optimization)
         logger.info("Scanning local files at \(basePath)...")
-        let localFiles = scanLocalFiles(at: basePath, excludePatterns: task.excludePatterns, lastSyncDate: lastSyncDate)
+        let localFiles = scanLocalFiles(at: basePath, task: task, excludePatterns: task.excludePatterns, lastSyncDate: lastSyncDate)
         logger.info("Local files: \(localFiles.count) total")
 
         // 3. Collect hashes of all local files that need checking
@@ -240,21 +240,21 @@ actor SyncEngine {
         result = try await executeActions(actions, task: task, skippedBytes: skippedBytes, onProgress: onProgress)
 
         // 7. Update change journal: snapshot of everything that should exist
-        // This is the union of local + remote that survived this sync cycle
-        var journalEntries: [(relativePath: String, contentHash: String, isDir: Bool)] = []
+        // This is the union of local + remote that survived this sync cycle.
+        // Include mtime+size for fast change detection on next sync.
+        var journalEntries: [(relativePath: String, contentHash: String, isDir: Bool, fileSize: Int64, modTime: Double)] = []
 
-        // Add all local files that still exist
+        // Add all local files that still exist (with current mtime+size)
         for (relPath, localFile) in localFileMap {
-            let localPath = localFile.fullPath
-            if FileManager.default.fileExists(atPath: localPath) {
-                journalEntries.append((relPath, localFile.contentHash ?? "", false))
+            if FileManager.default.fileExists(atPath: localFile.fullPath) {
+                journalEntries.append((relPath, localFile.contentHash ?? "", false, localFile.size, localFile.modifiedAt.timeIntervalSince1970))
             }
         }
         // Add all local directories that still exist
         for dir in localDirs {
             let localPath = (basePath as NSString).appendingPathComponent(dir.relativePath)
             if FileManager.default.fileExists(atPath: localPath) {
-                journalEntries.append((dir.relativePath, "", true))
+                journalEntries.append((dir.relativePath, "", true, 0, 0))
             }
         }
         // Add remote items that exist locally (downloaded this cycle or existed before)
@@ -262,7 +262,10 @@ actor SyncEngine {
             let localPath = (basePath as NSString).appendingPathComponent(relPath)
             if FileManager.default.fileExists(atPath: localPath) {
                 if !journalEntries.contains(where: { $0.relativePath == relPath }) {
-                    journalEntries.append((relPath, remote.contentHash ?? "", remote.isDir))
+                    let rattrs = try? FileManager.default.attributesOfItem(atPath: localPath)
+                    let rsize: Int64 = (rattrs?[.size] as? Int64) ?? 0
+                    let rmtime: Double = ((rattrs?[.modificationDate] as? Date) ?? Date()).timeIntervalSince1970
+                    journalEntries.append((relPath, remote.contentHash ?? "", remote.isDir, rsize, rmtime))
                 }
             }
         }
@@ -470,18 +473,64 @@ actor SyncEngine {
             let _ = try? await ensureRemoteDirectory(dirPath, rootID: task.remoteFolderID)
         }
 
+        // Batch upload: group small files (<1MB) by parent directory and upload in batches of 20.
+        // This reduces N HTTP calls to N/20 calls for small files.
+        var remainingActions = sortedActions
+        var batchResults: [SyncActionResult] = []
+        do {
+            // Group small uploads by parent directory
+            var batchesByParent: [String: [(index: Int, path: String, relativePath: String, parentID: String)]] = [:]
+            for (i, action) in remainingActions.enumerated() {
+                if case .upload(let path, let relativePath, _) = action {
+                    let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+                    let fileSize = (attrs?[.size] as? Int64) ?? 0
+                    if fileSize > 0 && fileSize < 1_000_000 {
+                        let parentRelPath = (relativePath as NSString).deletingLastPathComponent
+                        let parentID = await folderIDCache[parentRelPath] ?? task.remoteFolderID
+                        var batch = batchesByParent[parentID] ?? []
+                        batch.append((i, path, relativePath, parentID))
+                        batchesByParent[parentID] = batch
+                    }
+                }
+            }
+
+            // Execute batch uploads (20 files per batch)
+            var indicesToRemove = Set<Int>()
+            for (parentID, files) in batchesByParent {
+                for chunk in stride(from: 0, to: files.count, by: 20) {
+                    let batch = Array(files[chunk..<min(chunk + 20, files.count)])
+                    let fileEntries = batch.map { (url: URL(fileURLWithPath: $0.path), parentID: parentID) }
+                    if let uploaded = try? await apiClient.batchUpload(files: fileEntries) {
+                        for (j, entry) in batch.enumerated() {
+                            let displayName = URL(fileURLWithPath: entry.relativePath).lastPathComponent
+                            let hash = j < uploaded.count ? (uploaded[j].contentHash ?? "") : ""
+                            try? db.updateState(taskID: task.id.uuidString, relativePath: entry.relativePath, contentHash: hash, isDir: false)
+                            batchResults.append(.uploaded(displayName, entry.relativePath))
+                            indicesToRemove.insert(entry.index)
+                        }
+                        logger.info("Batch uploaded \(batch.count) small files to parent \(parentID)")
+                    }
+                }
+            }
+
+            // Remove batch-uploaded files from remaining actions
+            if !indicesToRemove.isEmpty {
+                remainingActions = remainingActions.enumerated().compactMap { indicesToRemove.contains($0.offset) ? nil : $0.element }
+            }
+        }
+
         let total = sortedActions.count
-        let bytesUploaded = ActorCounter(initial: skippedBytes)  // For progress bar (includes pre-synced)
-        let bytesTransferred = ActorCounter(initial: 0)  // For speed calculation (only actual transfers)
-        let completed = ActorCounter()
+        let bytesUploaded = ActorCounter(initial: skippedBytes)
+        let bytesTransferred = ActorCounter(initial: 0)
+        let completed = ActorCounter(initial: Int64(batchResults.count))
         let start = Date()
-        let names = sortedActions.map { $0.fileName }
+        let names = remainingActions.map { $0.fileName }
         var authFailed = false
 
         let semaphore = DynamicSemaphore(initialLimit: 8)
 
         await withTaskGroup(of: (SyncActionResult).self) { group in
-            for (i, action) in sortedActions.enumerated() {
+            for (i, action) in remainingActions.enumerated() {
                 group.addTask {
                     await semaphore.wait()
                     defer { Task { await semaphore.signal() } }
@@ -690,6 +739,14 @@ actor SyncEngine {
             }
         }
 
+        // Add batch upload results to the sync result
+        for br in batchResults {
+            if case .uploaded(let name, let relPath) = br {
+                result.uploaded += 1
+                result.fileActivity.append(ActivityItem(filename: name, action: "uploaded", timestamp: Date(), relativePath: relPath))
+            }
+        }
+
         if authFailed {
             throw APIError.unauthorized
         }
@@ -752,7 +809,7 @@ actor SyncEngine {
 
     /// Scan local files. If lastSyncDate is provided, only hash files modified since then.
     /// Files not modified since last sync are included with nil contentHash (assumed unchanged).
-    private func scanLocalFiles(at path: String, excludePatterns: [String], lastSyncDate: Date?) -> [LocalFileInfo] {
+    private func scanLocalFiles(at path: String, task: SyncTask, excludePatterns: [String], lastSyncDate: Date?) -> [LocalFileInfo] {
         var files: [LocalFileInfo] = []
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(atPath: path) else { return files }
@@ -785,10 +842,19 @@ actor SyncEngine {
 
             var hash: String? = nil
             if !isDir {
-                // Optimization: skip hashing files not modified since last sync
-                if let lastSync = lastSyncDate, modified <= lastSync {
+                // Fast path: check mtime+size against cached state — skip hashing if unchanged
+                let modTimeUnix = modified.timeIntervalSince1970
+                if let cachedHash = db.cachedHashIfUnchanged(
+                    taskID: task.id.uuidString,
+                    relativePath: relativePath,
+                    currentSize: size,
+                    currentModTime: modTimeUnix
+                ) {
+                    hash = cachedHash
                     skipCount += 1
-                    // Include file with nil hash - will be skipped unless server doesn't have it
+                } else if let lastSync = lastSyncDate, modified <= lastSync {
+                    // Fallback: skip hashing files not modified since last sync date
+                    skipCount += 1
                 } else {
                     hash = try? Self.hashFile(at: URL(fileURLWithPath: fullPath))
                     hashCount += 1
