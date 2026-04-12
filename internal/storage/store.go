@@ -181,7 +181,8 @@ func (s *Store) CreateManifest(fileHash string, blocks []BlockEntry) (int64, err
 // Much faster on SMB/NFS mounts because it's 1 file write instead of N chunk writes.
 // Returns the SHA-256 hash and total size.
 func (s *Store) PutDirect(r io.Reader) (fileHash string, size int64, err error) {
-	// Write to a temp file first, then rename to final path
+	// Write to temp file first at max speed (no hashing during write).
+	// Hash the file AFTER writing — decouples network I/O from CPU.
 	tmpPath := filepath.Join(s.dir, "incoming", fmt.Sprintf("%d.tmp", time.Now().UnixNano()))
 	os.MkdirAll(filepath.Dir(tmpPath), 0755)
 
@@ -190,12 +191,11 @@ func (s *Store) PutDirect(r io.Reader) (fileHash string, size int64, err error) 
 		return "", 0, fmt.Errorf("storage: create temp file: %w", err)
 	}
 
-	hasher := sha256.New()
-	buf := make([]byte, 4*1024*1024) // 4MB buffer
+	// Phase 1: Write at full speed (no hashing)
+	buf := make([]byte, 8*1024*1024) // 8MB buffer for max throughput
 	for {
 		n, readErr := r.Read(buf)
 		if n > 0 {
-			hasher.Write(buf[:n])
 			if _, wErr := f.Write(buf[:n]); wErr != nil {
 				f.Close()
 				os.Remove(tmpPath)
@@ -213,6 +213,16 @@ func (s *Store) PutDirect(r io.Reader) (fileHash string, size int64, err error) 
 		}
 	}
 	f.Close()
+
+	// Phase 2: Hash the written file (disk I/O only, no network wait)
+	hashFile, err := os.Open(tmpPath)
+	if err != nil {
+		os.Remove(tmpPath)
+		return "", 0, fmt.Errorf("storage: reopen for hash: %w", err)
+	}
+	hasher := sha256.New()
+	io.CopyBuffer(hasher, hashFile, buf)
+	hashFile.Close()
 
 	fileHash = hex.EncodeToString(hasher.Sum(nil))
 

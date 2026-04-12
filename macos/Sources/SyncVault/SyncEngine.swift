@@ -545,7 +545,7 @@ actor SyncEngine {
         let names = remainingActions.map { $0.fileName }
         var authFailed = false
 
-        let semaphore = DynamicSemaphore(initialLimit: 8)
+        let semaphore = DynamicSemaphore(initialLimit: 2)
 
         await withTaskGroup(of: (SyncActionResult).self) { group in
             for (i, action) in remainingActions.enumerated() {
