@@ -33,7 +33,15 @@ struct SyncTask: Codable, Identifiable {
         self.remoteFolderID = remoteFolderID
         self.remoteFolderName = remoteFolderName
         self.mode = mode
-        self.excludePatterns = [".DS_Store", "*.tmp", "Thumbs.db"]
+        self.excludePatterns = [
+            ".DS_Store", "*.tmp", "Thumbs.db",
+            "node_modules", ".git", ".svn",
+            "__pycache__", "*.pyc",
+            ".build", "DerivedData", "build",
+            ".cache", ".npm", ".yarn",
+            "Pods", ".cocoapods",
+            "venv", ".venv", "env",
+        ]
         self.intervalSeconds = 30
         self.isEnabled = true
         self.isTeamFolder = isTeamFolder

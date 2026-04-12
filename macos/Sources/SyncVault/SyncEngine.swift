@@ -820,13 +820,19 @@ actor SyncEngine {
         while let relativePath = enumerator.nextObject() as? String {
             let name = URL(fileURLWithPath: relativePath).lastPathComponent
 
-            // Skip hidden files, system files, and macOS metadata
+            // Skip hidden files, system files, macOS metadata, and large dev directories
             let entryIsDir = enumerator.fileAttributes?[.type] as? FileAttributeType == .typeDirectory
             if name.hasPrefix(".") || name.hasPrefix("._") || name.hasPrefix(".smbdelete") ||
                name == ".DS_Store" || name == "Thumbs.db" || name == "desktop.ini" ||
                name == "Icon\r" || name == "Icon\r\n" || (name.hasPrefix("Icon") && name.count <= 5) {
                 // Only skip descendants for hidden DIRECTORIES, not files
                 if entryIsDir && name.hasPrefix(".") { enumerator.skipDescendants() }
+                continue
+            }
+            // Always skip known large directories that don't belong in backups
+            let skipDirs: Set<String> = ["node_modules", "DerivedData", "__pycache__", "Pods", ".cocoapods", "venv", ".venv"]
+            if entryIsDir && skipDirs.contains(name) {
+                enumerator.skipDescendants()
                 continue
             }
 
