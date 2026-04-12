@@ -359,6 +359,9 @@ class AppState: ObservableObject {
         }
 
         // Start file watchers for each sync task
+        // TODO: Implement a persistent change queue (write changed paths to disk) so that
+        // file changes detected by FSEvents are not lost if the app crashes before the next
+        // sync cycle completes. On launch, replay any queued changes to ensure crash recovery.
         for task in syncTasks where task.isEnabled && task.mode != .onDemand {
             let watcher = FileWatcher(path: task.localPath)
             watcher.onChange = { [weak self] in

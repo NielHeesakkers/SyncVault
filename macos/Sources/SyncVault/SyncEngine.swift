@@ -624,7 +624,8 @@ actor SyncEngine {
                             await bytesUploaded.add(size)
                             await bytesTransferred.add(size)
                             logger.info("Downloaded: \(relativePath) (\(size) bytes)")
-                            try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: "", isDir: false)
+                            let downloadedHash = (try? Self.hashFile(at: url)) ?? ""
+                            try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: downloadedHash, isDir: false)
                             return .downloaded(displayName, relativePath)
 
                         case .markRemovedLocally(let fileID, let relativePath):
@@ -668,8 +669,18 @@ actor SyncEngine {
                             let conflictPath = url.deletingLastPathComponent().appendingPathComponent(conflictName)
                             // Stream the remote version directly to disk (avoids loading entire file into memory)
                             let _ = try await self.apiClient.downloadFileToDisk(id: remoteID, destination: conflictPath)
-                            // Keep local version in place — it will be uploaded normally
-                            logger.info("Conflict: saved remote as \(conflictName), keeping local \(displayName)")
+
+                            // Upload local version to server (user's edits should not be lost)
+                            let parentRelPath = (relativePath as NSString).deletingLastPathComponent
+                            let parentID = try await self.ensureRemoteDirectory(parentRelPath, rootID: task.remoteFolderID)
+                            let localSize = (try? FileManager.default.attributesOfItem(atPath: localPath))?[.size] as? Int64 ?? 0
+                            if localSize < 1_000_000 {
+                                let _ = try await self.apiClient.uploadFileDirect(fileURL: url, parentID: parentID)
+                            } else {
+                                let _ = try await self.uploadViaBlocks(fileURL: url, filename: displayName, parentID: parentID, fileSize: localSize) { _ in }
+                            }
+
+                            logger.info("Conflict: saved remote as \(conflictName), uploaded local \(displayName)")
                             return .conflict(displayName, relativePath)
 
                         case .createDirectory(let relativePath):

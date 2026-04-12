@@ -279,7 +279,8 @@ actor APIClient {
             } catch {
                 lastError = error
                 let nsError = error as NSError
-                if nsError.domain == NSURLErrorDomain && nsError.code == -1005 && attempt < 3 {
+                let retryableCodes = [-1005, -1001, -1009, -1004, -1003] // connection lost, timeout, not connected, can't connect, can't find host
+                if nsError.domain == NSURLErrorDomain && retryableCodes.contains(nsError.code) && attempt < 3 {
                     try await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
                     continue
                 }

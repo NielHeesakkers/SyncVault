@@ -61,6 +61,7 @@ func (s *Server) setupRoutes() {
 	// Public routes.
 	r.Get("/api/health", s.handleHealth)
 	r.Get("/api/version", s.handleVersion)
+	r.Get("/api/metrics", s.handleMetrics)
 
 	// Auth routes (public) — rate limited to prevent brute force.
 	authLimiter := RateLimitMiddleware(10, 1*time.Minute) // 10 attempts per minute per IP
@@ -93,8 +94,9 @@ func (s *Server) setupRoutes() {
 		// File management.
 		r.Get("/api/files", s.handleListFiles)
 		r.Post("/api/files", s.handleCreateFile)
-		r.Post("/api/files/upload", s.handleUploadFile)
-		r.Post("/api/files/batch-upload", s.handleBatchUpload)
+		uploadLimiter := RateLimitMiddleware(60, 1*time.Minute) // 60 uploads per minute per IP
+		r.With(uploadLimiter).Post("/api/files/upload", s.handleUploadFile)
+		r.With(uploadLimiter).Post("/api/files/batch-upload", s.handleBatchUpload)
 		r.Get("/api/files/search", s.handleSearchFiles)
 		// History routes must be registered before {id} routes so they are not caught as an id param.
 		r.Get("/api/files/history", s.handleFilesAtTime)
@@ -234,6 +236,34 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"version":     AppVersion,
 		"storage_ok":  storageOK,
 	})
+}
+
+// handleMetrics returns server metrics for monitoring (Prometheus-compatible text format).
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	users, _ := s.db.ListUsers()
+	totalUsed := s.db.TotalStorageUsed()
+	trashSize := s.db.TotalTrashSize()
+	diskTotal, diskAvail := s.store.DiskSpace()
+
+	var fileCount, dirCount int64
+	s.db.DB().QueryRow(`SELECT COUNT(*) FROM files WHERE is_dir = 0 AND deleted_at IS NULL`).Scan(&fileCount)
+	s.db.DB().QueryRow(`SELECT COUNT(*) FROM files WHERE is_dir = 1 AND deleted_at IS NULL`).Scan(&dirCount)
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprintf(w, "# HELP syncvault_users_total Total number of users\n")
+	fmt.Fprintf(w, "syncvault_users_total %d\n", len(users))
+	fmt.Fprintf(w, "# HELP syncvault_storage_used_bytes Total storage used in bytes\n")
+	fmt.Fprintf(w, "syncvault_storage_used_bytes %d\n", totalUsed)
+	fmt.Fprintf(w, "# HELP syncvault_storage_trash_bytes Total trash size in bytes\n")
+	fmt.Fprintf(w, "syncvault_storage_trash_bytes %d\n", trashSize)
+	fmt.Fprintf(w, "# HELP syncvault_disk_total_bytes Total disk capacity in bytes\n")
+	fmt.Fprintf(w, "syncvault_disk_total_bytes %d\n", diskTotal)
+	fmt.Fprintf(w, "# HELP syncvault_disk_available_bytes Available disk space in bytes\n")
+	fmt.Fprintf(w, "syncvault_disk_available_bytes %d\n", diskAvail)
+	fmt.Fprintf(w, "# HELP syncvault_files_total Total number of files\n")
+	fmt.Fprintf(w, "syncvault_files_total %d\n", fileCount)
+	fmt.Fprintf(w, "# HELP syncvault_dirs_total Total number of directories\n")
+	fmt.Fprintf(w, "syncvault_dirs_total %d\n", dirCount)
 }
 
 // handleMe returns the current authenticated user's info including profile data.

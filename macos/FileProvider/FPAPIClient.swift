@@ -241,7 +241,31 @@ actor FPAPIClient {
     // MARK: - Auto Re-Auth on 401
 
     private func reAuthenticate() async throws {
-        // Read fresh credentials from shared UserDefaults (falls back to keychain for migration)
+        struct LoginResponse: Codable { let access_token: String; let refresh_token: String }
+
+        // 1. Try refresh token first (avoids sending password over the wire)
+        if let refreshToken = SharedConfig.loadCredential(key: "refresh_token") ?? SharedConfig.loadFromKeychain(key: "refresh_token"),
+           !refreshToken.isEmpty {
+            do {
+                let body: [String: String] = ["refresh_token": refreshToken]
+                var request = URLRequest(url: URL(string: "\(baseURL)/api/auth/refresh")!)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if let http = response as? HTTPURLResponse, http.statusCode < 400 {
+                    let loginResp = try JSONDecoder().decode(LoginResponse.self, from: data)
+                    self.accessToken = loginResp.access_token
+                    SharedConfig.saveToKeychain(key: "access_token", value: loginResp.access_token)
+                    SharedConfig.saveCredential(key: "refresh_token", value: loginResp.refresh_token)
+                    return
+                }
+            } catch {
+                // Refresh failed — fall through to password login
+            }
+        }
+
+        // 2. Fall back to re-login with saved password
         let freshUsername = username ?? SharedConfig.loadCredential(key: "fp_username") ?? SharedConfig.loadFromKeychain(key: "fp_username")
         let freshPassword = password ?? SharedConfig.loadCredential(key: "fp_password") ?? SharedConfig.loadFromKeychain(key: "fp_password")
         guard let user = freshUsername, let pass = freshPassword else {
@@ -251,7 +275,6 @@ actor FPAPIClient {
         self.username = user
         self.password = pass
 
-        struct LoginResponse: Codable { let access_token: String; let refresh_token: String }
         let body: [String: String] = ["username": user, "password": pass]
         var request = URLRequest(url: URL(string: "\(baseURL)/api/auth/login")!)
         request.httpMethod = "POST"
@@ -260,8 +283,9 @@ actor FPAPIClient {
         let (data, _) = try await URLSession.shared.data(for: request)
         let response = try JSONDecoder().decode(LoginResponse.self, from: data)
         self.accessToken = response.access_token
-        // Save new token to shared keychain for next time
+        // Save new tokens to shared storage for next time
         SharedConfig.saveToKeychain(key: "access_token", value: response.access_token)
+        SharedConfig.saveCredential(key: "refresh_token", value: response.refresh_token)
     }
 
     private func getWithReauth<T: Decodable>(_ path: String) async throws -> T {

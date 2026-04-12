@@ -19,6 +19,9 @@ type DB struct {
 	db *sql.DB
 }
 
+// DB returns the underlying *sql.DB for direct queries (e.g. metrics).
+func (d *DB) DB() *sql.DB { return d.db }
+
 // Open opens (or creates) the SQLite database at the given path, applies the schema,
 // and configures WAL mode, a 5-second busy timeout, and foreign key support.
 func Open(path string) (*DB, error) {

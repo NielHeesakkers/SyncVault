@@ -33,35 +33,55 @@ var ErrFileNotFound = errors.New("metadata: file not found")
 // ErrDuplicateFile is returned when creating a file with a conflicting name in the same parent.
 var ErrDuplicateFile = errors.New("metadata: duplicate file name in parent")
 
-// nextChangeRank returns the next change_rank value (current max + 1).
+// nextChangeRank returns the next change_rank value atomically.
+// Uses UPDATE...RETURNING to prevent duplicate ranks under concurrent access.
 func (d *DB) nextChangeRank() int64 {
+	// Ensure counter row exists
+	d.db.Exec(`INSERT OR IGNORE INTO settings (key, value) VALUES ('_change_rank', '0')`)
 	var rank int64
-	d.db.QueryRow(`SELECT COALESCE(MAX(change_rank), 0) + 1 FROM files`).Scan(&rank)
+	err := d.db.QueryRow(`UPDATE settings SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT) WHERE key = '_change_rank' RETURNING CAST(value AS INTEGER)`).Scan(&rank)
+	if err != nil {
+		// Fallback to old method if settings table doesn't support RETURNING
+		d.db.QueryRow(`SELECT COALESCE(MAX(change_rank), 0) + 1 FROM files`).Scan(&rank)
+	}
 	return rank
 }
 
 // updateAncestorSizes recalculates folder_size for the given file's parent and all ancestors.
 // Each folder's size is the sum of its direct children's sizes (files use size, dirs use folder_size).
 // Called after any file mutation (create, update size, delete, restore).
+// Uses a transaction to prevent inconsistent sizes under concurrent access.
 func (d *DB) updateAncestorSizes(fileID string) {
-	var parentID sql.NullString
-	d.db.QueryRow(`SELECT parent_id FROM files WHERE id = ?`, fileID).Scan(&parentID)
+	tx, err := d.db.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
 
-	d.updateFolderSizeChain(parentID)
+	var parentID sql.NullString
+	tx.QueryRow(`SELECT parent_id FROM files WHERE id = ?`, fileID).Scan(&parentID)
+
+	for parentID.Valid {
+		tx.Exec(`UPDATE files SET folder_size = (
+			SELECT COALESCE(SUM(CASE WHEN is_dir = 1 THEN folder_size ELSE size END), 0)
+			FROM files WHERE parent_id = ? AND deleted_at IS NULL
+		) WHERE id = ?`, parentID.String, parentID.String)
+
+		var nextParent sql.NullString
+		tx.QueryRow(`SELECT parent_id FROM files WHERE id = ?`, parentID.String).Scan(&nextParent)
+		parentID = nextParent
+	}
+
+	tx.Commit()
 }
 
 // updateFolderSizeChain recalculates folder_size for the given folder and all its ancestors.
 func (d *DB) updateFolderSizeChain(folderID sql.NullString) {
-	for folderID.Valid {
-		d.db.Exec(`UPDATE files SET folder_size = (
-			SELECT COALESCE(SUM(CASE WHEN is_dir = 1 THEN folder_size ELSE size END), 0)
-			FROM files WHERE parent_id = ? AND deleted_at IS NULL
-		) WHERE id = ?`, folderID.String, folderID.String)
-
-		var nextParent sql.NullString
-		d.db.QueryRow(`SELECT parent_id FROM files WHERE id = ?`, folderID.String).Scan(&nextParent)
-		folderID = nextParent
+	if !folderID.Valid {
+		return
 	}
+	// Delegate to transaction-based implementation
+	d.updateAncestorSizes(folderID.String)
 }
 
 // CreateFile inserts a new file or directory record.
@@ -394,53 +414,36 @@ func (d *DB) PurgeUserTrash(ownerID string) (int64, error) {
 	return total, nil
 }
 
-// PurgeAllTrash permanently deletes ALL soft-deleted files AND orphaned files (no parent, no task).
+// PurgeAllTrash permanently deletes ALL soft-deleted files in a single transaction.
 func (d *DB) PurgeAllTrash() (int64, error) {
-	d.db.Exec(`PRAGMA foreign_keys=OFF`)
-	defer d.db.Exec(`PRAGMA foreign_keys=ON`)
+	tx, err := d.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("metadata: purge all trash begin tx: %w", err)
+	}
+	defer tx.Rollback()
 
-	// Delete dependent rows for ALL trashed/orphaned files
-	d.db.Exec(`DELETE FROM versions WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
-	d.db.Exec(`DELETE FROM file_blocks WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
-	d.db.Exec(`DELETE FROM share_links WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
+	// Delete dependent rows for trashed files
+	tx.Exec(`DELETE FROM versions WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
+	tx.Exec(`DELETE FROM file_blocks WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
+	tx.Exec(`DELETE FROM share_links WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
 
 	// Delete non-dir trashed files
-	res, _ := d.db.Exec(`DELETE FROM files WHERE deleted_at IS NOT NULL AND is_dir = 0`)
+	res, _ := tx.Exec(`DELETE FROM files WHERE deleted_at IS NOT NULL AND is_dir = 0`)
 	total, _ := res.RowsAffected()
 
 	// Delete trashed dirs leaf-first
 	for i := 0; i < 50; i++ {
-		res, _ = d.db.Exec(`DELETE FROM files WHERE deleted_at IS NOT NULL AND is_dir = 1 AND id NOT IN (SELECT DISTINCT parent_id FROM files WHERE parent_id IS NOT NULL)`)
+		res, _ = tx.Exec(`DELETE FROM files WHERE deleted_at IS NOT NULL AND is_dir = 1 AND id NOT IN (SELECT DISTINCT parent_id FROM files WHERE parent_id IS NOT NULL)`)
 		n, _ := res.RowsAffected()
 		total += n
-		if n == 0 { break }
+		if n == 0 {
+			break
+		}
 	}
 
-	// Brute force: delete ALL files with deleted_at set, regardless of owner
-	d.db.Exec(`DELETE FROM versions WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
-	d.db.Exec(`DELETE FROM file_blocks WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
-	d.db.Exec(`DELETE FROM share_links WHERE file_id IN (SELECT id FROM files WHERE deleted_at IS NOT NULL)`)
-
-	// Non-dirs first
-	res, _ = d.db.Exec(`DELETE FROM files WHERE deleted_at IS NOT NULL AND is_dir = 0`)
-	n, _ := res.RowsAffected()
-	total += n
-
-	// Dirs leaf-first
-	for i := 0; i < 50; i++ {
-		res, _ = d.db.Exec(`DELETE FROM files WHERE deleted_at IS NOT NULL AND is_dir = 1 AND id NOT IN (SELECT DISTINCT parent_id FROM files WHERE parent_id IS NOT NULL)`)
-		n, _ = res.RowsAffected()
-		total += n
-		if n == 0 { break }
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("metadata: purge all trash commit: %w", err)
 	}
-
-	// Also delete orphaned folders that have no task and no non-deleted parent
-	d.db.Exec(`DELETE FROM versions WHERE file_id IN (SELECT id FROM files WHERE id NOT IN (SELECT folder_id FROM sync_tasks WHERE folder_id IS NOT NULL) AND parent_id NOT IN (SELECT id FROM files) AND parent_id IS NOT NULL)`)
-	d.db.Exec(`DELETE FROM file_blocks WHERE file_id IN (SELECT id FROM files WHERE id NOT IN (SELECT folder_id FROM sync_tasks WHERE folder_id IS NOT NULL) AND parent_id NOT IN (SELECT id FROM files) AND parent_id IS NOT NULL)`)
-	res, _ = d.db.Exec(`DELETE FROM files WHERE id NOT IN (SELECT folder_id FROM sync_tasks WHERE folder_id IS NOT NULL) AND parent_id NOT IN (SELECT id FROM files) AND parent_id IS NOT NULL`)
-	n, _ = res.RowsAffected()
-	total += n
-
 	return total, nil
 }
 

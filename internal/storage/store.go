@@ -169,6 +169,11 @@ func (s *Store) CreateManifest(fileHash string, blocks []BlockEntry) (int64, err
 		return 0, fmt.Errorf("storage: write manifest: %w", err)
 	}
 
+	// Increment reference count for each block used by this manifest
+	for _, b := range blocks {
+		s.incrementBlockRef(b.Hash)
+	}
+
 	return totalSize, nil
 }
 
@@ -228,6 +233,16 @@ func (s *Store) Put(r io.Reader) (fileHash string, size int64, err error) {
 
 	fileHash = hex.EncodeToString(fileHasher.Sum(nil))
 
+	// Verify all chunks exist before writing manifest (disk full protection)
+	for _, e := range entries {
+		cp := s.chunkPath(e.hash)
+		info, err := os.Stat(cp)
+		if err != nil || info.Size() != int64(e.size) {
+			// Cleanup partial upload
+			return "", 0, fmt.Errorf("storage: chunk %s missing or incomplete after write", e.hash)
+		}
+	}
+
 	// Write manifest: one line per chunk — "<index> <hash> <size>"
 	mp := s.manifestPath(fileHash)
 	if err := os.MkdirAll(filepath.Dir(mp), 0755); err != nil {
@@ -240,6 +255,11 @@ func (s *Store) Put(r io.Reader) (fileHash string, size int64, err error) {
 	}
 	if err := os.WriteFile(mp, []byte(sb.String()), 0644); err != nil {
 		return "", 0, fmt.Errorf("storage: write manifest: %w", err)
+	}
+
+	// Increment reference count for each block used by this manifest
+	for _, e := range entries {
+		s.incrementBlockRef(e.hash)
 	}
 
 	return fileHash, size, nil
@@ -294,10 +314,16 @@ func (s *Store) Get(fileHash string, w io.Writer) error {
 	}
 
 	// Sort by index (manifest is written in order, but be safe).
-	// Simple insertion sort since chunk count is typically small.
 	for i := 1; i < len(entries); i++ {
 		for j := i; j > 0 && entries[j].index < entries[j-1].index; j-- {
 			entries[j], entries[j-1] = entries[j-1], entries[j]
+		}
+	}
+
+	// Validate: no duplicate or missing indices
+	for i, e := range entries {
+		if e.index != i {
+			return fmt.Errorf("storage: manifest integrity error: expected chunk index %d, got %d", i, e.index)
 		}
 	}
 
@@ -321,8 +347,41 @@ func (s *Store) Get(fileHash string, w io.Writer) error {
 	return nil
 }
 
-// Delete removes the manifest and all referenced chunks for fileHash.
-// Note: there is no reference counting, so shared chunks are also deleted.
+// incrementBlockRef increments the reference count for a block hash.
+// Called when a new manifest references this block.
+func (s *Store) incrementBlockRef(hash string) {
+	refPath := s.chunkPath(hash) + ".ref"
+	count := s.readRefCount(refPath)
+	os.WriteFile(refPath, []byte(strconv.Itoa(count+1)), 0644)
+}
+
+// decrementBlockRef decrements the reference count and removes the block if zero.
+func (s *Store) decrementBlockRef(hash string) {
+	refPath := s.chunkPath(hash) + ".ref"
+	count := s.readRefCount(refPath)
+	if count <= 1 {
+		// Last reference — safe to delete block and refcount file
+		os.Remove(s.chunkPath(hash))
+		os.Remove(refPath)
+	} else {
+		os.WriteFile(refPath, []byte(strconv.Itoa(count-1)), 0644)
+	}
+}
+
+func (s *Store) readRefCount(refPath string) int {
+	data, err := os.ReadFile(refPath)
+	if err != nil {
+		return 1 // No refcount file = legacy block, assume 1 reference
+	}
+	count, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || count < 0 {
+		return 1
+	}
+	return count
+}
+
+// Delete removes the manifest and decrements reference counts for all chunks.
+// Chunks are only deleted when their reference count reaches zero.
 func (s *Store) Delete(fileHash string) error {
 	mp := s.manifestPath(fileHash)
 	f, err := os.Open(mp)
@@ -355,12 +414,9 @@ func (s *Store) Delete(fileHash string) error {
 		return fmt.Errorf("storage: remove manifest: %w", err)
 	}
 
-	// Remove chunks.
+	// Decrement reference counts — only delete blocks when refcount reaches 0.
 	for _, hash := range chunkHashes {
-		cp := s.chunkPath(hash)
-		if err := os.Remove(cp); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("storage: remove chunk %s: %w", hash, err)
-		}
+		s.decrementBlockRef(hash)
 	}
 
 	return nil
