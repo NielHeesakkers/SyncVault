@@ -55,85 +55,59 @@ actor FPAPIClient {
     /// 3. Upload only missing blocks
     /// 4. Create file on server from blocks
     func uploadFileFromDisk(fileURL: URL, filename: String, parentID: String?, onProgress: ((Int64, Int64) -> Void)? = nil) async throws -> FPServerFile {
-        let blockSize = 4 * 1024 * 1024
-        let handle = try FileHandle(forReadingFrom: fileURL)
-        defer { handle.closeFile() }
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? 0
 
-        SharedConfig.setProgress(action: "Hashing", filename: filename, bytesTransferred: 0, totalBytes: fileSize)
+        SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: 0, totalBytes: fileSize)
 
-        // 1. Split into blocks, compute hashes
-        var fileHasher = CC_SHA256_CTX()
-        CC_SHA256_Init(&fileHasher)
-        var blocks: [(index: Int, hash: String, size: Int)] = []
-        var index = 0
-        var hashed: Int64 = 0
+        // Streaming upload: single HTTP request, streamed from disk (like Synology Drive).
+        // No block protocol overhead — much faster on SMB/NFS storage.
+        let boundary = UUID().uuidString
+        let pid = parentID ?? ""
 
+        // Build multipart body as temp file (avoids loading file into memory)
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempFile = tempDir.appendingPathComponent(UUID().uuidString + ".multipart")
+        defer { try? FileManager.default.removeItem(at: tempFile) }
+
+        FileManager.default.createFile(atPath: tempFile.path, contents: nil)
+        let writeHandle = try FileHandle(forWritingTo: tempFile)
+
+        // Write multipart header + parent_id
+        let header = "--\(boundary)\r\nContent-Disposition: form-data; name=\"parent_id\"\r\n\r\n\(pid)\r\n--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        writeHandle.write(header.data(using: .utf8)!)
+
+        // Stream file content in 4MB chunks
+        let readHandle = try FileHandle(forReadingFrom: fileURL)
+        defer { readHandle.closeFile() }
+        let chunkSize = 4 * 1024 * 1024
+        var written: Int64 = 0
         while true {
-            let data = handle.readData(ofLength: blockSize)
-            if data.isEmpty { break }
-            data.withUnsafeBytes { CC_SHA256_Update(&fileHasher, $0.baseAddress, CC_LONG(data.count)) }
-            let blockHash = sha256Hex(data)
-            blocks.append((index: index, hash: blockHash, size: data.count))
-            index += 1
-            hashed += Int64(data.count)
-            if index % 10 == 0 {
-                SharedConfig.setProgress(action: "Hashing", filename: filename, bytesTransferred: hashed, totalBytes: fileSize)
-                onProgress?(hashed / 4, fileSize) // Hashing = first 25%
-            }
+            let chunk = readHandle.readData(ofLength: chunkSize)
+            if chunk.isEmpty { break }
+            writeHandle.write(chunk)
+            written += Int64(chunk.count)
+            SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: written, totalBytes: fileSize)
+            onProgress?(written, fileSize)
         }
 
-        var digest = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-        CC_SHA256_Final(&digest, &fileHasher)
-        let fileHash = digest.map { String(format: "%02x", $0) }.joined()
+        // Write multipart footer
+        writeHandle.write("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        writeHandle.closeFile()
 
-        // 2. Check which blocks server already has
-        SharedConfig.setProgress(action: "Checking", filename: filename, bytesTransferred: 0, totalBytes: fileSize)
-        let allHashes = blocks.map { $0.hash }
-        let existingHashes = try await checkBlocks(allHashes)
-        let existingSet = Set(existingHashes)
-        let missingBlocks = blocks.filter { !existingSet.contains($0.hash) }
-
-        let existingBytes = Int64(blocks.filter { existingSet.contains($0.hash) }.map { $0.size }.reduce(0, +))
-
-        // 3. Upload missing blocks with progress
-        var uploaded: Int64 = existingBytes
-        if !missingBlocks.isEmpty {
-            let token = self.accessToken ?? ""
-            for block in missingBlocks {
-                let blockHandle = try FileHandle(forReadingFrom: fileURL)
-                defer { blockHandle.closeFile() }
-                blockHandle.seek(toFileOffset: UInt64(block.index) * UInt64(blockSize))
-                let data = blockHandle.readData(ofLength: block.size)
-
-                var req = URLRequest(url: URL(string: "\(baseURL)/api/blocks/\(block.hash)")!)
-                req.httpMethod = "PUT"
-                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                req.httpBody = data
-                req.timeoutInterval = 300
-
-                let (_, resp) = try await URLSession.shared.data(for: req)
-                try checkResponse(resp)
-
-                uploaded += Int64(data.count)
-                SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: uploaded, totalBytes: fileSize)
-                onProgress?(uploaded, fileSize)
-            }
+        // Upload via streaming (URLSession reads from disk)
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/upload")!)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+        request.timeoutInterval = 3600
 
-        // 4. Create file on server from blocks
-        SharedConfig.setProgress(action: "Finalizing", filename: filename, bytesTransferred: fileSize, totalBytes: fileSize)
-        let blockManifest: [[String: Any]] = blocks.map { b in
-            ["index": b.index, "hash": b.hash, "size": b.size]
-        }
-        let body: [String: Any] = [
-            "filename": filename,
-            "parent_id": parentID ?? "",
-            "file_hash": fileHash,
-            "blocks": blockManifest
-        ]
-        let result: FPServerFile = try await post("/api/files/from-blocks", body: body)
+        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: tempFile)
+        try checkResponse(response)
         SharedConfig.clearProgress()
+
+        let result = try JSONDecoder().decode(FPServerFile.self, from: data)
         return result
     }
 
