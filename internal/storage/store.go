@@ -177,6 +177,85 @@ func (s *Store) CreateManifest(fileHash string, blocks []BlockEntry) (int64, err
 	return totalSize, nil
 }
 
+// PutDirect streams data from r directly to a single file on disk (no chunking).
+// Much faster on SMB/NFS mounts because it's 1 file write instead of N chunk writes.
+// Returns the SHA-256 hash and total size.
+func (s *Store) PutDirect(r io.Reader) (fileHash string, size int64, err error) {
+	// Write to a temp file first, then rename to final path
+	tmpPath := filepath.Join(s.dir, "incoming", fmt.Sprintf("%d.tmp", time.Now().UnixNano()))
+	os.MkdirAll(filepath.Dir(tmpPath), 0755)
+
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return "", 0, fmt.Errorf("storage: create temp file: %w", err)
+	}
+
+	hasher := sha256.New()
+	buf := make([]byte, 4*1024*1024) // 4MB buffer
+	for {
+		n, readErr := r.Read(buf)
+		if n > 0 {
+			hasher.Write(buf[:n])
+			if _, wErr := f.Write(buf[:n]); wErr != nil {
+				f.Close()
+				os.Remove(tmpPath)
+				return "", 0, fmt.Errorf("storage: write: %w", wErr)
+			}
+			size += int64(n)
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			f.Close()
+			os.Remove(tmpPath)
+			return "", 0, fmt.Errorf("storage: read: %w", readErr)
+		}
+	}
+	f.Close()
+
+	fileHash = hex.EncodeToString(hasher.Sum(nil))
+
+	// Move to final content-addressable path: files/<hash[0:2]>/<hash[2:4]>/<hash>
+	finalDir := filepath.Join(s.dir, "files", fileHash[:2], fileHash[2:4])
+	finalPath := filepath.Join(finalDir, fileHash)
+	os.MkdirAll(finalDir, 0755)
+
+	// If file already exists (dedup), just remove the temp
+	if _, err := os.Stat(finalPath); err == nil {
+		os.Remove(tmpPath)
+		return fileHash, size, nil
+	}
+
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		// Cross-device: fall back to copy
+		src, _ := os.Open(tmpPath)
+		dst, _ := os.Create(finalPath)
+		io.Copy(dst, src)
+		src.Close()
+		dst.Close()
+		os.Remove(tmpPath)
+	}
+
+	return fileHash, size, nil
+}
+
+// GetDirect reads a file stored by PutDirect (single file, not chunked).
+func (s *Store) GetDirect(fileHash string, w io.Writer) error {
+	path := filepath.Join(s.dir, "files", fileHash[:2], fileHash[2:4], fileHash)
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Fall back to chunked manifest
+			return s.Get(fileHash, w)
+		}
+		return fmt.Errorf("storage: open file: %w", err)
+	}
+	defer f.Close()
+	_, err = io.Copy(w, f)
+	return err
+}
+
 // Put streams data from r in 4 MB chunks, stores each chunk by its hash,
 // writes a manifest, and returns the overall file hash, total size, and any error.
 // Memory usage is O(chunkSize) regardless of file size.

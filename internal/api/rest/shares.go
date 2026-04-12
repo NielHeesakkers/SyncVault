@@ -440,7 +440,7 @@ func (s *Server) handlePublicDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+f.Name+`"`)
 
-	if err := s.store.Get(f.ContentHash.String, w); err != nil {
+	if err := s.store.GetDirect(f.ContentHash.String, w); err != nil {
 		// Headers already sent; nothing to do.
 		return
 	}

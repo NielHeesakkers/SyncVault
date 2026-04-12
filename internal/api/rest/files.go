@@ -178,23 +178,22 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 			n, _ := part.Read(buf)
 			mimeType = http.DetectContentType(buf[:n])
 
-			// Pipe: stream the already-read bytes + rest of part directly into storage
+			// Stream directly to a single file on disk (no chunking).
+			// Much faster on SMB/NFS: 1 file write instead of N chunk writes.
 			pr, pw := io.Pipe()
 			errCh := make(chan error, 1)
 			go func() {
 				var putErr error
-				contentHash, size, putErr = s.store.Put(pr)
+				contentHash, size, putErr = s.store.PutDirect(pr)
 				errCh <- putErr
 			}()
 
-			// Write the already-read bytes first
 			if _, err := pw.Write(buf[:n]); err != nil {
 				pw.CloseWithError(err)
 				<-errCh
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not store file"})
 				return
 			}
-			// Stream the rest
 			if _, err := io.Copy(pw, part); err != nil {
 				pw.CloseWithError(err)
 				<-errCh
@@ -776,7 +775,7 @@ func (s *Server) handleDownloadFolderAtTime(w http.ResponseWriter, r *http.Reque
 		if err != nil {
 			return
 		}
-		if err := s.store.Get(entry.contentHash, fw); err != nil {
+		if err := s.store.GetDirect(entry.contentHash, fw); err != nil {
 			return
 		}
 	}
@@ -800,7 +799,7 @@ func (s *Server) streamFolderAsZip(w http.ResponseWriter, folderID, folderName s
 		if err != nil {
 			return
 		}
-		if err := s.store.Get(f.ContentHash.String, fw); err != nil {
+		if err := s.store.GetDirect(f.ContentHash.String, fw); err != nil {
 			return
 		}
 	}
@@ -932,7 +931,7 @@ func (s *Server) handleDownloadFile(w http.ResponseWriter, r *http.Request) {
 		log.Printf("activity: %v", err)
 	}
 
-	if err := s.store.Get(f.ContentHash.String, w); err != nil {
+	if err := s.store.GetDirect(f.ContentHash.String, w); err != nil {
 		// Headers already sent; we can't write a JSON error at this point.
 		return
 	}
@@ -966,7 +965,7 @@ func (s *Server) handlePreviewFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", f.MimeType.String)
 	w.Header().Set("Content-Disposition", "inline")
 
-	if err := s.store.Get(f.ContentHash.String, w); err != nil {
+	if err := s.store.GetDirect(f.ContentHash.String, w); err != nil {
 		// Headers already sent; we can't write a JSON error at this point.
 		return
 	}
