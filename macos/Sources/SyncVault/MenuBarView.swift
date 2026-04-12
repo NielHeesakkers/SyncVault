@@ -141,9 +141,15 @@ struct MenuBarView: View {
                     // Per-file bytes + speed
                     if progress.currentFileTotal > 0 {
                         HStack(spacing: 4) {
-                            Text("\(formatBytes(progress.currentFileBytes)) / \(formatBytes(progress.currentFileTotal))")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.secondary)
+                            if progress.currentFileBytes > 0 {
+                                Text("\(formatBytes(progress.currentFileBytes)) / \(formatBytes(progress.currentFileTotal))")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text("Starting... / \(formatBytes(progress.currentFileTotal))")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
                             if progress.bytesPerSecond > 100 {
                                 Text("·")
                                     .foregroundColor(Color(white: 0.35))
@@ -155,9 +161,15 @@ struct MenuBarView: View {
                         }
 
                         // Progress bar per file
-                        ProgressView(value: Double(progress.currentFileBytes), total: Double(max(progress.currentFileTotal, 1)))
-                            .tint(.blue)
-                            .scaleEffect(y: 0.6)
+                        if progress.currentFileBytes > 0 {
+                            ProgressView(value: Double(progress.currentFileBytes), total: Double(max(progress.currentFileTotal, 1)))
+                                .tint(.blue)
+                                .scaleEffect(y: 0.6)
+                        } else {
+                            ProgressView()
+                                .scaleEffect(0.5)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
 
                     // Total files + total bytes
