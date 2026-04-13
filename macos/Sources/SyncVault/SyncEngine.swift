@@ -561,17 +561,11 @@ actor SyncEngine {
         let names = remainingActions.map { $0.fileName }
         var authFailed = false
 
-        // Process 1 file at a time — sequential, predictable, no contention.
-        // User sees one file at a time in the menu bar.
-        await withTaskGroup(of: (SyncActionResult).self) { group in
-            for (i, action) in remainingActions.enumerated() {
-                // Wait for previous upload to finish before starting next
-                if i > 0 {
-                    if let _ = await group.next() { /* previous finished */ }
-                }
-
-                group.addTask {
-                    // Sequential: one file at a time (controlled by group.next() above)
+        // Sequential execution — one file at a time, like Synology Drive.
+        // No task group, no semaphore, no race conditions.
+        for (i, action) in remainingActions.enumerated() {
+            var actionResult: SyncActionResult = .error
+            do {
 
                     let pending = Array(names.dropFirst(i + 1).prefix(5))
                     let curBytes = await bytesUploaded.value
@@ -590,7 +584,7 @@ actor SyncEngine {
                                 syncLog("Skipped \(displayName) (uploaded < 5min ago)")
                                 await completed.increment()
                                 await bytesUploaded.add(fileSize)
-                                return .uploaded(displayName, relativePath)
+                                actionResult = .uploaded(displayName, relativePath)
                             }
 
                             Self.markSyncingFile(path)
@@ -668,7 +662,7 @@ actor SyncEngine {
                             let currentSize = (currentAttrs?[.size] as? Int64) ?? fileSize
                             try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: uploadedHash, isDir: false, fileSize: currentSize, modTime: currentMtime)
                             await self.markUploaded(relativePath)
-                            return .uploaded(displayName, relativePath)
+                            actionResult = .uploaded(displayName, relativePath)
 
                         case .download(let fileID, let localPath, let relativePath):
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
@@ -689,13 +683,13 @@ actor SyncEngine {
                             logger.info("Downloaded: \(relativePath) (\(size) bytes)")
                             let downloadedHash = (try? Self.hashFile(at: url)) ?? ""
                             try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: downloadedHash, isDir: false)
-                            return .downloaded(displayName, relativePath)
+                            actionResult = .downloaded(displayName, relativePath)
 
                         case .markRemovedLocally(let fileID, let relativePath):
                             try await self.apiClient.markFileRemovedLocally(id: fileID, removed: true)
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
                             logger.info("Marked removed locally: \(relativePath)")
-                            return .markedRemoved(displayName, relativePath)
+                            actionResult = .markedRemoved(displayName, relativePath)
 
                         case .deleteRemote(let fileID, let relativePath):
                             try await self.apiClient.deleteFile(id: fileID)
@@ -703,7 +697,7 @@ actor SyncEngine {
                             logger.info("Deleted from server: \(relativePath)")
                             try? self.db.removeState(taskID: task.id.uuidString, relativePath: relativePath)
                             try? self.db.removeStatesUnder(taskID: task.id.uuidString, pathPrefix: relativePath)
-                            return .deletedLocal(displayName, relativePath)
+                            actionResult = .deletedLocal(displayName, relativePath)
 
                         case .renameRemote(let fileID, let newName, let oldRelPath, let newRelPath):
                             // Atomic rename on server — no delete + create
@@ -716,14 +710,14 @@ actor SyncEngine {
                             try? self.db.removeState(taskID: task.id.uuidString, relativePath: oldRelPath)
                             try? self.db.removeStatesUnder(taskID: task.id.uuidString, pathPrefix: oldRelPath)
                             try? self.db.updateState(taskID: task.id.uuidString, relativePath: newRelPath, contentHash: "", isDir: true)
-                            return .uploaded(newName, newRelPath)
+                            actionResult = .uploaded(newName, newRelPath)
 
                         case .deleteLocal(let path, let relativePath):
                             try FileManager.default.removeItem(atPath: path)
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
                             try? self.db.removeState(taskID: task.id.uuidString, relativePath: relativePath)
                             try? self.db.removeStatesUnder(taskID: task.id.uuidString, pathPrefix: relativePath)
-                            return .deletedLocal(displayName, relativePath)
+                            actionResult = .deletedLocal(displayName, relativePath)
 
                         case .conflict(let localPath, let remoteID, let relativePath):
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
@@ -744,25 +738,23 @@ actor SyncEngine {
                             }
 
                             logger.info("Conflict: saved remote as \(conflictName), uploaded local \(displayName)")
-                            return .conflict(displayName, relativePath)
+                            actionResult = .conflict(displayName, relativePath)
 
                         case .createDirectory(let relativePath):
                             let _ = try await self.ensureRemoteDirectory(relativePath, rootID: task.remoteFolderID)
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
                             logger.info("Created dir: \(relativePath)")
-                            return .uploaded(displayName, relativePath)
+                            actionResult = .uploaded(displayName, relativePath)
                         }
                     } catch let error as APIError where error == .unauthorized {
                         logger.info("Auth failed - re-throwing")
-                        return .authFailed
+                        actionResult = .authFailed
                     } catch {
                         logger.info("Failed: \(action) - \(error)")
-                        return .error
+                        actionResult = .error
                     }
-                }
-            }
 
-            for await actionResult in group {
+                // Process result immediately (sequential — no need for separate loop)
                 var completedItem: ActivityItem? = nil
                 switch actionResult {
                 case .uploaded(let name, let relPath):
@@ -797,7 +789,6 @@ actor SyncEngine {
                     await completed.increment()
                 }
 
-                // Notify progress with completed item for real-time UI updates
                 if let item = completedItem {
                     let curCompleted = Int(await completed.value)
                     let curBytes = await bytesUploaded.value
@@ -810,8 +801,8 @@ actor SyncEngine {
                         completedItem: item
                     ))
                 }
-            }
-        }
+            } // end do
+        } // end for
 
         // Add batch upload results to the sync result
         for br in batchResults {
@@ -904,7 +895,7 @@ actor SyncEngine {
                 continue
             }
             // Always skip known large directories that don't belong in backups
-            let skipDirs: Set<String> = ["node_modules", "DerivedData", "__pycache__", "Pods", ".cocoapods", "venv", ".venv"]
+            let skipDirs: Set<String> = ["node_modules", "DerivedData", "__pycache__", "Pods", ".cocoapods", "venv", ".venv", "build", ".build", ".next", ".cache", ".npm", ".yarn", "dist", ".svelte-kit"]
             if entryIsDir && skipDirs.contains(name) {
                 enumerator.skipDescendants()
                 continue
