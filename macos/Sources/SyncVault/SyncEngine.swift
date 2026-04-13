@@ -582,10 +582,11 @@ actor SyncEngine {
                             let fileSize = (attrs[.size] as? Int64) ?? 0
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
 
-                            // Debounce: skip files uploaded in the last 2 minutes
-                            if await self.wasRecentlyUploaded(relativePath) {
-                                syncLog("Skipped \(displayName) (uploaded recently)")
+                            // Debounce: skip files uploaded in the last 5 minutes
+                            if await self.wasRecentlyUploaded(relativePath, cooldown: 300) {
+                                syncLog("Skipped \(displayName) (uploaded < 5min ago)")
                                 await completed.increment()
+                                await bytesUploaded.add(fileSize)
                                 return .uploaded(displayName, relativePath)
                             }
 
@@ -658,7 +659,11 @@ actor SyncEngine {
 
                             logger.info("Uploaded: \(relativePath) (\(fileSize) bytes, hash: \(uploadedHash))")
                             syncLog("Uploaded: \(relativePath) (\(fileSize) bytes)")
-                            try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: uploadedHash, isDir: false)
+                            // Store server hash + current mtime+size so next scan recognizes it as unchanged
+                            let currentAttrs = try? FileManager.default.attributesOfItem(atPath: path)
+                            let currentMtime = ((currentAttrs?[.modificationDate] as? Date) ?? Date()).timeIntervalSince1970
+                            let currentSize = (currentAttrs?[.size] as? Int64) ?? fileSize
+                            try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: uploadedHash, isDir: false, fileSize: currentSize, modTime: currentMtime)
                             await self.markUploaded(relativePath)
                             return .uploaded(displayName, relativePath)
 
@@ -914,7 +919,15 @@ actor SyncEngine {
 
             var hash: String? = nil
             if !isDir {
-                // Fast path: check mtime+size against cached state — skip hashing if unchanged
+                // Skip files being actively written (modified < 30 seconds ago)
+                if Date().timeIntervalSince(modified) < 30 {
+                    skipCount += 1
+                    continue
+                }
+
+                // mtime+size based change detection (like Synology Drive).
+                // If mtime and size haven't changed since last sync, file is unchanged.
+                // No SHA-256 hashing needed — saves CPU and avoids hash mismatch issues.
                 let modTimeUnix = modified.timeIntervalSince1970
                 if let cachedHash = db.cachedHashIfUnchanged(
                     taskID: task.id.uuidString,
@@ -924,11 +937,9 @@ actor SyncEngine {
                 ) {
                     hash = cachedHash
                     skipCount += 1
-                } else if let lastSync = lastSyncDate, modified <= lastSync {
-                    // Fallback: skip hashing files not modified since last sync date
-                    skipCount += 1
                 } else {
-                    hash = try? Self.hashFile(at: URL(fileURLWithPath: fullPath))
+                    // File is new or modified — mark for upload (hash computed by server)
+                    hash = "__needs_upload__"
                     hashCount += 1
                 }
             }
