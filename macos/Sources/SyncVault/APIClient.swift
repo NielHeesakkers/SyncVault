@@ -386,10 +386,17 @@ actor APIClient {
     // MARK: - Integrity Check
 
     struct IntegrityResult: Codable {
-        let folder_id: String
-        let file_count: Int
-        let dir_count: Int
-        let total_size: Int64
+        let folderID: String
+        let fileCount: Int
+        let dirCount: Int
+        let totalSize: Int64
+
+        enum CodingKeys: String, CodingKey {
+            case folderID = "folder_id"
+            case fileCount = "file_count"
+            case dirCount = "dir_count"
+            case totalSize = "total_size"
+        }
     }
 
     func getIntegrity(folderID: String) async throws -> IntegrityResult {

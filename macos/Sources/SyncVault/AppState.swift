@@ -436,8 +436,8 @@ class AppState: ObservableObject {
                     url.stopAccessingSecurityScopedResource()
                 }
 
-                let missing = localFileCount - serverStats.file_count
-                syncLog("Integrity \(task.remoteFolderName): local=\(localFileCount) server=\(serverStats.file_count) missing=\(missing)")
+                let missing = localFileCount - serverStats.fileCount
+                syncLog("Integrity \(task.remoteFolderName): local=\(localFileCount) server=\(serverStats.fileCount) missing=\(missing)")
 
                 if missing > 5 {
                     // More than 5 files missing on server — force full re-sync
