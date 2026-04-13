@@ -26,6 +26,22 @@ actor SyncEngine {
     private let db: SyncDatabase
     private var isRunning = false
 
+    /// Track recently uploaded files to debounce (path → upload timestamp)
+    private var recentlyUploaded: [String: Date] = [:]
+
+    /// Check if a file was uploaded recently (within cooldown period)
+    func wasRecentlyUploaded(_ relativePath: String, cooldown: TimeInterval = 120) -> Bool {
+        guard let lastUpload = recentlyUploaded[relativePath] else { return false }
+        return Date().timeIntervalSince(lastUpload) < cooldown
+    }
+
+    func markUploaded(_ relativePath: String) {
+        recentlyUploaded[relativePath] = Date()
+        // Cleanup old entries (older than 10 minutes)
+        let cutoff = Date().addingTimeInterval(-600)
+        recentlyUploaded = recentlyUploaded.filter { $0.value > cutoff }
+    }
+
     /// Mark a file as currently syncing (for FinderSync badges)
     static func markSyncingFile(_ path: String) {
         let defaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
@@ -566,11 +582,14 @@ actor SyncEngine {
                             let fileSize = (attrs[.size] as? Int64) ?? 0
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
 
-                            // Mark as syncing for FinderSync badge
-                            Self.markSyncingFile(path)
+                            // Debounce: skip files uploaded in the last 2 minutes
+                            if await self.wasRecentlyUploaded(relativePath) {
+                                syncLog("Skipped \(displayName) (uploaded recently)")
+                                await completed.increment()
+                                return .uploaded(displayName, relativePath)
+                            }
 
-                            // Fixed parallelism — dynamic setLimit causes race conditions
-                            // where all files start simultaneously
+                            Self.markSyncingFile(path)
 
                             await onProgress(SyncProgress(
                                 currentFile: displayName, action: "Uploading",
@@ -615,7 +634,7 @@ actor SyncEngine {
                                 }
                             } else {
                                 didDelta = false
-                                syncLog("Uploading \(displayName) (\(fileSize) bytes) via streaming")
+                                syncLog("UPLOAD START \(displayName) (\(fileSize) bytes)")
                                 let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID)
                                 uploadedHash = f.contentHash ?? ""
                                 let uploadDuration = Date().timeIntervalSince(uploadStart)
@@ -640,6 +659,7 @@ actor SyncEngine {
                             logger.info("Uploaded: \(relativePath) (\(fileSize) bytes, hash: \(uploadedHash))")
                             syncLog("Uploaded: \(relativePath) (\(fileSize) bytes)")
                             try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: uploadedHash, isDir: false)
+                            await self.markUploaded(relativePath)
                             return .uploaded(displayName, relativePath)
 
                         case .download(let fileID, let localPath, let relativePath):
