@@ -152,10 +152,11 @@ func (s *Server) setupRoutes() {
 		r.Get("/api/shares/mine", s.handleListMyShares)
 		r.Put("/api/shares/{id}/toggle", s.handleToggleShare)
 
-		// Hash check and file tree (for sync clients).
+		// Hash check, file tree, and integrity check (for sync clients).
 		r.Post("/api/files/check-hashes", s.handleCheckHashes)
 		r.Get("/api/files/tree", s.handleFileTree)
 		r.Get("/api/files/{id}/tree", s.handleFileTree)
+		r.Get("/api/files/{id}/integrity", s.handleIntegrityCheck)
 
 		// Known sync state (per user per device).
 		r.Put("/api/sync-state/{deviceID}/{taskName}", s.handlePutSyncState)

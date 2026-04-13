@@ -383,6 +383,19 @@ actor APIClient {
         return result.files
     }
 
+    // MARK: - Integrity Check
+
+    struct IntegrityResult: Codable {
+        let folder_id: String
+        let file_count: Int
+        let dir_count: Int
+        let total_size: Int64
+    }
+
+    func getIntegrity(folderID: String) async throws -> IntegrityResult {
+        return try await get("/api/files/\(folderID)/integrity")
+    }
+
     // MARK: - Delta Sync
 
     /// Block signature from server (256KB block with weak + strong hash)

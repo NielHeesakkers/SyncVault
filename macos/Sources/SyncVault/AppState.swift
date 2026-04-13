@@ -56,6 +56,7 @@ class AppState: ObservableObject {
     private(set) var apiClient: APIClient?
     private var syncEngine: SyncEngine?
     private var syncTimer: Timer?
+    private var integrityTimer: Timer?
     private var notificationTimer: Timer?
     private var fileWatchers: [UUID: FileWatcher] = [:]  // per sync task
     private var syncDatabase: SyncDatabase?
@@ -387,6 +388,18 @@ class AppState: ObservableObject {
         }
         // Also run immediately
         Task { await runSync() }
+
+        // 24-hour integrity check: compare local file counts with server and force re-sync if mismatched
+        integrityTimer = Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.runIntegrityCheck()
+            }
+        }
+        // Run first check after 5 minutes (let initial sync settle first)
+        Task {
+            try? await Task.sleep(nanoseconds: 300_000_000_000) // 5 min
+            await runIntegrityCheck()
+        }
     }
 
     /// Called by FileWatcher when changes are detected (already debounced 1s).
@@ -394,9 +407,57 @@ class AppState: ObservableObject {
         Task { await runSync() }
     }
 
+    /// Integrity check: compare local file count with server for each backup task.
+    /// If files are missing on the server, clear lastSyncDate to force a full re-sync.
+    func runIntegrityCheck() async {
+        guard let client = apiClient, isConnected else { return }
+        logger.info("Integrity check starting...")
+        syncLog("Integrity check starting")
+
+        for task in syncTasks where task.isEnabled && task.mode != .onDemand {
+            do {
+                let serverStats = try await client.getIntegrity(folderID: task.remoteFolderID)
+
+                // Count local files (excluding dev directories)
+                let skipDirs: Set<String> = ["node_modules", "DerivedData", "__pycache__", "Pods", ".cocoapods", "venv", ".venv", ".git", ".build"]
+                var localFileCount = 0
+                if let url = resolveBookmark(for: task.localPath) {
+                    let enumerator = FileManager.default.enumerator(atPath: url.path)
+                    while let path = enumerator?.nextObject() as? String {
+                        let name = URL(fileURLWithPath: path).lastPathComponent
+                        let isDir = enumerator?.fileAttributes?[.type] as? FileAttributeType == .typeDirectory
+                        if isDir && (name.hasPrefix(".") || skipDirs.contains(name)) {
+                            enumerator?.skipDescendants()
+                            continue
+                        }
+                        if name.hasPrefix(".") || name.hasPrefix("._") { continue }
+                        if !isDir { localFileCount += 1 }
+                    }
+                    url.stopAccessingSecurityScopedResource()
+                }
+
+                let missing = localFileCount - serverStats.file_count
+                syncLog("Integrity \(task.remoteFolderName): local=\(localFileCount) server=\(serverStats.file_count) missing=\(missing)")
+
+                if missing > 5 {
+                    // More than 5 files missing on server — force full re-sync
+                    syncLog("Integrity \(task.remoteFolderName): \(missing) files missing on server, forcing full re-sync")
+                    logger.info("Integrity: \(task.remoteFolderName) has \(missing) missing files, clearing lastSyncDate")
+                    let lastSyncKey = "lastSyncDate_\(task.id.uuidString)"
+                    UserDefaults.standard.removeObject(forKey: lastSyncKey)
+                }
+            } catch {
+                syncLog("Integrity \(task.remoteFolderName): error \(error.localizedDescription)")
+            }
+        }
+        syncLog("Integrity check done")
+    }
+
     func stopSyncLoop() {
         syncTimer?.invalidate()
         syncTimer = nil
+        integrityTimer?.invalidate()
+        integrityTimer = nil
         fpProgressTimer?.invalidate()
         fpProgressTimer = nil
         fpProgress = nil

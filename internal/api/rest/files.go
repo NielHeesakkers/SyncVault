@@ -1121,6 +1121,38 @@ func (s *Server) handleGetFileLock(w http.ResponseWriter, r *http.Request) {
 // handleFileTree returns a flat list of all files (recursively) under a given folder.
 // Used by the sync client to compare local vs remote without multiple API calls.
 // Accepts folder_id either as a URL path parameter ({id}) or as a query parameter.
+// handleIntegrityCheck handles GET /api/files/{id}/integrity.
+// Returns a summary of the folder contents: file count, dir count, total size.
+// The sync client compares this with its local state to detect missing files.
+func (s *Server) handleIntegrityCheck(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	folderID := chi.URLParam(r, "id")
+
+	files, err := s.db.ListFilesRecursive(folderID, claims.UserID, claims.Role == "admin")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list files"})
+		return
+	}
+
+	var fileCount, dirCount int
+	var totalSize int64
+	for _, f := range files {
+		if f.IsDir {
+			dirCount++
+		} else {
+			fileCount++
+			totalSize += f.Size
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"folder_id":  folderID,
+		"file_count": fileCount,
+		"dir_count":  dirCount,
+		"total_size": totalSize,
+	})
+}
+
 func (s *Server) handleFileTree(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
 	folderID := chi.URLParam(r, "id")
