@@ -15,6 +15,7 @@ func syncLog(_ msg: String) {
     if let handle = try? FileHandle(forWritingTo: logFile) {
         handle.seekToEndOfFile()
         handle.write(line.data(using: .utf8)!)
+        handle.synchronizeFile() // Force flush so timestamps are accurate
         handle.closeFile()
     } else {
         try? line.write(to: logFile, atomically: true, encoding: .utf8)
@@ -541,6 +542,7 @@ actor SyncEngine {
                                 await completed.increment()
                                 await bytesUploaded.add(fileSize)
                                 actionResult = .uploaded(displayName, relativePath)
+                                break // Skip upload — already done recently
                             }
 
                             Self.markSyncingFile(path)
