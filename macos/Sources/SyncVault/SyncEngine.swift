@@ -545,7 +545,8 @@ actor SyncEngine {
         let names = remainingActions.map { $0.fileName }
         var authFailed = false
 
-        let semaphore = DynamicSemaphore(initialLimit: 2)
+        let maxConcurrent = 2
+        let semaphore = AsyncSemaphore(limit: maxConcurrent)
 
         await withTaskGroup(of: (SyncActionResult).self) { group in
             for (i, action) in remainingActions.enumerated() {
@@ -1335,6 +1336,36 @@ enum SyncAction: CustomStringConvertible {
 // MARK: - Async helpers
 
 /// Dynamic semaphore that adjusts concurrency based on file size.
+/// Simple async semaphore that correctly limits concurrent tasks.
+/// Uses CheckedContinuation to suspend tasks until a slot is available.
+actor AsyncSemaphore {
+    private var permits: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(limit: Int) {
+        self.permits = limit
+    }
+
+    func wait() async {
+        if permits > 0 {
+            permits -= 1
+        } else {
+            await withCheckedContinuation { cont in
+                waiters.append(cont)
+            }
+        }
+    }
+
+    func signal() {
+        if waiters.isEmpty {
+            permits += 1
+        } else {
+            // Resume the next waiting task (FIFO)
+            waiters.removeFirst().resume()
+        }
+    }
+}
+
 actor DynamicSemaphore {
     private var count: Int
     private var currentLimit: Int
