@@ -8,6 +8,20 @@ private let logger = Logger(subsystem: "com.syncvault.app", category: "AppState"
 let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.1"
 
 /// Shared file-based sync log (readable via tail -f from terminal)
+/// Run an async operation with a timeout. Throws if the operation takes longer than the specified seconds.
+func withTimeout<T>(seconds: Double, operation: @escaping () async throws -> T) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask { try await operation() }
+        group.addTask {
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            throw NSError(domain: "Timeout", code: -1, userInfo: [NSLocalizedDescriptionKey: "Operation timed out after \(Int(seconds))s"])
+        }
+        let result = try await group.next()!
+        group.cancelAll()
+        return result
+    }
+}
+
 let syncLogFile: URL = {
     let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         .appendingPathComponent("SyncVault")
@@ -410,13 +424,15 @@ class AppState: ObservableObject {
     /// Integrity check: compare local file count with server for each backup task.
     /// If files are missing on the server, clear lastSyncDate to force a full re-sync.
     func runIntegrityCheck() async {
-        guard let client = apiClient, isConnected else { return }
-        logger.info("Integrity check starting...")
+        guard let client = apiClient, isConnected, !isSyncing else { return }
         syncLog("Integrity check starting")
 
         for task in syncTasks where task.isEnabled && task.mode != .onDemand {
             do {
-                let serverStats = try await client.getIntegrity(folderID: task.remoteFolderID)
+                // Use a short timeout so integrity check doesn't block or cause warnings
+                let serverStats = try await withTimeout(seconds: 30) {
+                    try await client.getIntegrity(folderID: task.remoteFolderID)
+                }
 
                 // Count local files (excluding dev directories)
                 let skipDirs: Set<String> = ["node_modules", "DerivedData", "__pycache__", "Pods", ".cocoapods", "venv", ".venv", ".git", ".build"]
