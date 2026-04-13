@@ -227,7 +227,7 @@ struct MenuBarView: View {
                     Spacer()
                 }
             } else if appState.isSyncing {
-                // Syncing without detailed progress
+                // Syncing without detailed progress (scanning/comparing phase)
                 HStack(spacing: 10) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 20))
@@ -235,10 +235,17 @@ struct MenuBarView: View {
                         .rotationEffect(.degrees(360))
                         .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: appState.isSyncing)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Syncing...")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.primary)
-                        Text(serverDisplayURL)
+                        HStack(spacing: 4) {
+                            Text("Scanning")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+                            if let taskName = appState.activeSyncTaskName {
+                                Text("— \(taskName)")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        Text("Comparing files...")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
