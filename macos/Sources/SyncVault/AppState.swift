@@ -901,10 +901,14 @@ class AppState: ObservableObject {
             } catch {
                 logger.info(" Error: \(error)")
                 // Check if it's a storage issue
+                let desc = error.localizedDescription
                 if "\(error)".contains("500") || "\(error)".contains("503") {
                     lastError = "Server storage temporarily unavailable"
+                } else if desc.contains("timed out") || desc.contains("Timeout") {
+                    // Don't show timeout as persistent warning — it auto-retries
+                    syncLog("Sync timeout for \(task.remoteFolderName), will retry next cycle")
                 } else {
-                    lastError = "Sync error: \(error.localizedDescription)"
+                    lastError = "Sync error: \(desc)"
                 }
             }
         }
