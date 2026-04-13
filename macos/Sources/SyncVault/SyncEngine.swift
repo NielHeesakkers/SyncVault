@@ -545,14 +545,14 @@ actor SyncEngine {
         let names = remainingActions.map { $0.fileName }
         var authFailed = false
 
-        let maxConcurrent = 2
-        let semaphore = AsyncSemaphore(limit: maxConcurrent)
+        let uploadSemaphore = AsyncSemaphore(limit: 2)
 
         await withTaskGroup(of: (SyncActionResult).self) { group in
             for (i, action) in remainingActions.enumerated() {
                 group.addTask {
-                    await semaphore.wait()
-                    defer { Task { await semaphore.signal() } }
+                    // Wait for upload slot (max 2 concurrent)
+                    await uploadSemaphore.wait()
+                    defer { Task { await uploadSemaphore.signal() } }
 
                     let pending = Array(names.dropFirst(i + 1).prefix(5))
                     let curBytes = await bytesUploaded.value
