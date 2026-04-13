@@ -785,6 +785,7 @@ class AppState: ObservableObject {
 
         for task in syncTasks where task.isEnabled && task.mode != .onDemand {
             activeSyncTaskName = task.remoteFolderName
+            syncProgress = nil  // Clear previous task's progress
             logger.info("Starting task: \(task.remoteFolderName) (remote: \(task.remoteFolderID), local: \(task.localPath), mode: \(task.mode.rawValue))")
 
             // Resolve security-scoped bookmark for folder access

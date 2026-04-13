@@ -459,18 +459,18 @@ actor SyncEngine {
             logger.info("  \(a)")
         }
 
-        // Sort: non-uploads first, then uploads by size (small first)
+        // Sort: non-uploads first, then uploads by modification date (newest first)
         let sortedActions = actions.sorted { a, b in
-            let sizeOf: (SyncAction) -> Int64 = { action in
+            let mtimeOf: (SyncAction) -> Date = { action in
                 if case .upload(let path, _, _) = action {
-                    return (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? 0
+                    return ((try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate]) as? Date) ?? .distantPast
                 }
-                return 0
+                return .distantPast
             }
             let aIsUpload = { if case .upload = a { return true }; return false }()
             let bIsUpload = { if case .upload = b { return true }; return false }()
-            if aIsUpload && bIsUpload { return sizeOf(a) < sizeOf(b) }
-            if aIsUpload { return false }
+            if aIsUpload && bIsUpload { return mtimeOf(a) > mtimeOf(b) } // newest first
+            if aIsUpload { return false } // non-uploads before uploads
             if bIsUpload { return true }
             return false
         }
@@ -561,14 +561,17 @@ actor SyncEngine {
         let names = remainingActions.map { $0.fileName }
         var authFailed = false
 
-        let uploadSemaphore = AsyncSemaphore(limit: 2)
-
+        // Process 1 file at a time — sequential, predictable, no contention.
+        // User sees one file at a time in the menu bar.
         await withTaskGroup(of: (SyncActionResult).self) { group in
             for (i, action) in remainingActions.enumerated() {
+                // Wait for previous upload to finish before starting next
+                if i > 0 {
+                    if let _ = await group.next() { /* previous finished */ }
+                }
+
                 group.addTask {
-                    // Wait for upload slot (max 2 concurrent)
-                    await uploadSemaphore.wait()
-                    defer { Task { await uploadSemaphore.signal() } }
+                    // Sequential: one file at a time (controlled by group.next() above)
 
                     let pending = Array(names.dropFirst(i + 1).prefix(5))
                     let curBytes = await bytesUploaded.value
