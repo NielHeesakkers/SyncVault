@@ -110,55 +110,72 @@ struct MenuBarView: View {
             } else if let progress = appState.syncProgress {
                 // Syncing with progress
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 20))
-                            .foregroundColor(.blue)
-                            .rotationEffect(.degrees(appState.isSyncing ? 360 : 0))
-                            .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: appState.isSyncing)
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 4) {
-                                Text("Syncing")
+                    if progress.filesCompleted >= progress.filesTotal && progress.filesTotal > 0 {
+                        // All files done — show completion
+                        HStack(spacing: 10) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.green)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Sync complete")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundColor(.primary)
-                                if let taskName = appState.activeSyncTaskName {
-                                    Text("— \(taskName)")
-                                        .font(.system(size: 13))
-                                        .foregroundColor(.secondary)
-                                }
+                                Text("\(progress.filesTotal) files · \(formatBytes(progress.bytesTransferred))")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
                             }
-                            Text(progress.currentFile)
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
                         }
-                        Spacer()
-                    }
-
-                    // Per-file bytes + speed
-                    // File size + speed
-                    HStack(spacing: 4) {
-                        if progress.currentFileTotal > 0 {
-                            Text(formatBytes(progress.currentFileTotal))
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(.secondary)
-                        }
-                        if progress.bytesPerSecond > 100 {
-                            Text("·")
-                                .foregroundColor(Color(white: 0.35))
-                            Text(formatSpeed(progress.bytesPerSecond))
-                                .font(.system(size: 10, design: .monospaced))
+                    } else {
+                        // Still uploading
+                        HStack(spacing: 10) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 20))
                                 .foregroundColor(.blue)
+                                .rotationEffect(.degrees(appState.isSyncing ? 360 : 0))
+                                .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: appState.isSyncing)
+                            VStack(alignment: .leading, spacing: 1) {
+                                HStack(spacing: 4) {
+                                    Text("Syncing")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                    if let taskName = appState.activeSyncTaskName {
+                                        Text("— \(taskName)")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                Text(progress.currentFile)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer()
                         }
-                        Spacer()
-                    }
 
-                    // Total progress bar (files completed / total)
-                    if progress.filesTotal > 0 {
-                        ProgressView(value: Double(progress.filesCompleted), total: Double(max(progress.filesTotal, 1)))
-                            .tint(.blue)
-                            .scaleEffect(y: 0.6)
+                        // File size + speed
+                        HStack(spacing: 4) {
+                            if progress.currentFileTotal > 0 {
+                                Text(formatBytes(progress.currentFileTotal))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
+                            if progress.bytesPerSecond > 100 {
+                                Text("·")
+                                    .foregroundColor(Color(white: 0.35))
+                                Text(formatSpeed(progress.bytesPerSecond))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.blue)
+                            }
+                            Spacer()
+                        }
+
+                        // Total progress bar
+                        if progress.filesTotal > 0 {
+                            ProgressView(value: Double(progress.filesCompleted), total: Double(max(progress.filesTotal, 1)))
+                                .tint(.blue)
+                                .scaleEffect(y: 0.6)
+                        }
                     }
 
                     // Total files + total bytes
