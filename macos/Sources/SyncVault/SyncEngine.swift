@@ -506,57 +506,13 @@ actor SyncEngine {
             let _ = try? await ensureRemoteDirectory(dirPath, rootID: task.remoteFolderID)
         }
 
-        // Batch upload: group small files (<1MB) by parent directory and upload in batches of 20.
-        // This reduces N HTTP calls to N/20 calls for small files.
-        var remainingActions = sortedActions
-        var batchResults: [SyncActionResult] = []
-        do {
-            // Group small uploads by parent directory
-            var batchesByParent: [String: [(index: Int, path: String, relativePath: String, parentID: String)]] = [:]
-            for (i, action) in remainingActions.enumerated() {
-                if case .upload(let path, let relativePath, _) = action {
-                    let attrs = try? FileManager.default.attributesOfItem(atPath: path)
-                    let fileSize = (attrs?[.size] as? Int64) ?? 0
-                    if fileSize > 0 && fileSize < 1_000_000 {
-                        let parentRelPath = (relativePath as NSString).deletingLastPathComponent
-                        let parentID = await folderIDCache[parentRelPath] ?? task.remoteFolderID
-                        var batch = batchesByParent[parentID] ?? []
-                        batch.append((i, path, relativePath, parentID))
-                        batchesByParent[parentID] = batch
-                    }
-                }
-            }
-
-            // Execute batch uploads (20 files per batch)
-            var indicesToRemove = Set<Int>()
-            for (parentID, files) in batchesByParent {
-                for chunk in stride(from: 0, to: files.count, by: 20) {
-                    let batch = Array(files[chunk..<min(chunk + 20, files.count)])
-                    let fileEntries = batch.map { (url: URL(fileURLWithPath: $0.path), parentID: parentID) }
-                    if let uploaded = try? await apiClient.batchUpload(files: fileEntries) {
-                        for (j, entry) in batch.enumerated() {
-                            let displayName = URL(fileURLWithPath: entry.relativePath).lastPathComponent
-                            let hash = j < uploaded.count ? (uploaded[j].contentHash ?? "") : ""
-                            try? db.updateState(taskID: task.id.uuidString, relativePath: entry.relativePath, contentHash: hash, isDir: false)
-                            batchResults.append(.uploaded(displayName, entry.relativePath))
-                            indicesToRemove.insert(entry.index)
-                        }
-                        logger.info("Batch uploaded \(batch.count) small files to parent \(parentID)")
-                        syncLog("Batch uploaded \(batch.count) small files")
-                    }
-                }
-            }
-
-            // Remove batch-uploaded files from remaining actions
-            if !indicesToRemove.isEmpty {
-                remainingActions = remainingActions.enumerated().compactMap { indicesToRemove.contains($0.offset) ? nil : $0.element }
-            }
-        }
+        // All files upload sequentially via streaming — no batch upload needed.
+        let remainingActions = sortedActions
 
         let total = sortedActions.count
         let bytesUploaded = ActorCounter(initial: skippedBytes)
         let bytesTransferred = ActorCounter(initial: 0)
-        let completed = ActorCounter(initial: Int64(batchResults.count))
+        let completed = ActorCounter(initial: 0)
         let start = Date()
         let names = remainingActions.map { $0.fileName }
         var authFailed = false
@@ -803,14 +759,6 @@ actor SyncEngine {
                 }
             } // end do
         } // end for
-
-        // Add batch upload results to the sync result
-        for br in batchResults {
-            if case .uploaded(let name, let relPath) = br {
-                result.uploaded += 1
-                result.fileActivity.append(ActivityItem(filename: name, action: "uploaded", timestamp: Date(), relativePath: relPath))
-            }
-        }
 
         if authFailed {
             throw APIError.unauthorized
