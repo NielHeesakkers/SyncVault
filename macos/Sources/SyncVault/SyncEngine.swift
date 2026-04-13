@@ -587,13 +587,15 @@ actor SyncEngine {
 
                             var uploadedHash: String
 
+                            // Show file info in header BEFORE upload starts
+                            let uploadStart = Date()
+
                             // Delta Sync: if file already exists on server (remoteFileID != nil)
                             // and is > 1MB, try delta upload (only send changed bytes).
                             let didDelta: Bool
                             if let remoteID = remoteFileID, fileSize > 1_000_000 {
                                 didDelta = true
                                 syncLog("Delta check: \(displayName) (\(fileSize) bytes, remoteID=\(remoteID))")
-                                let uploadStart = Date()
                                 do {
                                     let deltaResult = try await self.deltaUpload(fileURL: fileURL, remoteFileID: remoteID, fileSize: fileSize)
                                     uploadedHash = deltaResult.hash
@@ -605,7 +607,6 @@ actor SyncEngine {
                                     await bytesUploaded.add(fileSize)
                                     await bytesTransferred.add(deltaBytes)
                                 } catch {
-                                    // Delta failed — fall back to full upload
                                     syncLog("Delta failed for \(displayName): \(error.localizedDescription), falling back to full upload")
                                     let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID)
                                     uploadedHash = f.contentHash ?? ""
@@ -614,9 +615,7 @@ actor SyncEngine {
                                 }
                             } else {
                                 didDelta = false
-                                // Full streaming upload for new files or small files
                                 syncLog("Uploading \(displayName) (\(fileSize) bytes) via streaming")
-                                let uploadStart = Date()
                                 let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID)
                                 uploadedHash = f.contentHash ?? ""
                                 let uploadDuration = Date().timeIntervalSince(uploadStart)
@@ -625,11 +624,15 @@ actor SyncEngine {
                                 await bytesUploaded.add(fileSize)
                                 await bytesTransferred.add(fileSize)
                             }
+
+                            // Update progress with speed calculated from this file
+                            let elapsed = Date().timeIntervalSince(uploadStart)
+                            let fileSpeed = elapsed > 0 ? Double(fileSize) / elapsed : 0
                             await onProgress(SyncProgress(
-                                currentFile: displayName, action: didDelta ? "Delta sync" : "Uploading",
+                                currentFile: displayName, action: didDelta ? "Delta sync" : "Uploaded",
                                 bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
                                 filesCompleted: Int(await completed.value), filesTotal: total,
-                                bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
+                                bytesPerSecond: fileSpeed,
                                 pendingFiles: pending,
                                 currentFileBytes: fileSize, currentFileTotal: fileSize
                             ))
