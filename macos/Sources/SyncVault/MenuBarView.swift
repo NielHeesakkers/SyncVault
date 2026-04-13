@@ -110,7 +110,7 @@ struct MenuBarView: View {
             } else if let progress = appState.syncProgress {
                 // Syncing with progress
                 VStack(alignment: .leading, spacing: 6) {
-                    if progress.filesCompleted >= progress.filesTotal && progress.filesTotal > 0 {
+                    if progress.filesCompleted >= progress.filesTotal && progress.filesTotal > 0 && !appState.isSyncing {
                         // All files done — show completion
                         HStack(spacing: 10) {
                             Image(systemName: "checkmark.circle.fill")
