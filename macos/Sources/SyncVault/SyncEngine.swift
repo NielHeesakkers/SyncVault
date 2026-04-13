@@ -568,9 +568,8 @@ actor SyncEngine {
                             // Mark as syncing for FinderSync badge
                             Self.markSyncingFile(path)
 
-                            // Dynamically adjust parallelism based on file size
-                            let optimalParallel = DynamicSemaphore.parallelismFor(fileSize: fileSize)
-                            await semaphore.setLimit(optimalParallel)
+                            // Fixed parallelism — dynamic setLimit causes race conditions
+                            // where all files start simultaneously
 
                             await onProgress(SyncProgress(
                                 currentFile: displayName, action: "Uploading",
