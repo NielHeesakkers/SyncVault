@@ -20,9 +20,13 @@ struct MenuBarView: View {
     var hasBackupTasks: Bool { !backupTasks.isEmpty }
     var hasOnDemandTasks: Bool { !onDemandTasks.isEmpty }
 
+    var allTasks: [SyncTask] {
+        appState.syncTasks.filter { $0.isEnabled }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // MARK: - Header: Status
+            // MARK: - Header: Status + active transfer info
             statusHeader
             subtleDivider
 
@@ -33,15 +37,9 @@ struct MenuBarView: View {
                     subtleDivider
                 }
 
-                // MARK: - Backup Tasks
-                if hasBackupTasks {
-                    backupTasksSection
-                    subtleDivider
-                }
-
-                // MARK: - CloudDrive (on-demand)
-                if hasOnDemandTasks {
-                    cloudDriveSection
+                // MARK: - All Sync Tasks (unified: backup + on-demand)
+                if !allTasks.isEmpty {
+                    syncTasksSection
                     subtleDivider
                 }
             }
@@ -49,7 +47,7 @@ struct MenuBarView: View {
             // MARK: - Actions
             actionsSection
 
-            // Version (inline with bottom)
+            // Version
             HStack {
                 Spacer()
                 Text("v\(appVersion)")
@@ -186,7 +184,40 @@ struct MenuBarView: View {
                     }
                 }
 
-                // FileProvider on-demand progress is shown inline in the Sync Tasks section
+            } else if let fpStatus = appState.fpProgress {
+                // FileProvider on-demand syncing
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 20))
+                        .foregroundColor(.blue)
+                        .rotationEffect(.degrees(appState.fpProgress != nil ? 360 : 0))
+                        .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: appState.fpProgress != nil)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 4) {
+                            Text("Syncing")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+                            Text("— CloudDrive")
+                                .font(.system(size: 13))
+                                .foregroundColor(.secondary)
+                        }
+                        HStack(spacing: 4) {
+                            Text(fpStatus)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            if appState.fpSpeed > 100 {
+                                Text("·")
+                                    .foregroundColor(Color(white: 0.35))
+                                Text(formatSpeed(appState.fpSpeed))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
+                    Spacer()
+                }
             } else if appState.isSyncing {
                 // Syncing without detailed progress
                 HStack(spacing: 10) {
@@ -214,7 +245,7 @@ struct MenuBarView: View {
                         Text("Up to date")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.primary)
-                        Text(serverDisplayURL)
+                        Text("\(allTasks.count) tasks · \(serverDisplayURL)")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
@@ -274,103 +305,47 @@ struct MenuBarView: View {
         .padding(.vertical, 10)
     }
 
-    // MARK: - CloudDrive Section
+    // MARK: - Unified Sync Tasks (backup + on-demand together)
 
-    private var cloudDriveSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            menuSectionHeader("CloudDrive")
-
-            ForEach(onDemandTasks) { task in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "icloud.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(.blue)
-                            .frame(width: 16)
-                        Text(task.remoteFolderName)
-                            .font(.system(size: 11, weight: .medium))
-                            .lineLimit(1)
-                        Spacer()
-                        if appState.fpProgress != nil {
-                            Image(systemName: "arrow.up.arrow.down")
-                                .font(.system(size: 9))
-                                .foregroundColor(.blue)
-                        } else {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 9))
-                                .foregroundColor(Color(white: 0.4))
-                        }
-                    }
-
-                    // FileProvider activity
-                    if let fpStatus = appState.fpProgress {
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text(fpStatus)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Spacer()
-                                if appState.fpSpeed > 100 {
-                                    Text(formatSpeed(appState.fpSpeed))
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                        .padding(.leading, 24)
-                    } else {
-                        Text("Available in Finder")
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(white: 0.4))
-                            .padding(.leading, 24)
-                    }
-                }
-                .contentShape(Rectangle())
-                .onTapGesture { openCloudDrive() }
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
-    // MARK: - Backup Tasks
-
-    private var backupTasksSection: some View {
+    private var syncTasksSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                menuSectionHeader("Backup Tasks")
+                menuSectionHeader("Sync Tasks")
                 Spacer()
-                let activeBackup = backupTasks.filter { $0.isEnabled }.count
-                Text("\(activeBackup) / \(backupTasks.count)")
+                let active = allTasks.count
+                let total = appState.syncTasks.count
+                Text("\(active) / \(total)")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(Color(white: 0.4))
             }
 
-            ForEach(backupTasks) { task in
-                Button(action: { openTaskFolder(task) }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "folder.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(.orange)
-                            .frame(width: 14)
-                        Text(task.remoteFolderName)
-                            .font(.system(size: 11))
-                            .lineLimit(1)
-                        Spacer()
-                        Circle()
-                            .fill(taskStatusColor(task))
-                            .frame(width: 6, height: 6)
-                        Text(taskStatusLabel(task))
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(white: 0.4))
-                            .frame(width: 55, alignment: .trailing)
-                    }
-                    .padding(.vertical, 1)
-                    .contentShape(Rectangle())
+            ForEach(allTasks) { task in
+                HStack(spacing: 8) {
+                    Image(systemName: task.mode == .onDemand ? "icloud.fill" : "folder.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(task.mode == .onDemand ? .blue : .orange)
+                        .frame(width: 14)
+                    Text(task.remoteFolderName)
+                        .font(.system(size: 11))
+                        .lineLimit(1)
+                    Spacer()
+                    Circle()
+                        .fill(taskStatusColor(task))
+                        .frame(width: 6, height: 6)
+                    Text(taskStatusLabel(task))
+                        .font(.system(size: 10))
+                        .foregroundColor(Color(white: 0.4))
+                        .frame(width: 55, alignment: .trailing)
                 }
-                .buttonStyle(.plain)
+                .padding(.vertical, 1)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if task.mode == .onDemand {
+                        openCloudDrive()
+                    } else {
+                        openTaskFolder(task)
+                    }
+                }
             }
         }
         .padding(.horizontal, 14)
