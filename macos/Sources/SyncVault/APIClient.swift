@@ -331,7 +331,16 @@ actor APIClient {
         }
         request.timeoutInterval = 3600 // 1 hour for very large files
 
-        let (data, response) = try await session.upload(for: request, fromFile: tempFile)
+        // Use a fresh ephemeral session per upload to avoid connection pool exhaustion.
+        // URLSession.upload(fromFile:) and shared sessions hang after ~20 rapid requests.
+        let uploadConfig = URLSessionConfiguration.ephemeral
+        uploadConfig.timeoutIntervalForRequest = 300
+        uploadConfig.timeoutIntervalForResource = 3600
+        uploadConfig.httpMaximumConnectionsPerHost = 1
+        let uploadSession = URLSession(configuration: uploadConfig)
+        defer { uploadSession.finishTasksAndInvalidate() }
+
+        let (data, response) = try await uploadSession.upload(for: request, fromFile: tempFile)
         guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
             throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
         }
