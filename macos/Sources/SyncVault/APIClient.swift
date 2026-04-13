@@ -11,7 +11,7 @@ actor APIClient {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300
         config.timeoutIntervalForResource = 3600
-        config.httpMaximumConnectionsPerHost = 6
+        config.httpMaximumConnectionsPerHost = 2
         self.session = URLSession(configuration: config)
     }
 
@@ -331,7 +331,7 @@ actor APIClient {
         }
         request.timeoutInterval = 3600 // 1 hour for very large files
 
-        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: tempFile)
+        let (data, response) = try await session.upload(for: request, fromFile: tempFile)
         guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
             throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
         }
