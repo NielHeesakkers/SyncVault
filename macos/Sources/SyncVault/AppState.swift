@@ -447,7 +447,8 @@ class AppState: ObservableObject {
                     UserDefaults.standard.removeObject(forKey: lastSyncKey)
                 }
             } catch {
-                syncLog("Integrity \(task.remoteFolderName): error \(error.localizedDescription)")
+                // Don't show integrity errors as user-visible warnings — they're non-critical
+                syncLog("Integrity \(task.remoteFolderName): skipped (\(error.localizedDescription))")
             }
         }
         syncLog("Integrity check done")

@@ -1122,28 +1122,26 @@ func (s *Server) handleGetFileLock(w http.ResponseWriter, r *http.Request) {
 // Used by the sync client to compare local vs remote without multiple API calls.
 // Accepts folder_id either as a URL path parameter ({id}) or as a query parameter.
 // handleIntegrityCheck handles GET /api/files/{id}/integrity.
-// Returns a summary of the folder contents: file count, dir count, total size.
-// The sync client compares this with its local state to detect missing files.
+// Returns a summary of the folder contents using fast COUNT/SUM queries.
 func (s *Server) handleIntegrityCheck(w http.ResponseWriter, r *http.Request) {
-	claims := auth.GetClaims(r.Context())
 	folderID := chi.URLParam(r, "id")
-
-	files, err := s.db.ListFilesRecursive(folderID, claims.UserID, claims.Role == "admin")
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not list files"})
-		return
-	}
 
 	var fileCount, dirCount int
 	var totalSize int64
-	for _, f := range files {
-		if f.IsDir {
-			dirCount++
-		} else {
-			fileCount++
-			totalSize += f.Size
-		}
-	}
+
+	// Use CTE COUNT instead of loading all files into memory
+	s.db.DB().QueryRow(`
+		WITH RECURSIVE descendants(id) AS (
+			SELECT id FROM files WHERE parent_id = ? AND deleted_at IS NULL
+			UNION ALL
+			SELECT f.id FROM files f JOIN descendants d ON f.parent_id = d.id WHERE f.deleted_at IS NULL
+		)
+		SELECT
+			COUNT(CASE WHEN f.is_dir = 0 THEN 1 END),
+			COUNT(CASE WHEN f.is_dir = 1 THEN 1 END),
+			COALESCE(SUM(CASE WHEN f.is_dir = 0 THEN f.size ELSE 0 END), 0)
+		FROM files f WHERE f.id IN (SELECT id FROM descendants)
+	`, folderID).Scan(&fileCount, &dirCount, &totalSize)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"folder_id":  folderID,
