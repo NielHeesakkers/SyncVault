@@ -103,8 +103,20 @@ actor FPAPIClient {
         }
         request.timeoutInterval = 3600
 
-        request.httpBody = try Data(contentsOf: tempFile)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response): (Data, URLResponse) = try await withCheckedThrowingContinuation { continuation in
+            let task = URLSession(configuration: .ephemeral).uploadTask(with: request, fromFile: tempFile) { data, response, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let data = data, let response = response else {
+                    continuation.resume(throwing: NSError(domain: "FPUpload", code: -1))
+                    return
+                }
+                continuation.resume(returning: (data, response))
+            }
+            task.resume()
+        }
         try checkResponse(response)
         SharedConfig.clearProgress()
 

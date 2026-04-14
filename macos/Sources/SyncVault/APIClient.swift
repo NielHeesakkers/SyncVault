@@ -331,13 +331,27 @@ actor APIClient {
         }
         request.timeoutInterval = 3600 // 1 hour for very large files
 
-        // Use data(for:) with httpBody — upload(fromFile:) hangs after ~20 requests.
-        request.httpBody = try Data(contentsOf: tempFile)
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
-            throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
+        // Use URLSessionUploadTask with completion handler (async/await upload hangs).
+        let result: ServerFile = try await withCheckedThrowingContinuation { continuation in
+            let task = URLSession(configuration: .ephemeral).uploadTask(with: request, fromFile: tempFile) { data, response, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let http = response as? HTTPURLResponse, http.statusCode < 400, let data = data else {
+                    continuation.resume(throwing: APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500))
+                    return
+                }
+                do {
+                    let file = try JSONDecoder().decode(ServerFile.self, from: data)
+                    continuation.resume(returning: file)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+            task.resume()
         }
-        return try JSONDecoder().decode(ServerFile.self, from: data)
+        return result
     }
 
     /// Direct multipart file upload for small files (loads into memory).

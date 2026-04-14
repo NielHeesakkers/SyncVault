@@ -566,9 +566,10 @@ actor SyncEngine {
                             let uploadStart = Date()
 
                             // Delta Sync: if file already exists on server (remoteFileID != nil)
-                            // and is > 1MB, try delta upload (only send changed bytes).
+                            // and is 1-500MB, try delta upload. Skip for very large files
+                            // (server loads entire file in memory for reconstruction).
                             let didDelta: Bool
-                            if let remoteID = remoteFileID, fileSize > 1_000_000 {
+                            if let remoteID = remoteFileID, fileSize > 1_000_000 && fileSize < 500_000_000 {
                                 didDelta = true
                                 syncLog("Delta check: \(displayName) (\(fileSize) bytes, remoteID=\(remoteID))")
                                 do {
