@@ -1,5 +1,48 @@
 import Foundation
 
+/// URLSession delegate that reports upload progress per byte and handles completion.
+class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, URLSessionDataDelegate {
+    let totalBytes: Int64
+    let onProgress: ((Int64, Int64) -> Void)?
+    var continuation: CheckedContinuation<ServerFile, Error>?
+    var session: URLSession?
+    var responseData = Data()
+
+    init(totalBytes: Int64, onProgress: ((Int64, Int64) -> Void)?) {
+        self.totalBytes = totalBytes
+        self.onProgress = onProgress
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+        onProgress?(totalBytesSent, totalBytes)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        responseData.append(data)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        defer { self.session?.finishTasksAndInvalidate() }
+        if let error = error {
+            continuation?.resume(throwing: error)
+            continuation = nil
+            return
+        }
+        guard let http = task.response as? HTTPURLResponse, http.statusCode < 400 else {
+            continuation?.resume(throwing: APIError.serverError((task.response as? HTTPURLResponse)?.statusCode ?? 500))
+            continuation = nil
+            return
+        }
+        do {
+            let file = try JSONDecoder().decode(ServerFile.self, from: responseData)
+            continuation?.resume(returning: file)
+        } catch {
+            continuation?.resume(throwing: error)
+        }
+        continuation = nil
+    }
+}
+
 actor APIClient {
     let baseURL: String
     private var accessToken: String?
@@ -290,10 +333,10 @@ actor APIClient {
         throw lastError!
     }
 
-    /// Upload file via raw PUT — no multipart, no temp files, direct streaming.
-    /// Simplest possible upload: sends raw file bytes to server.
-    func uploadFileStreaming(fileURL: URL, parentID: String) async throws -> ServerFile {
+    /// Upload file via raw PUT with per-byte progress reporting.
+    func uploadFileStreaming(fileURL: URL, parentID: String, onProgress: ((Int64, Int64) -> Void)? = nil) async throws -> ServerFile {
         let filename = fileURL.lastPathComponent.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? fileURL.lastPathComponent
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? 0
 
         var request = URLRequest(url: URL(string: "\(baseURL)/api/files/put?parent_id=\(parentID)&filename=\(filename)")!)
         request.httpMethod = "PUT"
@@ -303,35 +346,22 @@ actor APIClient {
         }
         request.timeoutInterval = 3600
 
-        // uploadTask streams from file — no memory pressure, no temp files
+        let delegate = UploadProgressDelegate(totalBytes: fileSize, onProgress: onProgress)
+
         let result: ServerFile = try await withCheckedThrowingContinuation { continuation in
+            delegate.continuation = continuation
             let config = URLSessionConfiguration.ephemeral
             config.timeoutIntervalForRequest = 3600
             config.timeoutIntervalForResource = 7200
-            let uploadSession = URLSession(configuration: config)
-            let task = uploadSession.uploadTask(with: request, fromFile: fileURL) { data, response, error in
-                uploadSession.finishTasksAndInvalidate()
-                if let error = error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                guard let http = response as? HTTPURLResponse, http.statusCode < 400, let data = data else {
-                    continuation.resume(throwing: APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500))
-                    return
-                }
-                do {
-                    let file = try JSONDecoder().decode(ServerFile.self, from: data)
-                    continuation.resume(returning: file)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
+            let uploadSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+            let task = uploadSession.uploadTask(with: request, fromFile: fileURL)
+            delegate.session = uploadSession
             task.resume()
         }
         return result
     }
 
-    /// Direct multipart file upload for small files (loads into memory).
+    /// Direct upload (alias for streaming).
     func uploadFileDirect(fileURL: URL, parentID: String) async throws -> ServerFile {
         return try await uploadFileStreaming(fileURL: fileURL, parentID: parentID)
     }

@@ -153,12 +153,18 @@ struct MenuBarView: View {
                             Spacer()
                         }
 
-                        // File size + speed
+                        // Per-file bytes + speed
                         HStack(spacing: 4) {
                             if progress.currentFileTotal > 0 {
-                                Text(formatBytes(progress.currentFileTotal))
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(.secondary)
+                                if progress.currentFileBytes > 0 {
+                                    Text("\(formatBytes(progress.currentFileBytes)) / \(formatBytes(progress.currentFileTotal))")
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    Text(formatBytes(progress.currentFileTotal))
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                }
                             }
                             if progress.bytesPerSecond > 100 {
                                 Text("·")
@@ -170,8 +176,12 @@ struct MenuBarView: View {
                             Spacer()
                         }
 
-                        // Total progress bar
-                        if progress.filesTotal > 0 {
+                        // Per-file progress bar (smooth, per byte)
+                        if progress.currentFileTotal > 0 && progress.currentFileBytes > 0 {
+                            ProgressView(value: Double(progress.currentFileBytes), total: Double(max(progress.currentFileTotal, 1)))
+                                .tint(.blue)
+                                .scaleEffect(y: 0.6)
+                        } else if progress.filesTotal > 0 {
                             ProgressView(value: Double(progress.filesCompleted), total: Double(max(progress.filesTotal, 1)))
                                 .tint(.blue)
                                 .scaleEffect(y: 0.6)

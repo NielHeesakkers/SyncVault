@@ -592,7 +592,20 @@ actor SyncEngine {
                             } else {
                                 didDelta = false
                                 syncLog("UPLOAD START \(displayName) (\(fileSize) bytes)")
-                                let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID)
+                                let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID) { bytesSent, totalBytes in
+                                    // Per-byte progress callback from URLSession delegate
+                                    Task {
+                                        await onProgress(SyncProgress(
+                                            currentFile: displayName, action: "Uploading",
+                                            bytesTransferred: await bytesUploaded.value + bytesSent,
+                                            totalBytes: totalBytesToUpload,
+                                            filesCompleted: Int(await completed.value), filesTotal: total,
+                                            bytesPerSecond: Self.speed(bytes: await bytesTransferred.value + bytesSent, since: start),
+                                            pendingFiles: pending,
+                                            currentFileBytes: bytesSent, currentFileTotal: totalBytes
+                                        ))
+                                    }
+                                }
                                 uploadedHash = f.contentHash ?? ""
                                 let uploadDuration = Date().timeIntervalSince(uploadStart)
                                 let speed = Double(fileSize) / max(uploadDuration, 0.001)
