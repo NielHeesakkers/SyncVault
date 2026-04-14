@@ -285,6 +285,7 @@ struct MenuBarView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+        .frame(minHeight: 90, alignment: .top)
     }
 
     // MARK: - Recently Changed
