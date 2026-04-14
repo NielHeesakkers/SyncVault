@@ -194,37 +194,43 @@ struct MenuBarView: View {
 
             } else if let fpStatus = appState.fpProgress {
                 // FileProvider on-demand syncing
-                HStack(spacing: 10) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 20))
-                        .foregroundColor(.blue)
-                        .rotationEffect(.degrees(appState.fpProgress != nil ? 360 : 0))
-                        .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: appState.fpProgress != nil)
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 4) {
-                            Text("Syncing")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.primary)
-                            Text("— CloudDrive")
-                                .font(.system(size: 13))
-                                .foregroundColor(.secondary)
-                        }
-                        HStack(spacing: 4) {
-                            Text(fpStatus)
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            if appState.fpSpeed > 100 {
-                                Text("·")
-                                    .foregroundColor(Color(white: 0.35))
-                                Text(formatSpeed(appState.fpSpeed))
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(.blue)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 20))
+                            .foregroundColor(.blue)
+                            .rotationEffect(.degrees(360))
+                            .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: true)
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 4) {
+                                Text("Syncing")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                Text("— CloudDrive")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.secondary)
+                            }
+                            HStack(spacing: 4) {
+                                Text(fpStatus)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                if appState.fpSpeed > 100 {
+                                    Text("·")
+                                        .foregroundColor(Color(white: 0.35))
+                                    Text(formatSpeed(appState.fpSpeed))
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.blue)
+                                }
                             }
                         }
+                        Spacer()
                     }
-                    Spacer()
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                        .tint(.blue)
+                        .scaleEffect(y: 0.6)
                 }
             } else if appState.isSyncing {
                 // Syncing without detailed progress (scanning/comparing phase)

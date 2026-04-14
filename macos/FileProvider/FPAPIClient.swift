@@ -103,7 +103,8 @@ actor FPAPIClient {
         }
         request.timeoutInterval = 3600
 
-        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: tempFile)
+        request.httpBody = try Data(contentsOf: tempFile)
+        let (data, response) = try await URLSession.shared.data(for: request)
         try checkResponse(response)
         SharedConfig.clearProgress()
 
