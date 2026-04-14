@@ -394,8 +394,8 @@ class AppState: ObservableObject {
             fileWatchers[task.id] = watcher
         }
 
-        // 60-second fallback timer (in case FSEvents misses something, or errors need retry)
-        syncTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        // 4-hour fallback timer (FSEvents handles real-time changes, this catches anything missed)
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 14400, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 await self?.runSync()
             }
