@@ -193,6 +193,14 @@ actor SyncEngine {
                     skippedBytes += localFile.size
                     continue
                 }
+                // If hash is __needs_upload__ (no mtime cache), check size match as fallback.
+                // Same size on server = likely unchanged, skip re-upload.
+                if hash == "__needs_upload__" && remote.size == localFile.size {
+                    skippedBytes += localFile.size
+                    // Update cache so next scan won't re-check
+                    try? db.updateState(taskID: task.id.uuidString, relativePath: relPath, contentHash: remote.contentHash ?? "", isDir: false, fileSize: localFile.size, modTime: localFile.modifiedAt.timeIntervalSince1970)
+                    continue
+                }
                 // Hashes differ — check journal for conflict detection (two-way only)
                 if task.mode == .twoWay, let journalEntry = journal[relPath] {
                     let localChanged = (hash != journalEntry.contentHash)
