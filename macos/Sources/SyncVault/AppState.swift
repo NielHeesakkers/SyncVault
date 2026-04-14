@@ -416,8 +416,14 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Called by FileWatcher when changes are detected (already debounced 1s).
+    /// Called by FileWatcher when changes are detected.
+    /// Debounced to max once per 10 minutes to avoid excessive scanning.
+    private var lastSyncTrigger: Date = .distantPast
+
     func onFileChanged() {
+        let now = Date()
+        guard now.timeIntervalSince(lastSyncTrigger) > 600 else { return } // 10 min debounce
+        lastSyncTrigger = now
         Task { await runSync() }
     }
 
