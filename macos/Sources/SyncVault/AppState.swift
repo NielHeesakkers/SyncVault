@@ -528,16 +528,18 @@ class AppState: ObservableObject {
         if let recent = defaults?.array(forKey: "fp_recent_files") as? [[String: String]], !recent.isEmpty {
             for entry in recent {
                 guard let filename = entry["filename"], let action = entry["action"] else { continue }
-                let alreadyTracked = recentActivity.contains { $0.filename == filename && $0.action == action }
+                let alreadyTracked = recentActivity.contains { $0.filename == filename && abs($0.timestamp.timeIntervalSinceNow) < 60 }
                 if !alreadyTracked {
                     let ts = Double(entry["timestamp"] ?? "0") ?? 0
-                    let item = ActivityItem(filename: filename, action: action, timestamp: Date(timeIntervalSince1970: ts))
+                    var item = ActivityItem(filename: filename, action: action, timestamp: ts > 0 ? Date(timeIntervalSince1970: ts) : Date())
+                    item.taskName = "CloudDrive"
                     recentActivity.insert(item, at: 0)
                 }
             }
             if recentActivity.count > 20 { recentActivity = Array(recentActivity.prefix(20)) }
-            // Sort by most recent
             recentActivity.sort { $0.timestamp > $1.timestamp }
+            // Clear processed entries
+            defaults?.removeObject(forKey: "fp_recent_files")
         }
 
         guard let action = defaults?.string(forKey: "fp_progress_action"),
