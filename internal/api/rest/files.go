@@ -236,6 +236,57 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toFileResponse(*f))
 }
 
+// handlePutFile handles PUT /api/files/put?parent_id=X&filename=Y
+// Accepts raw file body — no multipart, no temp files, direct streaming.
+// Simplest possible upload: client sends raw bytes, server stores them.
+func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
+	claims := auth.GetClaims(r.Context())
+	parentID := r.URL.Query().Get("parent_id")
+	filename := r.URL.Query().Get("filename")
+	if filename == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "filename required"})
+		return
+	}
+
+	// Detect MIME type from first 512 bytes
+	buf := make([]byte, 512)
+	n, _ := r.Body.Read(buf)
+	mimeType := http.DetectContentType(buf[:n])
+
+	// Stream to storage
+	pr, pw := io.Pipe()
+	errCh := make(chan error, 1)
+	var contentHash string
+	var size int64
+	go func() {
+		var putErr error
+		contentHash, size, putErr = s.store.PutDirect(pr)
+		errCh <- putErr
+	}()
+
+	pw.Write(buf[:n])
+	io.Copy(pw, r.Body)
+	pw.Close()
+
+	if putErr := <-errCh; putErr != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not store file"})
+		return
+	}
+
+	f, err := s.db.CreateFile(parentID, claims.UserID, filename, false, size, contentHash, mimeType)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create file"})
+		return
+	}
+	s.db.CreateVersion(f.ID, 1, contentHash, "", size, claims.UserID)
+
+	if err := s.db.LogActivity(claims.UserID, "upload", "file", f.ID, filename+" ("+formatSize(size)+")", r.RemoteAddr); err != nil {
+		log.Printf("activity: %v", err)
+	}
+
+	writeJSON(w, http.StatusCreated, toFileResponse(*f))
+}
+
 // handleBatchUpload handles POST /api/files/batch-upload.
 // Accepts a multipart form with multiple files and a shared parent_id.
 // Much more efficient than individual uploads for many small files (1 HTTP call instead of N).

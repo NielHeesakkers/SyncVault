@@ -290,86 +290,45 @@ actor APIClient {
         throw lastError!
     }
 
-    /// Streaming file upload — streams from disk without loading into memory.
-    /// Works for any file size. Single HTTP request like Synology Drive.
+    /// Upload file via raw PUT — no multipart, no temp files, direct streaming.
+    /// Simplest possible upload: sends raw file bytes to server.
     func uploadFileStreaming(fileURL: URL, parentID: String) async throws -> ServerFile {
-        let boundary = UUID().uuidString
-        let filename = fileURL.lastPathComponent
-        let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path))?[.size] as? Int64 ?? 0
+        let filename = fileURL.lastPathComponent.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? fileURL.lastPathComponent
 
-        // Build multipart body as a temporary file (avoids loading file into memory)
-        let tempDir = FileManager.default.temporaryDirectory
-        let tempFile = tempDir.appendingPathComponent(UUID().uuidString + ".multipart")
-        defer { try? FileManager.default.removeItem(at: tempFile) }
-
-        let handle = try FileHandle(forWritingTo: { FileManager.default.createFile(atPath: tempFile.path, contents: nil); return tempFile }())
-
-        // Write multipart header + parent_id field
-        let header = "--\(boundary)\r\nContent-Disposition: form-data; name=\"parent_id\"\r\n\r\n\(parentID)\r\n--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n"
-        handle.write(header.data(using: .utf8)!)
-
-        // Stream file content in 4MB chunks (never loads full file)
-        let readHandle = try FileHandle(forReadingFrom: fileURL)
-        defer { readHandle.closeFile() }
-        let chunkSize = 4 * 1024 * 1024
-        while true {
-            let chunk = readHandle.readData(ofLength: chunkSize)
-            if chunk.isEmpty { break }
-            handle.write(chunk)
-        }
-
-        // Write multipart footer
-        handle.write("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-        handle.closeFile()
-
-        // Upload the temp file via streaming (URLSession reads from disk)
-        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/upload")!)
-        request.httpMethod = "POST"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/put?parent_id=\(parentID)&filename=\(filename)")!)
+        request.httpMethod = "PUT"
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         if let token = accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        request.timeoutInterval = 3600 // 1 hour for very large files
+        request.timeoutInterval = 3600
 
-        // Small files (<50MB): load into memory for reliable upload.
-        // Large files: use uploadTask(fromFile:) with dedicated session.
-        let tempSize = (try? FileManager.default.attributesOfItem(atPath: tempFile.path)[.size] as? Int64) ?? 0
-
-        if tempSize < 50_000_000 {
-            request.httpBody = try Data(contentsOf: tempFile)
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
-                throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
-            }
-            return try JSONDecoder().decode(ServerFile.self, from: data)
-        } else {
-            // Large file: uploadTask with completion handler + dedicated session
-            let result: ServerFile = try await withCheckedThrowingContinuation { continuation in
-                let config = URLSessionConfiguration.ephemeral
-                config.timeoutIntervalForRequest = 3600
-                config.timeoutIntervalForResource = 7200
-                let uploadSession = URLSession(configuration: config)
-                let task = uploadSession.uploadTask(with: request, fromFile: tempFile) { data, response, error in
-                    uploadSession.finishTasksAndInvalidate()
-                    if let error = error {
-                        continuation.resume(throwing: error)
-                        return
-                    }
-                    guard let http = response as? HTTPURLResponse, http.statusCode < 400, let data = data else {
-                        continuation.resume(throwing: APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500))
-                        return
-                    }
-                    do {
-                        let file = try JSONDecoder().decode(ServerFile.self, from: data)
-                        continuation.resume(returning: file)
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
+        // uploadTask streams from file — no memory pressure, no temp files
+        let result: ServerFile = try await withCheckedThrowingContinuation { continuation in
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = 3600
+            config.timeoutIntervalForResource = 7200
+            let uploadSession = URLSession(configuration: config)
+            let task = uploadSession.uploadTask(with: request, fromFile: fileURL) { data, response, error in
+                uploadSession.finishTasksAndInvalidate()
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
                 }
-                task.resume()
+                guard let http = response as? HTTPURLResponse, http.statusCode < 400, let data = data else {
+                    continuation.resume(throwing: APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500))
+                    return
+                }
+                do {
+                    let file = try JSONDecoder().decode(ServerFile.self, from: data)
+                    continuation.resume(returning: file)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
             }
-            return result
+            task.resume()
         }
+        return result
     }
 
     /// Direct multipart file upload for small files (loads into memory).
