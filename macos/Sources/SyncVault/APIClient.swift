@@ -331,27 +331,45 @@ actor APIClient {
         }
         request.timeoutInterval = 3600 // 1 hour for very large files
 
-        // Use URLSessionUploadTask with completion handler (async/await upload hangs).
-        let result: ServerFile = try await withCheckedThrowingContinuation { continuation in
-            let task = URLSession(configuration: .ephemeral).uploadTask(with: request, fromFile: tempFile) { data, response, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                guard let http = response as? HTTPURLResponse, http.statusCode < 400, let data = data else {
-                    continuation.resume(throwing: APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500))
-                    return
-                }
-                do {
-                    let file = try JSONDecoder().decode(ServerFile.self, from: data)
-                    continuation.resume(returning: file)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
+        // Small files (<50MB): load into memory for reliable upload.
+        // Large files: use uploadTask(fromFile:) with dedicated session.
+        let tempSize = (try? FileManager.default.attributesOfItem(atPath: tempFile.path)[.size] as? Int64) ?? 0
+
+        if tempSize < 50_000_000 {
+            request.httpBody = try Data(contentsOf: tempFile)
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+                throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
             }
-            task.resume()
+            return try JSONDecoder().decode(ServerFile.self, from: data)
+        } else {
+            // Large file: uploadTask with completion handler + dedicated session
+            let result: ServerFile = try await withCheckedThrowingContinuation { continuation in
+                let config = URLSessionConfiguration.ephemeral
+                config.timeoutIntervalForRequest = 3600
+                config.timeoutIntervalForResource = 7200
+                let uploadSession = URLSession(configuration: config)
+                let task = uploadSession.uploadTask(with: request, fromFile: tempFile) { data, response, error in
+                    uploadSession.finishTasksAndInvalidate()
+                    if let error = error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    guard let http = response as? HTTPURLResponse, http.statusCode < 400, let data = data else {
+                        continuation.resume(throwing: APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500))
+                        return
+                    }
+                    do {
+                        let file = try JSONDecoder().decode(ServerFile.self, from: data)
+                        continuation.resume(returning: file)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+                task.resume()
+            }
+            return result
         }
-        return result
     }
 
     /// Direct multipart file upload for small files (loads into memory).
