@@ -846,7 +846,12 @@ class AppState: ObservableObject {
                 let taskBasePath = task.localPath
                 let result = try await engine.syncTask(task, changedPaths: changedPaths, lastSyncDate: effectiveLastSync) { [weak self] progress in
                     await MainActor.run { [weak self] in
-                        self?.syncProgress = progress
+                        // Clear progress when all files in this task are done
+                        if progress.filesCompleted >= progress.filesTotal && progress.filesTotal > 0 {
+                            self?.syncProgress = nil
+                        } else {
+                            self?.syncProgress = progress
+                        }
                         self?.syncQueue = progress.pendingFiles
                         // Real-time: add completed files to recently synced immediately
                         if var item = progress.completedItem {
