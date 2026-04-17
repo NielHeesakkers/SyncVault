@@ -252,6 +252,9 @@ func (s *Store) PutDirect(r io.Reader) (fileHash string, size int64, err error) 
 
 // GetDirect reads a file stored by PutDirect (single file, not chunked).
 func (s *Store) GetDirect(fileHash string, w io.Writer) error {
+	if len(fileHash) < 4 {
+		return s.Get(fileHash, w)
+	}
 	path := filepath.Join(s.dir, "files", fileHash[:2], fileHash[2:4], fileHash)
 	f, err := os.Open(path)
 	if err != nil {

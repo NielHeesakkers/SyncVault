@@ -867,7 +867,7 @@ actor SyncEngine {
                 continue
             }
             // Always skip known large directories that don't belong in backups
-            let skipDirs: Set<String> = ["node_modules", "DerivedData", "__pycache__", "Pods", ".cocoapods", "venv", ".venv", "build", ".build", ".next", ".cache", ".npm", ".yarn", "dist", ".svelte-kit"]
+            let skipDirs: Set<String> = ["node_modules", "DerivedData", "__pycache__", "Pods", ".cocoapods", "venv", ".venv", "build", ".build", ".next", ".cache", ".npm", ".yarn", "dist", ".svelte-kit", "target"]
             if entryIsDir && skipDirs.contains(name) {
                 enumerator.skipDescendants()
                 continue

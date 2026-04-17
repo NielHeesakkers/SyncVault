@@ -344,14 +344,16 @@ actor APIClient {
         if let token = accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        request.timeoutInterval = 3600
+        // Dynamic timeout: 60s base + 1s per MB (small files don't wait 1 hour)
+        let timeoutSeconds = max(60, Double(fileSize) / 1_000_000 + 60)
+        request.timeoutInterval = timeoutSeconds
 
         let delegate = UploadProgressDelegate(totalBytes: fileSize, onProgress: onProgress)
 
         let result: ServerFile = try await withCheckedThrowingContinuation { continuation in
             delegate.continuation = continuation
             let config = URLSessionConfiguration.ephemeral
-            config.timeoutIntervalForRequest = 3600
+            config.timeoutIntervalForRequest = timeoutSeconds
             config.timeoutIntervalForResource = 7200
             let uploadSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
             let task = uploadSession.uploadTask(with: request, fromFile: fileURL)
