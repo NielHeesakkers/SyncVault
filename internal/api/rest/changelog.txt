@@ -1,3 +1,15 @@
+## [2.8.0] — 2026-04-20
+- Parallel uploads: up to 4× concurrent for files <10 MB (Documents, photos, source trees)
+- Tar-batch upload: 10-30× faster for directories with 20+ small files (1 HTTP request instead of N)
+- Resumable uploads: files ≥100 MB resume after network/app failure instead of restarting
+- Persistent FSEvents change queue: no sync events lost across app crashes
+- Per-file retry budget: 1 bad file no longer poisons the sync cycle
+- HTTP/2 connection reuse: 6 parallel streams, pipelining, connection keep-alive
+- Streaming delta sync on server: no OOM on big file edits (was 3× file size in RAM)
+- PutDirect hardening: atomic temp-file cleanup, thread-safe block refcounts
+- Startup cleanup of stale incoming/ temp files (crash-leftover uploads)
+- FinderSync extension version aligned with parent app (was stuck at 2.5.17)
+
 ## [2.7.0] — 2026-04-11
 - File preview: code/text with syntax highlighting, images, PDF, video, audio
 - User profile page: avatar upload, display name, email, storage usage

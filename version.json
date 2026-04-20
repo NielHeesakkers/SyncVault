@@ -1,9 +1,25 @@
 {
-  "version": "2.7.0",
+  "version": "2.8.0",
   "min_version": "1.0",
-  "release_date": "2026-04-10",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.7.0/SyncVault-2.7.0.dmg",
+  "release_date": "2026-04-20",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.8.0/SyncVault-2.8.0.dmg",
   "history": [
+    {
+      "version": "2.8.0",
+      "date": "2026-04-20",
+      "changes": [
+        "Parallel uploads: up to 4× concurrent for small files (Documents, photos, source trees)",
+        "Tar-batch upload: 10-30× faster for directories with 20+ small files",
+        "Resumable uploads: files ≥100 MB resume after network/app failure",
+        "Persistent FSEvents change queue: no sync events lost across app crashes",
+        "Per-file retry budget: 1 bad file no longer poisons the sync cycle",
+        "HTTP/2 connection reuse: 6 parallel streams, pipelining, keep-alive",
+        "Streaming delta sync on server: no OOM on big file edits",
+        "PutDirect hardening: atomic temp-file cleanup, thread-safe refcounts",
+        "Startup cleanup of stale incoming/ temp files",
+        "FinderSync extension version aligned with parent app"
+      ]
+    },
     {
       "version": "2.7.0",
       "date": "2026-04-10",
