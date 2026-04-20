@@ -375,6 +375,163 @@ actor APIClient {
         return try await uploadFileStreaming(fileURL: fileURL, parentID: parentID)
     }
 
+    // MARK: - Resumable upload
+
+    struct InitUploadResponse: Codable {
+        let upload_id: String
+        let chunk_size: Int64
+        let total_chunks: Int
+    }
+
+    struct UploadStatusResponse: Codable {
+        let upload_id: String
+        let filename: String
+        let total_chunks: Int
+        let received_chunks: [Int]
+        let complete: Bool
+    }
+
+    /// Start a resumable upload session. Returns upload_id + chunk layout.
+    func initResumableUpload(filename: String, parentID: String, totalSize: Int64, chunkSize: Int64 = 0) async throws -> InitUploadResponse {
+        let body: [String: Any] = [
+            "filename": filename,
+            "parent_id": parentID,
+            "total_size": totalSize,
+            "chunk_size": chunkSize
+        ]
+        return try await post("/api/uploads/init", body: body)
+    }
+
+    /// Query which chunks have been received (for resume after failure).
+    func getResumableUploadStatus(uploadID: String) async throws -> UploadStatusResponse {
+        return try await get("/api/uploads/\(uploadID)/status")
+    }
+
+    /// Upload a single chunk with retry on transient network errors.
+    /// The chunk body is passed as raw bytes (no multipart wrapper).
+    nonisolated static func uploadChunk(baseURL: String, token: String, uploadID: String, chunkIndex: Int, fileURL: URL, offset: Int64, length: Int) async throws {
+        var lastError: Error?
+        for attempt in 1...3 {
+            do {
+                let url = URL(string: "\(baseURL)/api/uploads/\(uploadID)/chunks/\(chunkIndex)")!
+                var request = URLRequest(url: url)
+                request.httpMethod = "PUT"
+                request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                // Dynamic per-chunk timeout: 60s base + 1s/MB
+                let mbChunk = max(1.0, Double(length) / 1_000_000)
+                request.timeoutInterval = 60 + mbChunk
+
+                // Read the exact chunk window to a temp file → uploadTask(fromFile:).
+                // This streams from disk instead of loading the chunk into memory.
+                let tmpURL = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("syncvault-chunk-\(UUID().uuidString).bin")
+                defer { try? FileManager.default.removeItem(at: tmpURL) }
+
+                let inHandle = try FileHandle(forReadingFrom: fileURL)
+                defer { try? inHandle.close() }
+                try inHandle.seek(toOffset: UInt64(offset))
+                let chunkData = inHandle.readData(ofLength: length)
+                try chunkData.write(to: tmpURL)
+
+                let config = URLSessionConfiguration.ephemeral
+                config.timeoutIntervalForRequest = request.timeoutInterval
+                config.timeoutIntervalForResource = request.timeoutInterval * 2
+                let session = URLSession(configuration: config)
+                defer { session.finishTasksAndInvalidate() }
+
+                let (_, response) = try await session.upload(for: request, fromFile: tmpURL)
+                guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+                    throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
+                }
+                return
+            } catch {
+                lastError = error
+                let nsError = error as NSError
+                let retryableCodes = [-1005, -1001, -1009, -1004, -1003, -1017]
+                if nsError.domain == NSURLErrorDomain && retryableCodes.contains(nsError.code) && attempt < 3 {
+                    try await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
+                    continue
+                }
+                throw error
+            }
+        }
+        throw lastError!
+    }
+
+    /// Finalize a resumable upload — assembles chunks server-side + creates file record.
+    func completeResumableUpload(uploadID: String) async throws -> ServerFile {
+        return try await post("/api/uploads/\(uploadID)/complete", body: [:])
+    }
+
+    /// Orchestrate a resumable upload for a local file. Resumes existing sessions if the
+    /// passed `existingUploadID` is still valid server-side. Reports progress per chunk.
+    /// Returns the final ServerFile on success.
+    func uploadFileResumable(
+        fileURL: URL,
+        parentID: String,
+        fileSize: Int64,
+        existingUploadID: String? = nil,
+        onProgress: ((Int64, Int64) -> Void)? = nil,
+        onUploadIDAssigned: ((String) -> Void)? = nil
+    ) async throws -> ServerFile {
+        var uploadID = ""
+        var chunkSize: Int64 = 0
+        var totalChunks = 0
+        var receivedChunks: Set<Int> = []
+
+        // Try to resume existing session
+        if let existing = existingUploadID {
+            do {
+                let status = try await getResumableUploadStatus(uploadID: existing)
+                uploadID = status.upload_id
+                totalChunks = status.total_chunks
+                receivedChunks = Set(status.received_chunks)
+                // Compute chunk size from fileSize + totalChunks
+                chunkSize = Int64(ceil(Double(fileSize) / Double(max(1, totalChunks))))
+                syncLog("Resuming upload \(uploadID): \(receivedChunks.count)/\(totalChunks) chunks already done")
+            } catch {
+                // Session expired/invalid — start fresh
+                syncLog("Resume failed (\(error.localizedDescription)), starting new upload session")
+            }
+        }
+
+        if uploadID.isEmpty {
+            let init_ = try await initResumableUpload(
+                filename: fileURL.lastPathComponent,
+                parentID: parentID,
+                totalSize: fileSize
+            )
+            uploadID = init_.upload_id
+            chunkSize = init_.chunk_size
+            totalChunks = init_.total_chunks
+            onUploadIDAssigned?(uploadID)
+        }
+
+        let token = self.accessToken ?? ""
+        let base = self.baseURL
+        // Report already-completed chunks as progress
+        var bytesSent: Int64 = Int64(receivedChunks.count) * chunkSize
+        if bytesSent > fileSize { bytesSent = fileSize }
+        onProgress?(bytesSent, fileSize)
+
+        for i in 0..<totalChunks {
+            if receivedChunks.contains(i) { continue }
+            let offset = Int64(i) * chunkSize
+            let length = min(Int(chunkSize), Int(fileSize - offset))
+            if length <= 0 { break }
+            try await APIClient.uploadChunk(
+                baseURL: base, token: token,
+                uploadID: uploadID, chunkIndex: i,
+                fileURL: fileURL, offset: offset, length: length
+            )
+            bytesSent += Int64(length)
+            onProgress?(min(bytesSent, fileSize), fileSize)
+        }
+
+        return try await completeResumableUpload(uploadID: uploadID)
+    }
+
     /// Batch upload multiple small files in a single HTTP request.
     /// Returns array of created ServerFile objects.
     func batchUpload(files: [(url: URL, parentID: String)]) async throws -> [ServerFile] {

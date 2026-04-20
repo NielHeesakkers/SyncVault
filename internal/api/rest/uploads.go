@@ -294,10 +294,6 @@ func (s *Server) handleCompleteUpload(w http.ResponseWriter, r *http.Request) {
 	// Remove the session record.
 	_ = s.db.DeleteUploadSession(uploadID)
 
-	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"id":           f.ID,
-		"name":         f.Name,
-		"size":         f.Size,
-		"content_hash": contentHash,
-	})
+	// Return a full file response so the client can decode into ServerFile directly.
+	writeJSON(w, http.StatusCreated, toFileResponse(*f))
 }

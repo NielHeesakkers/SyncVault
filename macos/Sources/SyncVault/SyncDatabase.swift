@@ -39,6 +39,15 @@ class SyncDatabase {
     private let colRetryLastError = SQLite.Expression<String>("last_error")
     private let colRetryLastAttempt = SQLite.Expression<Double>("last_attempt_at")
 
+    // Resumable upload sessions — remember upload_id for big files across app restarts
+    private let resumableUploads = Table("resumable_uploads")
+    private let colResumableTaskID = SQLite.Expression<String>("task_id")
+    private let colResumableRelPath = SQLite.Expression<String>("relative_path")
+    private let colResumableUploadID = SQLite.Expression<String>("upload_id")
+    private let colResumableFileSize = SQLite.Expression<Int64>("file_size")
+    private let colResumableModTime = SQLite.Expression<Double>("mod_time")
+    private let colResumableCreatedAt = SQLite.Expression<Double>("created_at")
+
     init(path: String) throws {
         db = try Connection(path)
         try createTables()
@@ -75,6 +84,18 @@ class SyncDatabase {
             t.column(colRetryLastError, defaultValue: "")
             t.column(colRetryLastAttempt, defaultValue: 0)
             t.primaryKey(colRetryTaskID, colRetryRelPath)
+        })
+
+        // Resumable upload session IDs keyed by (task, path) so big-file uploads
+        // can resume across app restarts.
+        try db.run(resumableUploads.create(ifNotExists: true) { t in
+            t.column(colResumableTaskID)
+            t.column(colResumableRelPath)
+            t.column(colResumableUploadID)
+            t.column(colResumableFileSize)
+            t.column(colResumableModTime)
+            t.column(colResumableCreatedAt)
+            t.primaryKey(colResumableTaskID, colResumableRelPath)
         })
     }
 
@@ -260,6 +281,47 @@ class SyncDatabase {
         (try? db.scalar(
             fileRetries.filter(colRetryTaskID == taskID && colRetryCount >= Self.maxRetries).count
         )) ?? 0
+    }
+
+    // MARK: - Resumable Upload Sessions
+
+    /// Look up an existing resumable upload session for (task, path). Returns the upload_id
+    /// only if the stored mtime+size still match the current file — otherwise the file has
+    /// changed and the session is stale.
+    func getResumableUploadID(taskID: String, relativePath: String, currentSize: Int64, currentModTime: Double) -> String? {
+        guard let row = try? db.pluck(resumableUploads.filter(
+            colResumableTaskID == taskID && colResumableRelPath == relativePath
+        )) else { return nil }
+        let storedSize = row[colResumableFileSize]
+        let storedMtime = row[colResumableModTime]
+        if storedSize != currentSize || abs(storedMtime - currentModTime) > 0.001 {
+            // File changed since the session was created — drop the stale row.
+            _ = try? db.run(resumableUploads.filter(
+                colResumableTaskID == taskID && colResumableRelPath == relativePath
+            ).delete())
+            return nil
+        }
+        return row[colResumableUploadID]
+    }
+
+    /// Remember a newly-created resumable upload session so it can be resumed after a crash.
+    func saveResumableUploadID(taskID: String, relativePath: String, uploadID: String, fileSize: Int64, modTime: Double) {
+        let now = Date().timeIntervalSince1970
+        _ = try? db.run(resumableUploads.insert(or: .replace,
+            colResumableTaskID <- taskID,
+            colResumableRelPath <- relativePath,
+            colResumableUploadID <- uploadID,
+            colResumableFileSize <- fileSize,
+            colResumableModTime <- modTime,
+            colResumableCreatedAt <- now
+        ))
+    }
+
+    /// Clear a resumable upload session (called after successful completion).
+    func clearResumableUpload(taskID: String, relativePath: String) {
+        _ = try? db.run(resumableUploads.filter(
+            colResumableTaskID == taskID && colResumableRelPath == relativePath
+        ).delete())
     }
 
     // MARK: - Legacy compatibility

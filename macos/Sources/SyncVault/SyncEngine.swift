@@ -630,27 +630,71 @@ actor SyncEngine {
                                 }
                             } else {
                                 didDelta = false
-                                syncLog("UPLOAD START \(displayName) (\(fileSize) bytes)")
-                                let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID) { bytesSent, totalBytes in
-                                    // Per-byte progress callback from URLSession delegate
-                                    Task {
-                                        await onProgress(SyncProgress(
-                                            currentFile: displayName, action: "Uploading",
-                                            bytesTransferred: await bytesUploaded.value + bytesSent,
-                                            totalBytes: totalBytesToUpload,
-                                            filesCompleted: Int(await completed.value), filesTotal: total,
-                                            bytesPerSecond: Self.speed(bytes: await bytesTransferred.value + bytesSent, since: start),
-                                            pendingFiles: pending,
-                                            currentFileBytes: bytesSent, currentFileTotal: totalBytes
-                                        ))
+                                // Files >= 100 MB go via resumable upload — chunked + resumeable on crash/network failure
+                                let resumableThreshold: Int64 = 100 * 1024 * 1024
+                                if fileSize >= resumableThreshold {
+                                    syncLog("RESUMABLE UPLOAD START \(displayName) (\(fileSize) bytes)")
+                                    let mtime = ((try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate]) as? Date)?.timeIntervalSince1970 ?? 0
+                                    let existingID = self.db.getResumableUploadID(taskID: task.id.uuidString, relativePath: relativePath, currentSize: fileSize, currentModTime: mtime)
+                                    let f = try await self.apiClient.uploadFileResumable(
+                                        fileURL: fileURL,
+                                        parentID: parentID,
+                                        fileSize: fileSize,
+                                        existingUploadID: existingID,
+                                        onProgress: { bytesSent, totalBytes in
+                                            Task {
+                                                await onProgress(SyncProgress(
+                                                    currentFile: displayName, action: "Uploading",
+                                                    bytesTransferred: await bytesUploaded.value + bytesSent,
+                                                    totalBytes: totalBytesToUpload,
+                                                    filesCompleted: Int(await completed.value), filesTotal: total,
+                                                    bytesPerSecond: Self.speed(bytes: await bytesTransferred.value + bytesSent, since: start),
+                                                    pendingFiles: pending,
+                                                    currentFileBytes: bytesSent, currentFileTotal: totalBytes
+                                                ))
+                                            }
+                                        },
+                                        onUploadIDAssigned: { [weak self] uploadID in
+                                            // Persist upload_id so a crash mid-upload can resume
+                                            self?.db.saveResumableUploadID(
+                                                taskID: task.id.uuidString,
+                                                relativePath: relativePath,
+                                                uploadID: uploadID,
+                                                fileSize: fileSize,
+                                                modTime: mtime
+                                            )
+                                        }
+                                    )
+                                    uploadedHash = f.contentHash ?? ""
+                                    self.db.clearResumableUpload(taskID: task.id.uuidString, relativePath: relativePath)
+                                    let uploadDuration = Date().timeIntervalSince(uploadStart)
+                                    let speed = Double(fileSize) / max(uploadDuration, 0.001)
+                                    syncLog("Resumable-uploaded \(displayName) in \(String(format: "%.1f", uploadDuration))s = \(String(format: "%.0f", speed / 1024)) KB/s")
+                                    await bytesUploaded.add(fileSize)
+                                    await bytesTransferred.add(fileSize)
+                                } else {
+                                    syncLog("UPLOAD START \(displayName) (\(fileSize) bytes)")
+                                    let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID) { bytesSent, totalBytes in
+                                        // Per-byte progress callback from URLSession delegate
+                                        Task {
+                                            await onProgress(SyncProgress(
+                                                currentFile: displayName, action: "Uploading",
+                                                bytesTransferred: await bytesUploaded.value + bytesSent,
+                                                totalBytes: totalBytesToUpload,
+                                                filesCompleted: Int(await completed.value), filesTotal: total,
+                                                bytesPerSecond: Self.speed(bytes: await bytesTransferred.value + bytesSent, since: start),
+                                                pendingFiles: pending,
+                                                currentFileBytes: bytesSent, currentFileTotal: totalBytes
+                                            ))
+                                        }
                                     }
+                                    uploadedHash = f.contentHash ?? ""
+                                    let uploadDuration = Date().timeIntervalSince(uploadStart)
+                                    let speed = Double(fileSize) / max(uploadDuration, 0.001)
+                                    syncLog("Uploaded \(displayName) in \(String(format: "%.1f", uploadDuration))s = \(String(format: "%.0f", speed / 1024)) KB/s")
+                                    await bytesUploaded.add(fileSize)
+                                    await bytesTransferred.add(fileSize)
                                 }
-                                uploadedHash = f.contentHash ?? ""
-                                let uploadDuration = Date().timeIntervalSince(uploadStart)
-                                let speed = Double(fileSize) / max(uploadDuration, 0.001)
-                                syncLog("Uploaded \(displayName) in \(String(format: "%.1f", uploadDuration))s = \(String(format: "%.0f", speed / 1024)) KB/s")
-                                await bytesUploaded.add(fileSize)
-                                await bytesTransferred.add(fileSize)
                             }
 
                             // Update progress with speed calculated from this file
