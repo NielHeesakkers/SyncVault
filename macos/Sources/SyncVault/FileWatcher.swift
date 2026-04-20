@@ -4,18 +4,22 @@ import os
 private let logger = Logger(subsystem: "com.syncvault.app", category: "FileWatcher")
 
 /// Watches directories for file changes using FSEvents.
-/// Only reports changed paths since last check, avoiding full directory scans.
+/// Events are persisted to the shared SyncDatabase so that no change is
+/// lost across app crashes/restarts.
 final class FileWatcher {
     private var stream: FSEventStreamRef?
     private let path: String
     private let queue = DispatchQueue(label: "com.syncvault.filewatcher", qos: .utility)
-    private var changedPaths: Set<String> = []
     private let lock = NSLock()
     private var isInitialScan = true
 
     /// Called (on main queue) when file changes are detected. Debounced 1 second.
     var onChange: (() -> Void)?
     private var debounceWorkItem: DispatchWorkItem?
+
+    /// Called whenever a batch of FSEvents arrives so the paths can be persisted
+    /// before the debounced sync fires. Runs on the FSEvents queue (not main).
+    var onEvents: (([String]) -> Void)?
 
     init(path: String) {
         self.path = path
@@ -75,20 +79,17 @@ final class FileWatcher {
         logger.info("Stopped watching: \(self.path)")
     }
 
-    /// Get all changed paths since last call, then clear the set.
-    /// Returns nil on first call (signals that a full scan is needed).
-    func consumeChangedPaths() -> Set<String>? {
+    /// Returns whether this is the first call (so caller knows a full scan is needed).
+    /// The actual change paths live in the SyncDatabase's pending_changes table — call
+    /// `syncDatabase.drainChanges(taskID:)` to get them.
+    func isFirstCall() -> Bool {
         lock.lock()
         defer { lock.unlock() }
-
         if isInitialScan {
             isInitialScan = false
-            return nil // Signal: do a full scan
+            return true
         }
-
-        let paths = changedPaths
-        changedPaths.removeAll()
-        return paths
+        return false
     }
 
     /// Mark that initial scan is complete (future calls return incremental changes).
@@ -99,12 +100,13 @@ final class FileWatcher {
     }
 
     private func handleEvents(paths: [String], flags: [FSEventStreamEventFlags]) {
-        lock.lock()
+        var relevantPaths: [String] = []
+        relevantPaths.reserveCapacity(paths.count)
 
         for (i, eventPath) in paths.enumerated() {
             let flag = flags[i]
 
-            // Skip directory-level events, hidden files, and .DS_Store
+            // Skip hidden files, .DS_Store, and the filewatcher's own SQLite journal
             let name = URL(fileURLWithPath: eventPath).lastPathComponent
             if name == ".DS_Store" || name.hasPrefix(".") { continue }
 
@@ -117,11 +119,15 @@ final class FileWatcher {
                 (flag & UInt32(kFSEventStreamEventFlagItemInodeMetaMod)) != 0
 
             if isRelevant {
-                changedPaths.insert(eventPath)
+                relevantPaths.append(eventPath)
             }
         }
 
-        lock.unlock()
+        // Persist immediately to SyncDatabase before debounced sync fires — so a crash
+        // between now and the next sync cycle can't lose these changes.
+        if !relevantPaths.isEmpty {
+            onEvents?(relevantPaths)
+        }
 
         // Debounce: fire onChange 1 second after the last event
         debounceWorkItem?.cancel()

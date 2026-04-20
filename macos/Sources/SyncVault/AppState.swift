@@ -381,17 +381,28 @@ class AppState: ObservableObject {
             }
         }
 
-        // Start file watchers for each sync task
-        // TODO: Implement a persistent change queue (write changed paths to disk) so that
-        // file changes detected by FSEvents are not lost if the app crashes before the next
-        // sync cycle completes. On launch, replay any queued changes to ensure crash recovery.
+        // Start file watchers for each sync task.
+        // FSEvents changes are persisted to SyncDatabase.pending_changes — they survive
+        // app crashes/restarts so no file modification is ever silently dropped.
         for task in syncTasks where task.isEnabled && task.mode != .onDemand {
             let watcher = FileWatcher(path: task.localPath)
+            let taskID = task.id.uuidString
+            watcher.onEvents = { [weak self] paths in
+                guard let db = self?.syncDatabase else { return }
+                for p in paths { db.enqueueChange(taskID: taskID, path: p) }
+            }
             watcher.onChange = { [weak self] in
                 self?.onFileChanged()
             }
             watcher.start()
             fileWatchers[task.id] = watcher
+        }
+
+        // Crash recovery: if pending_changes has entries from a previous session,
+        // trigger an immediate sync to catch up.
+        if let db = syncDatabase, db.pendingChangeCount() > 0 {
+            logger.info("Crash recovery: \(db.pendingChangeCount()) pending changes from previous session")
+            Task { await runSync() }
         }
 
         // 4-hour fallback timer (FSEvents handles real-time changes, this catches anything missed)
@@ -816,8 +827,14 @@ class AppState: ObservableObject {
                 let downloadLimit = Int64(UserDefaults.standard.integer(forKey: "downloadLimitBytesPerSecond"))
                 let engine = SyncEngine(apiClient: client, db: db, uploadLimitBytesPerSecond: uploadLimit, downloadLimitBytesPerSecond: downloadLimit)
 
-                // Get changed paths from FSEvents watcher (nil = full scan needed)
-                var changedPaths = fileWatchers[task.id]?.consumeChangedPaths()
+                // Get changed paths from persistent queue.
+                // First call: full scan. Subsequent: drain from pending_changes.
+                var changedPaths: Set<String>?
+                if fileWatchers[task.id]?.isFirstCall() ?? true {
+                    changedPaths = nil // nil signals full scan
+                } else {
+                    changedPaths = (try? syncDatabase?.drainChanges(taskID: task.id.uuidString)) ?? []
+                }
 
                 // Load last successful sync date for this task (used to skip hashing unchanged files)
                 let lastSyncKey = "lastSync_\(task.id.uuidString)"

@@ -24,6 +24,13 @@ class SyncDatabase {
     private let colFileSize = SQLite.Expression<Int64>("file_size")
     private let colModTime = SQLite.Expression<Double>("mod_time")
 
+    // Pending changes queue (crash-safe FSEvents)
+    private let pendingChanges = Table("pending_changes")
+    private let colPendingID = SQLite.Expression<Int64>("id")
+    private let colPendingTaskID = SQLite.Expression<String>("task_id")
+    private let colPendingPath = SQLite.Expression<String>("path")
+    private let colPendingDetectedAt = SQLite.Expression<Double>("detected_at")
+
     init(path: String) throws {
         db = try Connection(path)
         try createTables()
@@ -41,6 +48,16 @@ class SyncDatabase {
             t.column(colModTime, defaultValue: 0)
             t.primaryKey(colTaskID, colRelativePath)
         })
+
+        // Pending changes table — FSEvents persisted here so they survive app crashes.
+        try db.run(pendingChanges.create(ifNotExists: true) { t in
+            t.column(colPendingID, primaryKey: .autoincrement)
+            t.column(colPendingTaskID)
+            t.column(colPendingPath)
+            t.column(colPendingDetectedAt)
+            t.unique(colPendingTaskID, colPendingPath)
+        })
+        try db.run("CREATE INDEX IF NOT EXISTS idx_pending_task ON pending_changes(task_id)")
     }
 
     /// Add file_size and mod_time columns if they don't exist (migration for existing databases)
@@ -48,6 +65,43 @@ class SyncDatabase {
         // Try adding columns — ignore error if they already exist
         _ = try? db.run(syncStates.addColumn(colFileSize, defaultValue: 0))
         _ = try? db.run(syncStates.addColumn(colModTime, defaultValue: 0))
+    }
+
+    // MARK: - Pending Changes Queue
+
+    /// Enqueue an FSEvents-detected change. Idempotent on (task_id, path).
+    func enqueueChange(taskID: String, path: String) {
+        let now = Date().timeIntervalSince1970
+        // INSERT OR IGNORE semantics via the unique constraint
+        _ = try? db.run(pendingChanges.insert(or: .ignore,
+            colPendingTaskID <- taskID,
+            colPendingPath <- path,
+            colPendingDetectedAt <- now
+        ))
+    }
+
+    /// Drain all pending changes for a task — returns paths and deletes them atomically.
+    /// If the sync fails partway through, the changes are already consumed (by design:
+    /// the next full scan will catch anything still out-of-sync).
+    func drainChanges(taskID: String) throws -> Set<String> {
+        var paths: Set<String> = []
+        try db.transaction {
+            for row in try db.prepare(pendingChanges.filter(colPendingTaskID == taskID)) {
+                paths.insert(row[colPendingPath])
+            }
+            try db.run(pendingChanges.filter(colPendingTaskID == taskID).delete())
+        }
+        return paths
+    }
+
+    /// Count of pending changes across all tasks — used to trigger crash-recovery sync on startup.
+    func pendingChangeCount() -> Int {
+        (try? db.scalar(pendingChanges.count)) ?? 0
+    }
+
+    /// Count of pending changes for a specific task.
+    func pendingChangeCount(taskID: String) -> Int {
+        (try? db.scalar(pendingChanges.filter(colPendingTaskID == taskID).count)) ?? 0
     }
 
     // MARK: - Query
