@@ -54,7 +54,14 @@ actor APIClient {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 300
         config.timeoutIntervalForResource = 3600
-        config.httpMaximumConnectionsPerHost = 2
+        // HTTP/2 is negotiated automatically over TLS. Allow more parallel streams
+        // so the parallel-upload path (up to 4 concurrent) doesn't serialize behind
+        // a single connection. On HTTPS this reuses one TCP/TLS connection.
+        config.httpMaximumConnectionsPerHost = 6
+        config.httpShouldUsePipelining = true
+        // Tell URLSession to keep connections warm between requests (reduces TCP
+        // handshake overhead on many-small-request workloads like hash-check + upload).
+        config.httpShouldSetCookies = false
         self.session = URLSession(configuration: config)
     }
 
