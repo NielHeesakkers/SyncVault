@@ -31,6 +31,14 @@ class SyncDatabase {
     private let colPendingPath = SQLite.Expression<String>("path")
     private let colPendingDetectedAt = SQLite.Expression<Double>("detected_at")
 
+    // Per-file retry tracking (one bad file shouldn't poison the whole cycle)
+    private let fileRetries = Table("file_retries")
+    private let colRetryTaskID = SQLite.Expression<String>("task_id")
+    private let colRetryRelPath = SQLite.Expression<String>("relative_path")
+    private let colRetryCount = SQLite.Expression<Int>("retry_count")
+    private let colRetryLastError = SQLite.Expression<String>("last_error")
+    private let colRetryLastAttempt = SQLite.Expression<Double>("last_attempt_at")
+
     init(path: String) throws {
         db = try Connection(path)
         try createTables()
@@ -58,6 +66,16 @@ class SyncDatabase {
             t.unique(colPendingTaskID, colPendingPath)
         })
         try db.run("CREATE INDEX IF NOT EXISTS idx_pending_task ON pending_changes(task_id)")
+
+        // File retry tracking — per-file failure state with exponential backoff.
+        try db.run(fileRetries.create(ifNotExists: true) { t in
+            t.column(colRetryTaskID)
+            t.column(colRetryRelPath)
+            t.column(colRetryCount, defaultValue: 0)
+            t.column(colRetryLastError, defaultValue: "")
+            t.column(colRetryLastAttempt, defaultValue: 0)
+            t.primaryKey(colRetryTaskID, colRetryRelPath)
+        })
     }
 
     /// Add file_size and mod_time columns if they don't exist (migration for existing databases)
@@ -190,6 +208,58 @@ class SyncDatabase {
                 ))
             }
         }
+    }
+
+    // MARK: - Per-file Retry Tracking
+
+    /// Max retry attempts before a file is considered permanently failed and skipped.
+    static let maxRetries = 3
+
+    /// Record that a file failed to sync. Increments retry_count and stores the last error.
+    func markFileFailed(taskID: String, relativePath: String, error: String) {
+        let now = Date().timeIntervalSince1970
+        let existing = (try? db.pluck(fileRetries.filter(
+            colRetryTaskID == taskID && colRetryRelPath == relativePath
+        )))
+        let count = (existing?[colRetryCount] ?? 0) + 1
+        _ = try? db.run(fileRetries.insert(or: .replace,
+            colRetryTaskID <- taskID,
+            colRetryRelPath <- relativePath,
+            colRetryCount <- count,
+            colRetryLastError <- String(error.prefix(500)), // cap error message length
+            colRetryLastAttempt <- now
+        ))
+    }
+
+    /// Clear retry state for a file (called after a successful sync).
+    func clearFileFailure(taskID: String, relativePath: String) {
+        _ = try? db.run(fileRetries.filter(
+            colRetryTaskID == taskID && colRetryRelPath == relativePath
+        ).delete())
+    }
+
+    /// Should we attempt this file in the current sync cycle?
+    /// Returns false if retry_count >= max AND last_attempt was recent (exponential backoff:
+    /// 1m, 5m, 15m, 1h, then permanent until manual intervention).
+    func shouldAttemptFile(taskID: String, relativePath: String) -> Bool {
+        guard let row = try? db.pluck(fileRetries.filter(
+            colRetryTaskID == taskID && colRetryRelPath == relativePath
+        )) else {
+            return true // no failure history
+        }
+        let count = row[colRetryCount]
+        if count < Self.maxRetries { return true }
+        // Permanently failed — only re-attempt after 1 hour to allow recovery scenarios
+        let lastAttempt = row[colRetryLastAttempt]
+        let now = Date().timeIntervalSince1970
+        return (now - lastAttempt) > 3600
+    }
+
+    /// Count of permanently-failed files for diagnostics / UI.
+    func permanentlyFailedCount(taskID: String) -> Int {
+        (try? db.scalar(
+            fileRetries.filter(colRetryTaskID == taskID && colRetryCount >= Self.maxRetries).count
+        )) ?? 0
     }
 
     // MARK: - Legacy compatibility

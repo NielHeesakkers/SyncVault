@@ -532,10 +532,18 @@ actor SyncEngine {
         // - Non-uploads (rename, delete, createDir, conflict, download) → serial
         // - Large uploads (>= 10 MB) → serial (big files already saturate network)
         // - Small uploads (< 10 MB) → parallel with max 4 concurrent
+        // Also: filter out files that exceeded their retry budget (permanent failures)
         let parallelThreshold: Int64 = 10 * 1024 * 1024
         var serialActions: [SyncAction] = []
         var parallelUploads: [SyncAction] = []
+        var skippedPermanent = 0
         for action in sortedActions {
+            // Retry budget: skip files in cooldown after exceeding max retries
+            if case .upload(_, let relativePath, _) = action,
+               !self.db.shouldAttemptFile(taskID: task.id.uuidString, relativePath: relativePath) {
+                skippedPermanent += 1
+                continue
+            }
             if case .upload(let path, _, _) = action {
                 let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? 0
                 if size < parallelThreshold {
@@ -544,6 +552,9 @@ actor SyncEngine {
                 }
             }
             serialActions.append(action)
+        }
+        if skippedPermanent > 0 {
+            syncLog("Retry budget: skipping \(skippedPermanent) permanently-failed files (will re-attempt after 1h cooldown)")
         }
         syncLog("Actions split: \(serialActions.count) serial, \(parallelUploads.count) parallel (<10MB)")
 
@@ -661,6 +672,7 @@ actor SyncEngine {
                             let currentMtime = ((currentAttrs?[.modificationDate] as? Date) ?? Date()).timeIntervalSince1970
                             let currentSize = (currentAttrs?[.size] as? Int64) ?? fileSize
                             try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: uploadedHash, isDir: false, fileSize: currentSize, modTime: currentMtime)
+                            self.db.clearFileFailure(taskID: task.id.uuidString, relativePath: relativePath)
                             await self.markUploaded(relativePath)
                             actionResult = .uploaded(displayName, relativePath)
 
@@ -751,6 +763,10 @@ actor SyncEngine {
                         actionResult = .authFailed
                     } catch {
                         logger.info("Failed: \(action) - \(error)")
+                        // Record per-file failure for retry budget (uploads only)
+                        if case .upload(_, let relPath, _) = action {
+                            self.db.markFileFailed(taskID: task.id.uuidString, relativePath: relPath, error: "\(error)")
+                        }
                         actionResult = .error
                     }
 
@@ -932,6 +948,7 @@ actor SyncEngine {
             let currentMtime = ((currentAttrs?[.modificationDate] as? Date) ?? Date()).timeIntervalSince1970
             let currentSize = (currentAttrs?[.size] as? Int64) ?? fileSize
             try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: uploadedHash, isDir: false, fileSize: currentSize, modTime: currentMtime)
+            self.db.clearFileFailure(taskID: task.id.uuidString, relativePath: relativePath) // reset retry count on success
             await self.markUploaded(relativePath)
 
             _ = remoteFileID // unused for small files (they go via streaming, not delta)
@@ -940,6 +957,7 @@ actor SyncEngine {
             return .authFailed
         } catch {
             logger.info("Parallel upload failed \(relativePath): \(error)")
+            self.db.markFileFailed(taskID: task.id.uuidString, relativePath: relativePath, error: "\(error)")
             return .error
         }
     }
