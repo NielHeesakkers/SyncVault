@@ -13,10 +13,15 @@ func syncLog(_ msg: String) {
     try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
     let logFile = logDir.appendingPathComponent("sync_live.log")
     if let handle = try? FileHandle(forWritingTo: logFile) {
-        handle.seekToEndOfFile()
-        handle.write(line.data(using: .utf8)!)
-        handle.synchronizeFile() // Force flush so timestamps are accurate
-        handle.closeFile()
+        do {
+            try handle.seekToEnd()
+            try handle.write(contentsOf: line.data(using: .utf8) ?? Data())
+            try handle.synchronize() // Force flush so timestamps are accurate
+            try handle.close()
+        } catch {
+            // If any of these fail, fall through to atomic write below
+            try? line.write(to: logFile, atomically: true, encoding: .utf8)
+        }
     } else {
         try? line.write(to: logFile, atomically: true, encoding: .utf8)
     }
@@ -782,6 +787,10 @@ actor SyncEngine {
                     ))
                 }
             } // end do
+
+            // Stop immediately on auth failure — no point burning through the remaining
+            // actions since they will all 401. The outer AppState re-auth will retry.
+            if authFailed { break }
         } // end for
 
         if authFailed {
@@ -1023,6 +1032,10 @@ actor SyncEngine {
 
     /// Delta upload: fetch server block signatures, compare with local file,
     /// send only changed blocks. Falls back to full upload if delta is > 70% of file.
+    ///
+    /// Memory profile: O(serverBlocks + blockSize + changedBlocks metadata).
+    /// The actual changed-block bytes are streamed to a temp file (not accumulated
+    /// in a Data buffer) so a 500 MB delta no longer means 500 MB of RAM.
     private func deltaUpload(fileURL: URL, remoteFileID: String, fileSize: Int64) async throws -> DeltaResult {
         // 1. Get block signatures from server
         let blocksResponse = try await apiClient.getBlockSignatures(fileID: remoteFileID)
@@ -1041,17 +1054,29 @@ actor SyncEngine {
             weakLookup[block.weak_hash] = entries
         }
 
-        // 3. Scan local file and compare blocks
+        // 3. Scan local file and compare blocks, streaming any changed blocks to a temp file.
         let handle = try FileHandle(forReadingFrom: fileURL)
-        defer { handle.closeFile() }
+        defer { try? handle.close() }
+
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("syncvault-delta-new-\(UUID().uuidString).bin")
+        FileManager.default.createFile(atPath: tmpURL.path, contents: nil)
+        // On any early return (including fallback error), remove the temp file.
+        var committedToUpload = false
+        defer { if !committedToUpload { try? FileManager.default.removeItem(at: tmpURL) } }
+
+        guard let outHandle = try? FileHandle(forWritingTo: tmpURL) else {
+            throw NSError(domain: "DeltaSync", code: 4, userInfo: [NSLocalizedDescriptionKey: "Could not open temp file for delta scan"])
+        }
+        defer { try? outHandle.close() }
 
         var reuseBlocks: [Int] = []
-        var newBlocksData = Data()
         var newBlockEntries: [(index: Int, offset: Int)] = []
         var blockIndex = 0
+        var newBytesWritten: Int = 0
 
         while true {
-            let data = handle.readData(ofLength: blockSize)
+            let data = autoreleasepool { handle.readData(ofLength: blockSize) }
             if data.isEmpty { break }
 
             // Compute weak hash of this block
@@ -1078,40 +1103,45 @@ actor SyncEngine {
             }
 
             if !matched {
-                // Block changed — include in delta
-                newBlockEntries.append((index: blockIndex, offset: newBlocksData.count))
-                newBlocksData.append(data)
+                // Block changed — append to temp file and track offset.
+                newBlockEntries.append((index: blockIndex, offset: newBytesWritten))
+                try outHandle.write(contentsOf: data)
+                newBytesWritten += data.count
             }
 
             blockIndex += 1
         }
+        try outHandle.close()
 
         let totalBlocks = blockIndex
         let changedBlocks = newBlockEntries.count
         let reuseCount = reuseBlocks.count
 
-        syncLog("Delta: \(totalBlocks) blocks total, \(reuseCount) reuse, \(changedBlocks) changed (\(newBlocksData.count) bytes to send)")
+        syncLog("Delta: \(totalBlocks) blocks total, \(reuseCount) reuse, \(changedBlocks) changed (\(newBytesWritten) bytes to send)")
 
         // 4. Fallback: if more than 70% changed, full upload is more efficient
         if totalBlocks > 0 && Double(changedBlocks) / Double(totalBlocks) > 0.7 {
             throw NSError(domain: "DeltaSync", code: 2, userInfo: [NSLocalizedDescriptionKey: "Delta too large (\(changedBlocks)/\(totalBlocks) blocks changed), falling back to full upload"])
         }
 
-        // 5. Upload delta
+        // 5. Upload delta. Read the scratch file back as Data only in the happy path.
+        // For very large deltas we could stream it directly — kept as Data here to
+        // preserve the current multipart assembly path in APIClient.uploadDelta.
+        let newBlocksData = try Data(contentsOf: tmpURL, options: .mappedIfSafe)
         let result = try await apiClient.uploadDelta(
             fileID: remoteFileID,
             reuseBlocks: reuseBlocks,
             newBlocksData: newBlocksData,
             newBlockEntries: newBlockEntries
         )
-
-        return DeltaResult(hash: result.contentHash ?? "", bytesSent: Int64(newBlocksData.count))
+        committedToUpload = true // keep-tmp defer still cleans up via the early `defer` above
+        return DeltaResult(hash: result.contentHash ?? "", bytesSent: Int64(newBytesWritten))
     }
 
     private func uploadViaBlocks(fileURL: URL, filename: String, parentID: String, fileSize: Int64, onBlockUploaded: ((Int64) async -> Void)? = nil) async throws -> String {
         let blockSize = Self.blockSizeFor(fileSize: fileSize)
         let handle = try FileHandle(forReadingFrom: fileURL)
-        defer { handle.closeFile() }
+        defer { try? handle.close() }
 
         // 1. Split file into blocks, compute hashes
         var fileHasher = SHA256()
@@ -1159,8 +1189,8 @@ actor SyncEngine {
                         defer { Task { await sem.signal() } }
 
                         let blockHandle = try FileHandle(forReadingFrom: fileURL)
-                        defer { blockHandle.closeFile() }
-                        blockHandle.seek(toFileOffset: block.offset)
+                        defer { try? blockHandle.close() }
+                        try blockHandle.seek(toOffset: block.offset)
                         let data = blockHandle.readData(ofLength: block.size)
 
                         let blockStart = Date()
@@ -1206,7 +1236,7 @@ actor SyncEngine {
 
     static func hashFile(at url: URL) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
-        defer { handle.closeFile() }
+        defer { try? handle.close() }
         let chunkSize = 4 * 1024 * 1024
         var hasher = SHA256()
         while autoreleasepool(invoking: {

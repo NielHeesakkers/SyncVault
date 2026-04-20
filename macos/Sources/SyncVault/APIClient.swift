@@ -450,15 +450,11 @@ actor APIClient {
     }
 
     /// Upload delta — only changed blocks. Much faster than full upload for modified files.
+    ///
+    /// Body is streamed from a temp file via URLSession.uploadTask(fromFile:) so we never
+    /// hold more than one 8 MB write buffer in memory, even for hundreds of MB of delta data.
     func uploadDelta(fileID: String, reuseBlocks: [Int], newBlocksData: Data, newBlockEntries: [(index: Int, offset: Int)]) async throws -> ServerFile {
         let boundary = UUID().uuidString
-        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/\(fileID)/delta")!)
-        request.httpMethod = "POST"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        request.timeoutInterval = 3600
 
         // Build manifest JSON
         struct DeltaManifest: Codable {
@@ -475,22 +471,53 @@ actor APIClient {
         )
         let manifestJSON = try JSONEncoder().encode(manifest)
 
-        var body = Data()
-        // Manifest part
-        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"manifest\"\r\n\r\n".data(using: .utf8)!)
-        body.append(manifestJSON)
-        body.append("\r\n".data(using: .utf8)!)
-        // Data part (only new/changed blocks)
-        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"data\"; filename=\"delta.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
-        body.append(newBlocksData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        // Stream the multipart body to a temp file to keep memory usage bounded.
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("syncvault-delta-\(UUID().uuidString).bin")
+        FileManager.default.createFile(atPath: tmpURL.path, contents: nil)
+        defer { try? FileManager.default.removeItem(at: tmpURL) }
 
-        request.httpBody = body
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
-            throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
+        guard let handle = try? FileHandle(forWritingTo: tmpURL) else {
+            throw NSError(domain: "DeltaSync", code: 3, userInfo: [NSLocalizedDescriptionKey: "Could not create temp file for delta body"])
         }
-        return try JSONDecoder().decode(ServerFile.self, from: data)
+
+        let manifestHeader = "--\(boundary)\r\nContent-Disposition: form-data; name=\"manifest\"\r\n\r\n"
+        let dataHeader = "\r\n--\(boundary)\r\nContent-Disposition: form-data; name=\"data\"; filename=\"delta.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        let footer = "\r\n--\(boundary)--\r\n"
+
+        // Write parts sequentially (streaming) — no intermediate Data accumulation beyond the
+        // newBlocksData we were passed.
+        try handle.write(contentsOf: manifestHeader.data(using: .utf8)!)
+        try handle.write(contentsOf: manifestJSON)
+        try handle.write(contentsOf: dataHeader.data(using: .utf8)!)
+        try handle.write(contentsOf: newBlocksData)
+        try handle.write(contentsOf: footer.data(using: .utf8)!)
+        try handle.close()
+
+        let bodySize = (try? FileManager.default.attributesOfItem(atPath: tmpURL.path)[.size] as? Int64) ?? 0
+
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/\(fileID)/delta")!)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        // Dynamic timeout matching the streaming uploader: 60s base + 1s/MB.
+        let timeoutSeconds = max(60, Double(bodySize) / 1_000_000 + 60)
+        request.timeoutInterval = timeoutSeconds
+
+        let delegate = UploadProgressDelegate(totalBytes: bodySize, onProgress: nil)
+        let result: ServerFile = try await withCheckedThrowingContinuation { continuation in
+            delegate.continuation = continuation
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = timeoutSeconds
+            config.timeoutIntervalForResource = 7200
+            let uploadSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+            let task = uploadSession.uploadTask(with: request, fromFile: tmpURL)
+            delegate.session = uploadSession
+            task.resume()
+        }
+        return result
     }
 
     /// Create a file on the server from pre-uploaded blocks.

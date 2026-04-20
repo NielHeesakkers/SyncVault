@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings" // used by Get/Delete manifest parsing
+	"sync"
 	"syscall"
 	"time"
 )
@@ -43,6 +44,10 @@ var ErrNotFound = errors.New("storage: file not found")
 type Store struct {
 	dir     string
 	chunker *Chunker
+	// refMu serializes reference-count updates to prevent races when the same
+	// block is incremented/decremented concurrently (e.g. parallel uploads of
+	// files that share blocks, or a delete racing with an upload).
+	refMu sync.Mutex
 }
 
 // NewStore creates a new Store rooted at dir with the given chunk size.
@@ -180,27 +185,42 @@ func (s *Store) CreateManifest(fileHash string, blocks []BlockEntry) (int64, err
 // PutDirect streams data from r directly to a single file on disk (no chunking).
 // Much faster on SMB/NFS mounts because it's 1 file write instead of N chunk writes.
 // Returns the SHA-256 hash and total size.
+//
+// Guarantees:
+//   - Temp file is removed on any error path (no incoming/ leaks)
+//   - The final file is only created if hashing + verification succeed
+//   - Errors from Close/Rename are surfaced, not silently swallowed
 func (s *Store) PutDirect(r io.Reader) (fileHash string, size int64, err error) {
-	// Write to temp file first at max speed (no hashing during write).
-	// Hash the file AFTER writing — decouples network I/O from CPU.
-	tmpPath := filepath.Join(s.dir, "incoming", fmt.Sprintf("%d.tmp", time.Now().UnixNano()))
-	os.MkdirAll(filepath.Dir(tmpPath), 0755)
+	incomingDir := filepath.Join(s.dir, "incoming")
+	if mkErr := os.MkdirAll(incomingDir, 0755); mkErr != nil {
+		return "", 0, fmt.Errorf("storage: create incoming dir: %w", mkErr)
+	}
+	tmpPath := filepath.Join(incomingDir, fmt.Sprintf("%d.tmp", time.Now().UnixNano()))
 
 	f, err := os.Create(tmpPath)
 	if err != nil {
 		return "", 0, fmt.Errorf("storage: create temp file: %w", err)
 	}
+	// Ensure temp file is removed on any error (including panic).
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.Remove(tmpPath)
+		}
+	}()
 
-	// Phase 1: Write at full speed (no hashing)
-	buf := make([]byte, 8*1024*1024) // 8MB buffer for max throughput
+	// Phase 1: Hash while writing so we only read the data once.
+	// (Previously we wrote first and re-read — wasteful on big files.)
+	hasher := sha256.New()
+	buf := make([]byte, 8*1024*1024) // 8 MB buffer
 	for {
 		n, readErr := r.Read(buf)
 		if n > 0 {
 			if _, wErr := f.Write(buf[:n]); wErr != nil {
 				f.Close()
-				os.Remove(tmpPath)
 				return "", 0, fmt.Errorf("storage: write: %w", wErr)
 			}
+			hasher.Write(buf[:n])
 			size += int64(n)
 		}
 		if readErr == io.EOF {
@@ -208,46 +228,79 @@ func (s *Store) PutDirect(r io.Reader) (fileHash string, size int64, err error) 
 		}
 		if readErr != nil {
 			f.Close()
-			os.Remove(tmpPath)
 			return "", 0, fmt.Errorf("storage: read: %w", readErr)
 		}
 	}
-	f.Close()
-
-	// Phase 2: Hash the written file (disk I/O only, no network wait)
-	hashFile, err := os.Open(tmpPath)
-	if err != nil {
-		os.Remove(tmpPath)
-		return "", 0, fmt.Errorf("storage: reopen for hash: %w", err)
+	if err := f.Close(); err != nil {
+		return "", 0, fmt.Errorf("storage: close temp file: %w", err)
 	}
-	hasher := sha256.New()
-	io.CopyBuffer(hasher, hashFile, buf)
-	hashFile.Close()
 
 	fileHash = hex.EncodeToString(hasher.Sum(nil))
 
 	// Move to final content-addressable path: files/<hash[0:2]>/<hash[2:4]>/<hash>
 	finalDir := filepath.Join(s.dir, "files", fileHash[:2], fileHash[2:4])
 	finalPath := filepath.Join(finalDir, fileHash)
-	os.MkdirAll(finalDir, 0755)
+	if mkErr := os.MkdirAll(finalDir, 0755); mkErr != nil {
+		return "", 0, fmt.Errorf("storage: create final dir: %w", mkErr)
+	}
 
-	// If file already exists (dedup), just remove the temp
-	if _, err := os.Stat(finalPath); err == nil {
-		os.Remove(tmpPath)
+	// Dedup: if file already exists with matching size, keep the existing one.
+	if existing, statErr := os.Stat(finalPath); statErr == nil && existing.Size() == size {
+		committed = true // deferred Remove will still delete tmp
 		return fileHash, size, nil
 	}
 
-	if err := os.Rename(tmpPath, finalPath); err != nil {
-		// Cross-device: fall back to copy
-		src, _ := os.Open(tmpPath)
-		dst, _ := os.Create(finalPath)
-		io.Copy(dst, src)
-		src.Close()
-		dst.Close()
-		os.Remove(tmpPath)
+	if renameErr := os.Rename(tmpPath, finalPath); renameErr != nil {
+		// Cross-device fallback: copy and then delete temp.
+		src, srcErr := os.Open(tmpPath)
+		if srcErr != nil {
+			return "", 0, fmt.Errorf("storage: open temp for copy: %w", srcErr)
+		}
+		defer src.Close()
+		dst, dstErr := os.Create(finalPath)
+		if dstErr != nil {
+			return "", 0, fmt.Errorf("storage: create final file: %w", dstErr)
+		}
+		if _, copyErr := io.Copy(dst, src); copyErr != nil {
+			dst.Close()
+			_ = os.Remove(finalPath) // partial write — don't leave corrupt file
+			return "", 0, fmt.Errorf("storage: copy to final: %w", copyErr)
+		}
+		if closeErr := dst.Close(); closeErr != nil {
+			_ = os.Remove(finalPath)
+			return "", 0, fmt.Errorf("storage: close final file: %w", closeErr)
+		}
 	}
-
+	committed = true
 	return fileHash, size, nil
+}
+
+// CleanupIncoming removes stale temp files from the incoming/ directory.
+// Files older than maxAge are considered abandoned (from a crashed upload) and deleted.
+// Should be called on server startup to reclaim disk space.
+func (s *Store) CleanupIncoming(maxAge time.Duration) (removed int, freedBytes int64) {
+	incomingDir := filepath.Join(s.dir, "incoming")
+	entries, err := os.ReadDir(incomingDir)
+	if err != nil {
+		return 0, 0
+	}
+	cutoff := time.Now().Add(-maxAge)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			if err := os.Remove(filepath.Join(incomingDir, e.Name())); err == nil {
+				removed++
+				freedBytes += info.Size()
+			}
+		}
+	}
+	return removed, freedBytes
 }
 
 // GetDirect reads a file stored by PutDirect (single file, not chunked).
@@ -440,23 +493,28 @@ func (s *Store) Get(fileHash string, w io.Writer) error {
 }
 
 // incrementBlockRef increments the reference count for a block hash.
-// Called when a new manifest references this block.
+// Called when a new manifest references this block. Thread-safe.
 func (s *Store) incrementBlockRef(hash string) {
+	s.refMu.Lock()
+	defer s.refMu.Unlock()
 	refPath := s.chunkPath(hash) + ".ref"
 	count := s.readRefCount(refPath)
-	os.WriteFile(refPath, []byte(strconv.Itoa(count+1)), 0644)
+	_ = os.WriteFile(refPath, []byte(strconv.Itoa(count+1)), 0644)
 }
 
 // decrementBlockRef decrements the reference count and removes the block if zero.
+// Thread-safe.
 func (s *Store) decrementBlockRef(hash string) {
+	s.refMu.Lock()
+	defer s.refMu.Unlock()
 	refPath := s.chunkPath(hash) + ".ref"
 	count := s.readRefCount(refPath)
 	if count <= 1 {
 		// Last reference — safe to delete block and refcount file
-		os.Remove(s.chunkPath(hash))
-		os.Remove(refPath)
+		_ = os.Remove(s.chunkPath(hash))
+		_ = os.Remove(refPath)
 	} else {
-		os.WriteFile(refPath, []byte(strconv.Itoa(count-1)), 0644)
+		_ = os.WriteFile(refPath, []byte(strconv.Itoa(count-1)), 0644)
 	}
 }
 

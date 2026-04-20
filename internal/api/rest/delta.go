@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -241,7 +240,9 @@ func (s *Server) handleDeltaUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Read the new block data.
+	// The "data" part is backed by a temp file (multipart parser spills to disk beyond 32MB).
+	// Using FormFile gives us a seekable reader so we can access new blocks by offset without
+	// loading everything into memory.
 	dataFile, _, err := r.FormFile("data")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing data part"})
@@ -249,33 +250,25 @@ func (s *Server) handleDeltaUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer dataFile.Close()
 
-	newData, err := io.ReadAll(dataFile)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not read new block data"})
-		return
-	}
-
-	// Read the existing file into memory.
-	var existingBuf bytes.Buffer
-	if err := s.store.GetDirect(f.ContentHash.String, &existingBuf); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not read existing file content"})
-		return
-	}
-	existing := existingBuf.Bytes()
-
-	// Build an index of reuse blocks for fast lookup.
+	// Build fast lookup for reuse + new blocks.
 	reuseSet := make(map[int]bool, len(manifest.ReuseBlocks))
 	for _, idx := range manifest.ReuseBlocks {
+		if idx < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid reuse block index: %d", idx)})
+			return
+		}
 		reuseSet[idx] = true
 	}
-
-	// Build new block lookup by index.
 	newBlockMap := make(map[int]deltaNewBlock, len(manifest.NewBlocks))
 	for _, nb := range manifest.NewBlocks {
+		if nb.Index < 0 || nb.Offset < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid new block entry: idx=%d off=%d", nb.Index, nb.Offset)})
+			return
+		}
 		newBlockMap[nb.Index] = nb
 	}
 
-	// Determine the total number of output blocks.
+	// Determine total output blocks.
 	totalBlocks := 0
 	for idx := range reuseSet {
 		if idx+1 > totalBlocks {
@@ -287,51 +280,113 @@ func (s *Server) handleDeltaUpload(w http.ResponseWriter, r *http.Request) {
 			totalBlocks = idx + 1
 		}
 	}
-
-	// Reconstruct the new file.
-	var reconstructed bytes.Buffer
-	for i := 0; i < totalBlocks; i++ {
-		if reuseSet[i] {
-			// Copy from existing file.
-			start := i * deltaBlockSize
-			end := start + deltaBlockSize
-			if start >= len(existing) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{
-					"error": fmt.Sprintf("reuse block %d is out of range of existing file", i),
-				})
-				return
-			}
-			if end > len(existing) {
-				end = len(existing)
-			}
-			reconstructed.Write(existing[start:end])
-		} else if nb, ok := newBlockMap[i]; ok {
-			// Copy from new data at offset.
-			start := nb.Offset
-			end := start + int64(deltaBlockSize)
-			if start > int64(len(newData)) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{
-					"error": fmt.Sprintf("new block %d offset %d is out of range of data", i, start),
-				})
-				return
-			}
-			if end > int64(len(newData)) {
-				end = int64(len(newData))
-			}
-			reconstructed.Write(newData[start:end])
-		} else {
-			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": fmt.Sprintf("block %d is neither in reuse_blocks nor new_blocks", i),
-			})
-			return
-		}
+	// Sanity cap: 10 GB file / 256 KB = 40960 blocks max. Anything larger is malicious/buggy.
+	if totalBlocks > 50_000 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many blocks"})
+		return
 	}
 
-	// Store the reconstructed file.
-	contentHash, size, err := s.store.PutDirect(&reconstructed)
+	// Stream reconstruction: pipe the assembled bytes straight to PutDirect.
+	// Memory usage is O(deltaBlockSize) instead of O(fileSize).
+	pr, pw := io.Pipe()
+	errCh := make(chan error, 1)
+	go func() {
+		defer pw.Close()
+		// Open the existing file once for streaming reuse-block extraction.
+		existingPR, existingPW := io.Pipe()
+		go func() {
+			defer existingPW.Close()
+			if err := s.store.GetDirect(f.ContentHash.String, existingPW); err != nil {
+				existingPW.CloseWithError(err)
+			}
+		}()
+
+		// Stream through existing file block-by-block, writing reused blocks to pw.
+		// For new blocks, seek into dataFile.
+		existingBuf := make([]byte, deltaBlockSize)
+		existingIdx := 0
+		existingEOF := false
+		readExistingBlock := func() ([]byte, error) {
+			if existingEOF {
+				return nil, io.EOF
+			}
+			n, err := io.ReadFull(existingPR, existingBuf)
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				existingEOF = true
+				if n > 0 {
+					return existingBuf[:n], nil
+				}
+				return nil, io.EOF
+			}
+			if err != nil {
+				return nil, err
+			}
+			return existingBuf[:n], nil
+		}
+
+		dataSeeker, canSeek := dataFile.(io.ReadSeeker)
+		newBuf := make([]byte, deltaBlockSize)
+
+		for i := 0; i < totalBlocks; i++ {
+			if reuseSet[i] {
+				// Advance the existing-file reader to block i (sequential read).
+				for existingIdx <= i {
+					blk, rerr := readExistingBlock()
+					if rerr != nil {
+						pw.CloseWithError(fmt.Errorf("reuse block %d out of range: %w", i, rerr))
+						return
+					}
+					if existingIdx == i {
+						if _, werr := pw.Write(blk); werr != nil {
+							return
+						}
+					}
+					existingIdx++
+				}
+			} else if nb, ok := newBlockMap[i]; ok {
+				if !canSeek {
+					pw.CloseWithError(errors.New("data part is not seekable"))
+					return
+				}
+				if _, serr := dataSeeker.Seek(nb.Offset, io.SeekStart); serr != nil {
+					pw.CloseWithError(fmt.Errorf("seek to new block %d offset %d: %w", i, nb.Offset, serr))
+					return
+				}
+				n, rerr := io.ReadFull(dataSeeker, newBuf)
+				if rerr != nil && rerr != io.EOF && rerr != io.ErrUnexpectedEOF {
+					pw.CloseWithError(fmt.Errorf("read new block %d: %w", i, rerr))
+					return
+				}
+				if n == 0 {
+					pw.CloseWithError(fmt.Errorf("new block %d offset %d is beyond data end", i, nb.Offset))
+					return
+				}
+				if _, werr := pw.Write(newBuf[:n]); werr != nil {
+					return
+				}
+			} else {
+				pw.CloseWithError(fmt.Errorf("block %d is neither in reuse_blocks nor new_blocks", i))
+				return
+			}
+		}
+		errCh <- nil
+	}()
+
+	// Store streamed reconstruction. PutDirect hashes + writes atomically.
+	contentHash, size, err := s.store.PutDirect(pr)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not store reconstructed file"})
+		pr.CloseWithError(err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not store reconstructed file: " + err.Error()})
 		return
+	}
+	// Drain the reconstruction goroutine's error channel (if it managed to finish cleanly).
+	select {
+	case rerr := <-errCh:
+		if rerr != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": rerr.Error()})
+			return
+		}
+	default:
 	}
 
 	// Update file metadata.
@@ -351,10 +406,24 @@ func (s *Server) handleDeltaUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Compute and cache block signatures for the new version.
-	var newContentBuf bytes.Buffer
-	if err := s.store.GetDirect(contentHash, &newContentBuf); err == nil {
-		newSigs := computeBlockSignatures(newContentBuf.Bytes())
+	// Compute and cache block signatures for the new version via streaming pipe
+	// (avoids loading the reconstructed file into memory a second time).
+	sigPR, sigPW := io.Pipe()
+	sigCh := make(chan []blockSignature, 1)
+	go func() {
+		sigs, err := computeBlockSignaturesFromReader(sigPR)
+		if err != nil {
+			sigCh <- nil
+			return
+		}
+		sigCh <- sigs
+	}()
+	if err := s.store.GetDirect(contentHash, sigPW); err != nil {
+		sigPW.CloseWithError(err)
+	} else {
+		sigPW.Close()
+	}
+	if newSigs := <-sigCh; newSigs != nil {
 		dbBlocks := make([]metadata.FileBlock, len(newSigs))
 		for i, sig := range newSigs {
 			dbBlocks[i] = metadata.FileBlock{

@@ -75,6 +75,12 @@ func main() {
 		log.Fatalf("Failed to create storage store: %v", err)
 	}
 
+	// Reclaim disk space from abandoned uploads (crash-leftover temp files).
+	// Anything older than 24 hours in incoming/ is almost certainly stale.
+	if removed, freed := store.CleanupIncoming(24 * time.Hour); removed > 0 {
+		log.Printf("Startup: cleaned up %d stale temp files (%d bytes freed)", removed, freed)
+	}
+
 	// 5. Setup JWT.
 	jwtSecret := cfg.JWTSecret
 	if jwtSecret == "" {
