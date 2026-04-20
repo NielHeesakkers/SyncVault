@@ -520,20 +520,35 @@ actor SyncEngine {
             let _ = try? await ensureRemoteDirectory(dirPath, rootID: task.remoteFolderID)
         }
 
-        // All files upload sequentially via streaming — no batch upload needed.
-        let remainingActions = sortedActions
-
         let total = sortedActions.count
         let bytesUploaded = ActorCounter(initial: skippedBytes)
         let bytesTransferred = ActorCounter(initial: 0)
         let completed = ActorCounter(initial: 0)
         let start = Date()
-        let names = remainingActions.map { $0.fileName }
+        let names = sortedActions.map { $0.fileName }
         var authFailed = false
 
-        // Sequential execution — one file at a time, like Synology Drive.
-        // No task group, no semaphore, no race conditions.
-        for (i, action) in remainingActions.enumerated() {
+        // Partition actions:
+        // - Non-uploads (rename, delete, createDir, conflict, download) → serial
+        // - Large uploads (>= 10 MB) → serial (big files already saturate network)
+        // - Small uploads (< 10 MB) → parallel with max 4 concurrent
+        let parallelThreshold: Int64 = 10 * 1024 * 1024
+        var serialActions: [SyncAction] = []
+        var parallelUploads: [SyncAction] = []
+        for action in sortedActions {
+            if case .upload(let path, _, _) = action {
+                let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ?? 0
+                if size < parallelThreshold {
+                    parallelUploads.append(action)
+                    continue
+                }
+            }
+            serialActions.append(action)
+        }
+        syncLog("Actions split: \(serialActions.count) serial, \(parallelUploads.count) parallel (<10MB)")
+
+        // Phase 1: Serial actions (non-uploads + big uploads)
+        for (i, action) in serialActions.enumerated() {
             var actionResult: SyncActionResult = .error
             do {
 
@@ -793,11 +808,140 @@ actor SyncEngine {
             if authFailed { break }
         } // end for
 
+        // Phase 2: Parallel uploads for small files (<10 MB). Up to 4 concurrent.
+        // Big files + non-uploads were already processed serially above.
+        if !authFailed && !parallelUploads.isEmpty {
+            let sem = AsyncSemaphore(limit: 4)
+            // Collect results; update state once per completion on this actor.
+            try await withThrowingTaskGroup(of: SyncActionResult.self) { group in
+                for action in parallelUploads {
+                    group.addTask { [weak self] in
+                        guard let self else { return .error }
+                        await sem.wait()
+                        defer { Task { await sem.signal() } }
+                        return await self.processSingleUpload(
+                            action: action,
+                            task: task,
+                            bytesUploaded: bytesUploaded,
+                            bytesTransferred: bytesTransferred,
+                            completed: completed,
+                            total: total,
+                            totalBytesToUpload: totalBytesToUpload,
+                            start: start,
+                            onProgress: onProgress
+                        )
+                    }
+                }
+                for try await actionResult in group {
+                    switch actionResult {
+                    case .uploaded(let name, let relPath):
+                        result.uploaded += 1
+                        let item = ActivityItem(filename: name, action: "uploaded", timestamp: Date(), relativePath: relPath)
+                        result.fileActivity.append(item)
+                        await onProgress(SyncProgress(
+                            currentFile: item.filename, action: "Completed",
+                            bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
+                            filesCompleted: Int(await completed.value), filesTotal: total,
+                            bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
+                            pendingFiles: [],
+                            completedItem: item
+                        ))
+                    case .authFailed:
+                        authFailed = true
+                        group.cancelAll()
+                    case .error:
+                        result.errors += 1
+                    default:
+                        // Parallel phase only runs uploads, other cases shouldn't happen here
+                        break
+                    }
+                }
+            }
+        }
+
         if authFailed {
             throw APIError.unauthorized
         }
 
         return result
+    }
+
+    /// Process a single upload action in parallel context. Returns SyncActionResult.
+    /// Unlike the serial loop, this self-contained method handles only `.upload` and
+    /// updates the shared actor counters directly so progress stays consistent.
+    private func processSingleUpload(
+        action: SyncAction,
+        task: SyncTask,
+        bytesUploaded: ActorCounter,
+        bytesTransferred: ActorCounter,
+        completed: ActorCounter,
+        total: Int,
+        totalBytesToUpload: Int64,
+        start: Date,
+        onProgress: @Sendable @escaping (SyncProgress) async -> Void
+    ) async -> SyncActionResult {
+        guard case .upload(let path, let relativePath, let remoteFileID) = action else {
+            return .error
+        }
+        let fileURL = URL(fileURLWithPath: path)
+        let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
+        do {
+            let attrs = try FileManager.default.attributesOfItem(atPath: path)
+            let fileSize = (attrs[.size] as? Int64) ?? 0
+
+            // Debounce: skip files uploaded in the last 5 minutes
+            if await self.wasRecentlyUploaded(relativePath, cooldown: 300) {
+                syncLog("Skipped \(displayName) (uploaded < 5min ago)")
+                await completed.increment()
+                await bytesUploaded.add(fileSize)
+                return .uploaded(displayName, relativePath)
+            }
+            Self.markSyncingFile(path)
+
+            // Ensure parent directories exist on server
+            let parentRelPath = (relativePath as NSString).deletingLastPathComponent
+            let parentID = try await self.ensureRemoteDirectory(parentRelPath, rootID: task.remoteFolderID)
+
+            var uploadedHash = ""
+
+            // Small files (<10MB) rarely benefit from delta sync since there's not much to save,
+            // and delta has overhead. Use streaming upload directly.
+            let uploadStart = Date()
+            // Small-file progress: single "Uploading" + "Uploaded" update per file (not per-byte)
+            // to keep the UI legible when multiple uploads are in flight.
+            await onProgress(SyncProgress(
+                currentFile: displayName, action: "Uploading",
+                bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
+                filesCompleted: Int(await completed.value), filesTotal: total,
+                bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
+                pendingFiles: [],
+                currentFileBytes: 0, currentFileTotal: fileSize
+            ))
+
+            let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID)
+            uploadedHash = f.contentHash ?? ""
+            let uploadDuration = Date().timeIntervalSince(uploadStart)
+            let speed = Double(fileSize) / max(uploadDuration, 0.001)
+            syncLog("Parallel-uploaded \(displayName) in \(String(format: "%.2f", uploadDuration))s = \(String(format: "%.0f", speed / 1024)) KB/s")
+            await bytesUploaded.add(fileSize)
+            await bytesTransferred.add(fileSize)
+            await completed.increment()
+
+            // Update journal (mtime+size cache)
+            let currentAttrs = try? FileManager.default.attributesOfItem(atPath: path)
+            let currentMtime = ((currentAttrs?[.modificationDate] as? Date) ?? Date()).timeIntervalSince1970
+            let currentSize = (currentAttrs?[.size] as? Int64) ?? fileSize
+            try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: uploadedHash, isDir: false, fileSize: currentSize, modTime: currentMtime)
+            await self.markUploaded(relativePath)
+
+            _ = remoteFileID // unused for small files (they go via streaming, not delta)
+            return .uploaded(displayName, relativePath)
+        } catch let error as APIError where error == .unauthorized {
+            return .authFailed
+        } catch {
+            logger.info("Parallel upload failed \(relativePath): \(error)")
+            return .error
+        }
     }
 
     // MARK: - Remote Directory Management
