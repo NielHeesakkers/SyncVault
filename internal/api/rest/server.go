@@ -97,6 +97,7 @@ func (s *Server) setupRoutes() {
 		uploadLimiter := RateLimitMiddleware(60, 1*time.Minute) // 60 uploads per minute per IP
 		r.With(uploadLimiter).Post("/api/files/upload", s.handleUploadFile)
 		r.With(uploadLimiter).Post("/api/files/batch-upload", s.handleBatchUpload)
+		r.With(uploadLimiter).Post("/api/files/batch-tar", s.handleBatchTar)
 		r.With(uploadLimiter).Put("/api/files/put", s.handlePutFile)
 		r.Get("/api/files/search", s.handleSearchFiles)
 		// History routes must be registered before {id} routes so they are not caught as an id param.

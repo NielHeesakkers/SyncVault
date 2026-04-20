@@ -868,8 +868,78 @@ actor SyncEngine {
             if authFailed { break }
         } // end for
 
-        // Phase 2: Parallel uploads for small files (<10 MB). Up to 4 concurrent.
-        // Big files + non-uploads were already processed serially above.
+        // Phase 1.5: Tar-batch upload for directories with >=20 small files.
+        // Groups NEW uploads (remoteFileID == nil) by their parent directory.
+        // Huge speed win: thousands of TCP handshakes → one HTTP request.
+        if !authFailed && !parallelUploads.isEmpty {
+            var byDir: [String: [SyncAction]] = [:]
+            for action in parallelUploads {
+                if case .upload(_, let relPath, let remoteFileID) = action, remoteFileID == nil {
+                    let dir = (relPath as NSString).deletingLastPathComponent
+                    byDir[dir, default: []].append(action)
+                }
+            }
+
+            var handledByTar: Set<String> = []
+            for (dir, actions) in byDir where actions.count >= 20 {
+                // Only batch new-file uploads; existing files may have delta paths
+                let relPaths: [String] = actions.compactMap {
+                    if case .upload(_, let rp, _) = $0 { return rp }
+                    return nil
+                }
+                do {
+                    syncLog("Tar-batch: \(relPaths.count) files in \(dir.isEmpty ? "<root>" : dir)")
+                    let tarURL = try Self.buildTarArchive(baseDir: task.localPath, relativePaths: relPaths)
+                    defer { try? FileManager.default.removeItem(at: tarURL) }
+
+                    let parentID = try await self.ensureRemoteDirectory(dir, rootID: task.remoteFolderID)
+                    let batchResult = try await self.apiClient.uploadTarBatch(tarFileURL: tarURL, parentID: parentID)
+
+                    // Record successes + failures in the journal
+                    var tarUploadedCount = 0
+                    for entry in batchResult.uploaded {
+                        let relPath = entry.relative_path
+                        let fullRelPath = dir.isEmpty ? relPath : "\(dir)/\(relPath)"
+                        if let serverFile = entry.file {
+                            let fullPath = (task.localPath as NSString).appendingPathComponent(fullRelPath)
+                            let attrs = try? FileManager.default.attributesOfItem(atPath: fullPath)
+                            let mtime = ((attrs?[.modificationDate] as? Date) ?? Date()).timeIntervalSince1970
+                            let size = (attrs?[.size] as? Int64) ?? 0
+                            try? self.db.updateState(
+                                taskID: task.id.uuidString, relativePath: fullRelPath,
+                                contentHash: serverFile.contentHash ?? "", isDir: false,
+                                fileSize: size, modTime: mtime
+                            )
+                            self.db.clearFileFailure(taskID: task.id.uuidString, relativePath: fullRelPath)
+                            await self.markUploaded(fullRelPath)
+                            await bytesUploaded.add(size)
+                            await bytesTransferred.add(size)
+                            await completed.increment()
+                            result.uploaded += 1
+                            let item = ActivityItem(filename: (relPath as NSString).lastPathComponent, action: "uploaded", timestamp: Date(), relativePath: fullRelPath)
+                            result.fileActivity.append(item)
+                            tarUploadedCount += 1
+                        } else if let err = entry.error {
+                            self.db.markFileFailed(taskID: task.id.uuidString, relativePath: fullRelPath, error: err)
+                            result.errors += 1
+                        }
+                        handledByTar.insert(fullRelPath)
+                    }
+                    syncLog("Tar-batch uploaded \(tarUploadedCount)/\(relPaths.count) files in one request")
+                } catch {
+                    syncLog("Tar-batch failed for \(dir): \(error.localizedDescription), falling back to parallel uploads")
+                    // Don't mark handled; fall through to parallel upload below
+                }
+            }
+
+            // Remove tar-handled uploads from parallelUploads
+            parallelUploads.removeAll { action in
+                if case .upload(_, let rp, _) = action { return handledByTar.contains(rp) }
+                return false
+            }
+        }
+
+        // Phase 2: Parallel uploads for remaining small files (<10 MB). Up to 4 concurrent.
         if !authFailed && !parallelUploads.isEmpty {
             let sem = AsyncSemaphore(limit: 4)
             // Collect results; update state once per completion on this actor.
@@ -1452,6 +1522,41 @@ actor SyncEngine {
             return true
         }) {}
         return hasher.finalize().compactMap { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Build a tar archive from the given file paths (relative to baseDir) at a temp URL.
+    /// Uses /usr/bin/tar which is built into macOS — avoids reinventing tar format.
+    /// Returns (tempURL, relativePathsIncluded). Caller is responsible for cleaning up.
+    static func buildTarArchive(baseDir: String, relativePaths: [String]) throws -> URL {
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("syncvault-batch-\(UUID().uuidString).tar")
+
+        // Use a file-list approach to avoid exceeding argv limits when many files
+        let listURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("syncvault-tar-list-\(UUID().uuidString).txt")
+        defer { try? FileManager.default.removeItem(at: listURL) }
+        let listContents = relativePaths.joined(separator: "\n")
+        try listContents.write(to: listURL, atomically: true, encoding: .utf8)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        process.currentDirectoryURL = URL(fileURLWithPath: baseDir)
+        process.arguments = [
+            "-cf", tmpURL.path,
+            "-T", listURL.path,
+            "--format=pax" // portable + supports long filenames
+        ]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        try process.run()
+        process.waitUntilExit()
+        if process.terminationStatus != 0 {
+            let errData = (process.standardError as? Pipe)?.fileHandleForReading.readDataToEndOfFile() ?? Data()
+            let errStr = String(data: errData, encoding: .utf8) ?? "unknown"
+            throw NSError(domain: "TarBatch", code: Int(process.terminationStatus),
+                          userInfo: [NSLocalizedDescriptionKey: "tar failed: \(errStr)"])
+        }
+        return tmpURL
     }
 
     /// Adaptive block size: larger files use larger blocks to reduce overhead.

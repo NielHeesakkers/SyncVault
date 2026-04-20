@@ -464,6 +464,45 @@ actor APIClient {
         return try await post("/api/uploads/\(uploadID)/complete", body: [:])
     }
 
+    // MARK: - Tar-batch upload
+
+    struct TarBatchResult: Codable {
+        let uploaded: [TarEntry]
+        struct TarEntry: Codable {
+            let relative_path: String
+            let file: ServerFile?
+            let error: String?
+        }
+    }
+
+    /// Upload a tar archive containing many files in a single HTTP request.
+    /// Much faster than individual PUTs for directories with many small files
+    /// (eliminates per-file HTTP overhead).
+    /// The tar file is streamed from disk via uploadTask(fromFile:) so memory
+    /// stays bounded regardless of archive size.
+    func uploadTarBatch(tarFileURL: URL, parentID: String) async throws -> TarBatchResult {
+        let tarSize = (try? FileManager.default.attributesOfItem(atPath: tarFileURL.path)[.size] as? Int64) ?? 0
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/batch-tar?parent_id=\(parentID)")!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-tar", forHTTPHeaderField: "Content-Type")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.timeoutInterval = max(120, Double(tarSize) / 1_000_000 + 60)
+
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = request.timeoutInterval
+        config.timeoutIntervalForResource = request.timeoutInterval * 2
+        let session = URLSession(configuration: config)
+        defer { session.finishTasksAndInvalidate() }
+
+        let (data, response) = try await session.upload(for: request, fromFile: tarFileURL)
+        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+            throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
+        }
+        return try JSONDecoder().decode(TarBatchResult.self, from: data)
+    }
+
     /// Orchestrate a resumable upload for a local file. Resumes existing sessions if the
     /// passed `existingUploadID` is still valid server-side. Reports progress per chunk.
     /// Returns the final ServerFile on success.
