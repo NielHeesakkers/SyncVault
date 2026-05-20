@@ -24,6 +24,19 @@ type Server struct {
 	email      *email.Service
 	router     chi.Router
 	uploadsDir string // base directory for chunked upload staging files
+
+	// Build / runtime info — populated by main via SetBuildInfo.
+	gitSHA    string
+	buildTime string
+	startedAt time.Time
+}
+
+// SetBuildInfo records git SHA, build timestamp, and start time so /api/health
+// can return them for remote diagnostics.
+func (s *Server) SetBuildInfo(sha, builtAt string, startedAt time.Time) {
+	s.gitSHA = sha
+	s.buildTime = builtAt
+	s.startedAt = startedAt
 }
 
 // NewServer creates a new Server and registers all routes.
@@ -227,18 +240,59 @@ func (s *Server) setupRoutes() {
 
 const AppVersion = "2.9.0"
 
-// handleHealth returns a simple health check response, including storage status.
+// handleHealth returns a health check with subsystem detail so you can diagnose
+// problems remotely without server-side log access.
+//
+// Backwards-compatible: existing `status`, `version`, `storage_ok` fields are kept.
+// New `build`, `uptime_seconds`, `db`, `storage` give the diagnostic info needed
+// when something's wrong after a release.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	storageOK := s.store.IsAvailable()
 	status := "ok"
 	if !storageOK {
 		status = "degraded"
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":      status,
-		"version":     AppVersion,
-		"storage_ok":  storageOK,
-	})
+
+	// Quick DB ping to know if SQLite is alive (1ms even on a busy server).
+	dbOK := true
+	var dbErr string
+	if err := s.db.DB().Ping(); err != nil {
+		dbOK = false
+		dbErr = err.Error()
+		if status == "ok" {
+			status = "degraded"
+		}
+	}
+
+	// Free disk so an admin can spot "out of space" remotely.
+	diskTotal, diskAvail := s.store.DiskSpace()
+
+	// Uptime is useful to see whether the container just restarted unexpectedly.
+	var uptimeSec int64
+	if !s.startedAt.IsZero() {
+		uptimeSec = int64(time.Since(s.startedAt).Seconds())
+	}
+
+	resp := map[string]interface{}{
+		"status":         status,
+		"version":        AppVersion,
+		"storage_ok":     storageOK,
+		"uptime_seconds": uptimeSec,
+		"build": map[string]interface{}{
+			"git_sha":    s.gitSHA,
+			"build_time": s.buildTime,
+		},
+		"db": map[string]interface{}{
+			"ok":    dbOK,
+			"error": dbErr,
+		},
+		"storage": map[string]interface{}{
+			"ok":              storageOK,
+			"total_bytes":     diskTotal,
+			"available_bytes": diskAvail,
+		},
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleMetrics returns server metrics for monitoring (Prometheus-compatible text format).

@@ -21,6 +21,24 @@ import (
 	"github.com/NielHeesakkers/SyncVault/internal/storage"
 )
 
+// Build info — overridden at compile time via -ldflags
+// "-X main.gitSHA=$(git rev-parse --short HEAD) -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+var (
+	gitSHA    = "unknown"
+	buildTime = "unknown"
+)
+
+// stepLog wraps a startup step with timestamp + duration logging so we can pinpoint
+// exactly which initialization step is slow if startup hangs.
+func stepLog(name string, fn func() error) {
+	log.Printf("[startup] → %s", name)
+	start := time.Now()
+	if err := fn(); err != nil {
+		log.Fatalf("[startup] ✗ %s failed after %v: %v", name, time.Since(start), err)
+	}
+	log.Printf("[startup] ✓ %s done in %v", name, time.Since(start))
+}
+
 func main() {
 	// Check for admin password reset
 	if len(os.Args) > 1 && os.Args[1] == "reset-admin" {
@@ -45,7 +63,7 @@ func main() {
 	// 1. Load config.
 	cfg := config.Load()
 
-	log.Printf("Starting SyncVault server")
+	log.Printf("=== SyncVault v%s starting (sha=%s, built=%s) ===", rest.AppVersion, gitSHA, buildTime)
 	log.Printf("  Data directory:    %s", cfg.DataDir)
 	log.Printf("  Storage directory: %s", cfg.StorageDir)
 	log.Printf("  HTTP port:         %d", cfg.HTTPPort)
@@ -55,33 +73,43 @@ func main() {
 	uploadsDir := filepath.Join(cfg.DataDir, "uploads")
 
 	// 2. Create data directories.
-	for _, dir := range []string{cfg.DataDir, cfg.StorageDir, uploadsDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			log.Fatalf("Failed to create directory %s: %v", dir, err)
+	stepLog("create data directories", func() error {
+		for _, dir := range []string{cfg.DataDir, cfg.StorageDir, uploadsDir} {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				return fmt.Errorf("create %s: %w", dir, err)
+			}
 		}
-	}
+		return nil
+	})
 
 	// 3. Open metadata DB.
 	dbPath := filepath.Join(cfg.DataDir, "syncvault.db")
-	db, err := metadata.Open(dbPath)
-	if err != nil {
-		log.Fatalf("Failed to open metadata DB: %v", err)
-	}
+	var db *metadata.DB
+	stepLog("open metadata DB", func() error {
+		var err error
+		db, err = metadata.Open(dbPath)
+		return err
+	})
 	defer db.Close()
 
 	// 4. Create storage Store.
-	store, err := storage.NewStore(cfg.StorageDir, cfg.MaxChunkSize)
-	if err != nil {
-		log.Fatalf("Failed to create storage store: %v", err)
-	}
+	var store *storage.Store
+	stepLog("create storage", func() error {
+		var err error
+		store, err = storage.NewStore(cfg.StorageDir, cfg.MaxChunkSize)
+		return err
+	})
 
-	// Reclaim disk space from abandoned uploads (crash-leftover temp files).
-	// Anything older than 24 hours in incoming/ is almost certainly stale.
-	if removed, freed := store.CleanupIncoming(24 * time.Hour); removed > 0 {
-		log.Printf("Startup: cleaned up %d stale temp files (%d bytes freed)", removed, freed)
-	}
+	// 5. Cleanup stale incoming temp files (can be slow on populated filesystems).
+	stepLog("cleanup stale incoming/ temp files", func() error {
+		removed, freed := store.CleanupIncoming(24 * time.Hour)
+		if removed > 0 {
+			log.Printf("[startup]   cleaned %d stale temp files (%d bytes freed)", removed, freed)
+		}
+		return nil
+	})
 
-	// 5. Setup JWT.
+	// 6. Setup JWT.
 	jwtSecret := cfg.JWTSecret
 	if jwtSecret == "" {
 		log.Println("WARNING: JWT_SECRET is not set — using insecure default, do not use in production")
@@ -91,11 +119,13 @@ func main() {
 	}
 	jwtManager := auth.NewJWT(jwtSecret)
 
-	// 6. Create default admin user if no users exist.
-	users, err := db.ListUsers()
-	if err != nil {
-		log.Fatalf("Failed to list users: %v", err)
-	}
+	// 7. Create default admin user if no users exist.
+	var users []metadata.User
+	stepLog("list users / check admin", func() error {
+		var err error
+		users, err = db.ListUsers()
+		return err
+	})
 	if len(users) == 0 {
 		adminUsername := envOr("SYNCVAULT_ADMIN_USER", "admin")
 		adminPassword := envOr("SYNCVAULT_ADMIN_PASS", "admin")
@@ -157,7 +187,13 @@ func main() {
 	}
 
 	// 8. Create REST server.
-	srv := rest.NewServer(db, store, jwtManager, emailSvc, uploadsDir)
+	var srv *rest.Server
+	stepLog("create REST server (routes + middleware + expired-session cleanup)", func() error {
+		srv = rest.NewServer(db, store, jwtManager, emailSvc, uploadsDir)
+		// Tell the rest layer when we started + the build info so /api/health can report it.
+		srv.SetBuildInfo(gitSHA, buildTime, time.Now())
+		return nil
+	})
 
 	addr := fmt.Sprintf(":%d", cfg.HTTPPort)
 	httpServer := &http.Server{
@@ -165,7 +201,7 @@ func main() {
 		Handler: srv.Router(),
 	}
 
-	// 8. Start HTTP server (with optional TLS).
+	// 9. Start HTTP server (with optional TLS).
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatalf("Failed to listen on %s: %v", addr, err)
