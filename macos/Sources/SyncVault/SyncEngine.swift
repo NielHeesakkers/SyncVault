@@ -130,6 +130,14 @@ actor SyncEngine {
     private func performFullSync(task: SyncTask, basePath: String, lastSyncDate: Date?, onProgress: @Sendable @escaping (SyncProgress) async -> Void) async throws -> SyncResult {
         var result = SyncResult(uploaded: 0, downloaded: 0, deleted: 0, conflicts: 0, errors: 0, fileActivity: [])
 
+        // Status update: fetching remote tree
+        await onProgress(SyncProgress(
+            currentFile: "Fetching remote file list…", action: "Scanning",
+            bytesTransferred: 0, totalBytes: 0,
+            filesCompleted: 0, filesTotal: 0,
+            bytesPerSecond: 0, pendingFiles: []
+        ))
+
         // 1. Get remote file tree in one API call (replaces recursive listFiles)
         logger.info("Fetching remote file tree for \(task.remoteFolderName)...")
         let remoteTree = try await apiClient.getFileTree(folderID: task.remoteFolderID)
@@ -141,10 +149,26 @@ actor SyncEngine {
         }
         logger.info("Remote tree: \(remoteTree.count) entries")
 
+        // Status update: scanning local
+        await onProgress(SyncProgress(
+            currentFile: "Scanning local files…", action: "Scanning",
+            bytesTransferred: 0, totalBytes: 0,
+            filesCompleted: 0, filesTotal: 0,
+            bytesPerSecond: 0, pendingFiles: []
+        ))
+
         // 2. Scan local files — only hash files modified since lastSyncDate (Phase 3 optimization)
         logger.info("Scanning local files at \(basePath)...")
         let localFiles = scanLocalFiles(at: basePath, task: task, excludePatterns: task.excludePatterns, lastSyncDate: lastSyncDate)
         logger.info("Local files: \(localFiles.count) total")
+
+        // Status update: comparing
+        await onProgress(SyncProgress(
+            currentFile: "Comparing \(localFiles.count) local vs \(remoteTree.count) remote…", action: "Scanning",
+            bytesTransferred: 0, totalBytes: 0,
+            filesCompleted: 0, filesTotal: localFiles.count,
+            bytesPerSecond: 0, pendingFiles: []
+        ))
 
         // 3. Collect hashes of all local files that need checking
         var localHashMap: [String: String] = [:]   // relativePath -> hash
@@ -311,12 +335,31 @@ actor SyncEngine {
         // 7. Update change journal: snapshot of everything that should exist
         // This is the union of local + remote that survived this sync cycle.
         // Include mtime+size for fast change detection on next sync.
+        //
+        // CRITICAL: at this point uploads have completed and processed actions wrote real
+        // content hashes to the DB via updateState. localFileMap still holds the scan-time
+        // hash which is "__needs_upload__" for any file that was uploaded this cycle. If we
+        // overwrite with the stale localFile.contentHash, next sync re-uploads everything!
+        // Re-read the DB to pick up the post-upload hashes.
+        let postSyncJournal = (try? db.getStates(taskID: task.id.uuidString)) ?? [:]
+        let needsUploadSentinel = "__needs_upload__"
+
         var journalEntries: [(relativePath: String, contentHash: String, isDir: Bool, fileSize: Int64, modTime: Double)] = []
 
-        // Add all local files that still exist (with current mtime+size)
+        // Add all local files that still exist (with current mtime+size).
+        // Prefer the DB hash when local is the sentinel — uploads have already updated it.
+        // Also prefer remote hash when we have it (matches server's authoritative content_hash).
         for (relPath, localFile) in localFileMap {
             if FileManager.default.fileExists(atPath: localFile.fullPath) {
-                journalEntries.append((relPath, localFile.contentHash ?? "", false, localFile.size, localFile.modifiedAt.timeIntervalSince1970))
+                var hash = localFile.contentHash ?? ""
+                if hash == needsUploadSentinel || hash.isEmpty {
+                    if let dbHash = postSyncJournal[relPath]?.contentHash, !dbHash.isEmpty, dbHash != needsUploadSentinel {
+                        hash = dbHash
+                    } else if let remoteHash = remoteByPath[relPath]?.contentHash, !remoteHash.isEmpty {
+                        hash = remoteHash
+                    }
+                }
+                journalEntries.append((relPath, hash, false, localFile.size, localFile.modifiedAt.timeIntervalSince1970))
             }
         }
         // Add all local directories that still exist
@@ -339,7 +382,11 @@ actor SyncEngine {
             }
         }
         try? db.replaceAllStates(taskID: task.id.uuidString, files: journalEntries)
-        logger.info("Journal updated: \(journalEntries.count) entries")
+        let withSentinel = journalEntries.filter { $0.contentHash == needsUploadSentinel }.count
+        logger.info("Journal updated: \(journalEntries.count) entries (\(withSentinel) still pending upload)")
+        if withSentinel > 0 {
+            syncLog("WARN: \(withSentinel) files still have __needs_upload__ sentinel — they will re-upload next cycle")
+        }
 
         return result
     }

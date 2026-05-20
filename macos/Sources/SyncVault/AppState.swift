@@ -455,12 +455,14 @@ class AppState: ObservableObject {
     }
 
     /// Called by FileWatcher when changes are detected.
-    /// Debounced to max once per 10 minutes to avoid excessive scanning.
+    /// FileWatcher already debounces internally (1s of FSEvents quiet time before firing).
+    /// This outer debounce just prevents back-to-back syncs from rapid file drops —
+    /// 30 seconds gives a balance between responsiveness and not hammering the server.
     private var lastSyncTrigger: Date = .distantPast
 
     func onFileChanged() {
         let now = Date()
-        guard now.timeIntervalSince(lastSyncTrigger) > 600 else { return } // 10 min debounce
+        guard now.timeIntervalSince(lastSyncTrigger) > 30 else { return } // 30s debounce
         lastSyncTrigger = now
         Task { await runSync() }
     }
