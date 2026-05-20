@@ -349,6 +349,8 @@ actor SyncEngine {
         // Add all local files that still exist (with current mtime+size).
         // Prefer the DB hash when local is the sentinel — uploads have already updated it.
         // Also prefer remote hash when we have it (matches server's authoritative content_hash).
+        // If hash is still sentinel/empty after all fallbacks, OMIT the entry so next scan
+        // re-evaluates the file (size-match fallback will then write the proper hash).
         for (relPath, localFile) in localFileMap {
             if FileManager.default.fileExists(atPath: localFile.fullPath) {
                 var hash = localFile.contentHash ?? ""
@@ -359,6 +361,8 @@ actor SyncEngine {
                         hash = remoteHash
                     }
                 }
+                // Skip writing entries that would re-trigger the upload loop.
+                if hash == needsUploadSentinel || hash.isEmpty { continue }
                 journalEntries.append((relPath, hash, false, localFile.size, localFile.modifiedAt.timeIntervalSince1970))
             }
         }

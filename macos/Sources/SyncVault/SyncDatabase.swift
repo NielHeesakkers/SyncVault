@@ -107,6 +107,15 @@ class SyncDatabase {
         // Try adding columns — ignore error if they already exist
         _ = try? db.run(syncStates.addColumn(colFileSize, defaultValue: 0))
         _ = try? db.run(syncStates.addColumn(colModTime, defaultValue: 0))
+
+        // One-shot cleanup: nuke stuck __needs_upload__ entries from older versions.
+        // Those caused an infinite re-upload loop because replaceAllStates used to
+        // overwrite real hashes with the scan-time sentinel. Deleting them is safe —
+        // the next scan re-evaluates each file and the size-match fallback in
+        // performFullSync will repopulate journal entries with the server's hash.
+        if let cleaned = try? db.run(syncStates.filter(colContentHash == "__needs_upload__").delete()), cleaned > 0 {
+            dbLogger.info("Migration: cleared \(cleaned) stuck __needs_upload__ journal entries")
+        }
     }
 
     // MARK: - Pending Changes Queue
