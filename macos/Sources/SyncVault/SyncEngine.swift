@@ -1758,6 +1758,10 @@ struct InFlightFile: Identifiable {
     var bytesTransferred: Int64
     var totalBytes: Int64
     var startedAt: Date
+    /// When true, the upload is finished — the UI keeps the row visible briefly
+    /// with a checkmark so the user can actually see fast uploads happen.
+    var isDone: Bool = false
+    var finishedAt: Date? = nil
 }
 
 /// Lifecycle event for one file. Emitted alongside the aggregate SyncProgress

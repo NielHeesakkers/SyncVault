@@ -379,10 +379,13 @@ class AppState: ObservableObject {
     func startSyncLoop() {
         stopSyncLoop()
 
-        // Poll FileProvider on-demand progress every 0.5 seconds
+        // Poll FileProvider on-demand progress every 0.5 seconds.
+        // Same timer also prunes finished items from activeUploads so that fast
+        // uploads stay visible for ~3 seconds with a checkmark before disappearing.
         fpProgressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.checkFileProviderProgress()
+                self?.pruneFinishedUploads()
             }
         }
 
@@ -433,6 +436,21 @@ class AppState: ObservableObject {
         Task {
             try? await Task.sleep(nanoseconds: 300_000_000_000) // 5 min
             await runIntegrityCheck()
+        }
+    }
+
+    /// Remove items from activeUploads that have been marked done for >3 seconds.
+    /// This is what lets fast uploads (sub-second) actually be visible to the user.
+    private func pruneFinishedUploads() {
+        let cutoff = Date().addingTimeInterval(-3.0)
+        let toRemove = activeUploads.compactMap { (key, value) -> String? in
+            if let finished = value.finishedAt, finished < cutoff {
+                return key
+            }
+            return nil
+        }
+        for key in toRemove {
+            activeUploads.removeValue(forKey: key)
         }
     }
 
@@ -903,7 +921,18 @@ class AppState: ObservableObject {
                                     self.activeUploads[relPath] = existing
                                 }
                             case .finished(let relPath):
-                                self.activeUploads.removeValue(forKey: relPath)
+                                // Don't remove immediately — fast uploads (<1s) would
+                                // never be visible. Mark done so the row stays with a
+                                // checkmark, then the pruning timer cleans up after a few
+                                // seconds.
+                                if var existing = self.activeUploads[relPath] {
+                                    existing.isDone = true
+                                    existing.finishedAt = Date()
+                                    if existing.totalBytes > 0 {
+                                        existing.bytesTransferred = existing.totalBytes
+                                    }
+                                    self.activeUploads[relPath] = existing
+                                }
                             }
                         }
 

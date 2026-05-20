@@ -308,9 +308,9 @@ struct MenuBarView: View {
 
             ForEach(visible) { item in
                 HStack(spacing: 8) {
-                    Image(systemName: nowSyncingIcon(for: item))
+                    Image(systemName: item.isDone ? "checkmark.circle.fill" : nowSyncingIcon(for: item))
                         .font(.system(size: 12))
-                        .foregroundColor(.blue)
+                        .foregroundColor(item.isDone ? .green : .blue)
                         .frame(width: 16)
 
                     VStack(alignment: .leading, spacing: 2) {
@@ -318,19 +318,19 @@ struct MenuBarView: View {
                             .font(.system(size: 11))
                             .lineLimit(1)
                             .truncationMode(.middle)
-                            .foregroundColor(.primary)
+                            .foregroundColor(item.isDone ? .secondary : .primary)
 
                         if item.totalBytes > 0 {
                             ProgressView(
                                 value: Double(item.bytesTransferred),
                                 total: Double(max(item.totalBytes, 1))
                             )
-                            .tint(.blue)
+                            .tint(item.isDone ? .green : .blue)
                             .scaleEffect(y: 0.45)
                         }
 
                         HStack(spacing: 0) {
-                            Text(item.action)
+                            Text(item.isDone ? "Done" : item.action)
                                 .foregroundColor(.secondary)
                             if item.totalBytes > 0 {
                                 Text(" · ")
