@@ -1,9 +1,23 @@
 {
-  "version": "2.8.0",
+  "version": "2.9.0",
   "min_version": "1.0",
   "release_date": "2026-04-20",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.8.0/SyncVault-2.8.0.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.9.0/SyncVault-2.9.0.dmg",
   "history": [
+    {
+      "version": "2.9.0",
+      "date": "2026-05-20",
+      "changes": [
+        "Real-streaming delta uploads: no 500 MB Data round-trip in memory on client",
+        "Per-chunk HTTP/2 connection reuse: resumable uploads use shared session",
+        "TeeReader on server: delta reconstruction computed in one disk pass (no re-read)",
+        "SyncTuning constants: all thresholds now named and centralised",
+        "Batched FSEvents SQLite inserts: burst of paths = 1 transaction, not N",
+        "tryRun DB helper: silent write failures now logged instead of swallowed",
+        "ensureTarParents N+1 removed: CreateFile already idempotent for dirs",
+        "Dead code removed: markInitialScanComplete, double pendingChangeCount"
+      ]
+    },
     {
       "version": "2.8.0",
       "date": "2026-04-20",

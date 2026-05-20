@@ -1,3 +1,13 @@
+## [2.9.0] — 2026-05-20
+- Real-streaming delta: no 500 MB Data round-trip on client; multipart body streamed from disk
+- Per-chunk HTTP/2 reuse: resumable uploads now use shared URLSession (not per-chunk ephemeral)
+- Server TeeReader: delta reconstruction + block signatures computed in 1 disk pass (was 2)
+- SyncTuning enum: all tunable thresholds in one place (10 MB parallel, 100 MB resumable, etc.)
+- Batched FSEvents inserts: burst of paths = 1 SQLite transaction instead of N autocommits
+- tryRun DB helper: silent DB write failures now logged instead of swallowed
+- ensureTarParents N+1 removed: CreateFile is already idempotent for directories
+- Dead code cleanup: markInitialScanComplete(), double pendingChangeCount() call, _ = remoteFileID
+
 ## [2.8.0] — 2026-04-20
 - Parallel uploads: up to 4× concurrent for files <10 MB (Documents, photos, source trees)
 - Tar-batch upload: 10-30× faster for directories with 20+ small files (1 HTTP request instead of N)
