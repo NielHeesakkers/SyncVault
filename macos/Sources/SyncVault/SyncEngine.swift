@@ -347,22 +347,27 @@ actor SyncEngine {
         var journalEntries: [(relativePath: String, contentHash: String, isDir: Bool, fileSize: Int64, modTime: Double)] = []
 
         // Add all local files that still exist (with current mtime+size).
-        // Prefer the DB hash when local is the sentinel — uploads have already updated it.
-        // Also prefer remote hash when we have it (matches server's authoritative content_hash).
-        // If hash is still sentinel/empty after all fallbacks, OMIT the entry so next scan
-        // re-evaluates the file (size-match fallback will then write the proper hash).
+        //
+        // Priority order for the hash:
+        //  1. DB hash (postSyncJournal) — uploads just wrote the authoritative server hash here.
+        //     This wins over the scan-time hash because the scan ran BEFORE the upload, so its
+        //     hash can be stale (e.g. it was a cache-hit hash that didn't match the server, which
+        //     is why the file was uploaded in the first place).
+        //  2. Scan-time hash (localFile.contentHash) — only when the DB has nothing fresh.
+        //  3. Remote hash (server's content_hash) — when neither DB nor scan have anything.
+        //  4. Otherwise, OMIT the entry so next scan re-evaluates and the size-match fallback
+        //     can populate it correctly.
         for (relPath, localFile) in localFileMap {
             if FileManager.default.fileExists(atPath: localFile.fullPath) {
-                var hash = localFile.contentHash ?? ""
-                if hash == needsUploadSentinel || hash.isEmpty {
-                    if let dbHash = postSyncJournal[relPath]?.contentHash, !dbHash.isEmpty, dbHash != needsUploadSentinel {
-                        hash = dbHash
-                    } else if let remoteHash = remoteByPath[relPath]?.contentHash, !remoteHash.isEmpty {
-                        hash = remoteHash
-                    }
+                var hash = ""
+                if let dbHash = postSyncJournal[relPath]?.contentHash, !dbHash.isEmpty, dbHash != needsUploadSentinel {
+                    hash = dbHash
+                } else if let scanHash = localFile.contentHash, !scanHash.isEmpty, scanHash != needsUploadSentinel {
+                    hash = scanHash
+                } else if let remoteHash = remoteByPath[relPath]?.contentHash, !remoteHash.isEmpty {
+                    hash = remoteHash
                 }
-                // Skip writing entries that would re-trigger the upload loop.
-                if hash == needsUploadSentinel || hash.isEmpty { continue }
+                if hash.isEmpty { continue }
                 journalEntries.append((relPath, hash, false, localFile.size, localFile.modifiedAt.timeIntervalSince1970))
             }
         }
