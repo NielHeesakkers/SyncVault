@@ -342,10 +342,23 @@ actor APIClient {
 
     /// Upload file via raw PUT with per-byte progress reporting.
     func uploadFileStreaming(fileURL: URL, parentID: String, onProgress: ((Int64, Int64) -> Void)? = nil) async throws -> ServerFile {
-        let filename = fileURL.lastPathComponent.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? fileURL.lastPathComponent
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? 0
 
-        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/put?parent_id=\(parentID)&filename=\(filename)")!)
+        // Build URL via URLComponents so query values are encoded correctly. The previous
+        // approach used urlQueryAllowed which does NOT escape `+`, and `+` in a query string
+        // is decoded server-side as a literal space — meaning "Wyber+EndCard.zip" was being
+        // stored on the server as "Wyber EndCard.zip", and every subsequent scan saw the
+        // local file as missing from the server and re-uploaded it (infinite re-upload loop).
+        var components = URLComponents(string: "\(baseURL)/api/files/put")!
+        components.queryItems = [
+            URLQueryItem(name: "parent_id", value: parentID),
+            URLQueryItem(name: "filename", value: fileURL.lastPathComponent),
+        ]
+        // URLQueryItem encodes most reserved characters but not `+` — explicitly handle it
+        // so the server's query parser interprets it as a literal `+`, not a space.
+        components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+
+        var request = URLRequest(url: components.url!)
         request.httpMethod = "PUT"
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         if let token = accessToken {
