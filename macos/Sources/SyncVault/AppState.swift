@@ -37,6 +37,11 @@ class AppState: ObservableObject {
     @Published var isPaused = false
     @Published var syncProgress: SyncProgress?
     @Published var activeSyncTaskName: String?
+
+    /// Live dictionary of files currently being uploaded/downloaded, keyed by relativePath.
+    /// SyncEngine emits InFlightEvent through the progress callback; we mutate this map
+    /// so the menu bar "Now Syncing" section can show all parallel work at once.
+    @Published var activeUploads: [String: InFlightFile] = [:]
     @Published var fpProgress: String?  // FileProvider on-demand progress (e.g. "Uploading photo.jpg")
     @Published var fpSpeed: Double = 0  // bytes per second
     private var fpLastBytes: Int64 = 0
@@ -763,12 +768,14 @@ class AppState: ObservableObject {
         isSyncing = true
         syncPending = false
         syncProgress = nil
+        activeUploads = [:]  // Reset live in-flight map
         lastError = nil  // Clear any stale error — sync is starting
         speedHistory = []  // Clear speed history for fresh sync cycle
         startSpeedTracking()
         defer {
             isSyncing = false
             syncProgress = nil
+            activeUploads = [:]
             activeSyncTaskName = nil
             stopSpeedTracking()
             // Re-trigger if changes came in during sync
@@ -875,21 +882,39 @@ class AppState: ObservableObject {
                 let taskBasePath = task.localPath
                 let result = try await engine.syncTask(task, changedPaths: changedPaths, lastSyncDate: effectiveLastSync) { [weak self] progress in
                     await MainActor.run { [weak self] in
+                        guard let self else { return }
                         // Clear progress when all files in this task are done
                         if progress.filesCompleted >= progress.filesTotal && progress.filesTotal > 0 {
-                            self?.syncProgress = nil
+                            self.syncProgress = nil
                         } else {
-                            self?.syncProgress = progress
+                            self.syncProgress = progress
                         }
-                        self?.syncQueue = progress.pendingFiles
+                        self.syncQueue = progress.pendingFiles
+
+                        // Per-file lifecycle event → maintain the live activeUploads map
+                        if let evt = progress.inFlightEvent {
+                            switch evt {
+                            case .started(let f):
+                                self.activeUploads[f.relativePath] = f
+                            case .progress(let relPath, let bytes, let total):
+                                if var existing = self.activeUploads[relPath] {
+                                    existing.bytesTransferred = bytes
+                                    if total > 0 { existing.totalBytes = total }
+                                    self.activeUploads[relPath] = existing
+                                }
+                            case .finished(let relPath):
+                                self.activeUploads.removeValue(forKey: relPath)
+                            }
+                        }
+
                         // Real-time: add completed files to recently synced immediately
                         if var item = progress.completedItem {
                             item.taskName = taskName
                             let relPath = item.relativePath.isEmpty ? item.filename : item.relativePath
                             item.localPath = (taskBasePath as NSString).appendingPathComponent(relPath)
-                            self?.recentActivity.insert(item, at: 0)
-                            if (self?.recentActivity.count ?? 0) > 20 {
-                                self?.recentActivity = Array(self!.recentActivity.prefix(20))
+                            self.recentActivity.insert(item, at: 0)
+                            if self.recentActivity.count > 20 {
+                                self.recentActivity = Array(self.recentActivity.prefix(20))
                             }
                         }
                     }

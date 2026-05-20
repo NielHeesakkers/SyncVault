@@ -608,13 +608,19 @@ actor SyncEngine {
 
                             Self.markSyncingFile(path)
 
+                            let started = InFlightFile(
+                                filename: displayName, relativePath: relativePath,
+                                action: "Uploading", bytesTransferred: 0, totalBytes: fileSize,
+                                startedAt: Date()
+                            )
                             await onProgress(SyncProgress(
                                 currentFile: displayName, action: "Uploading",
                                 bytesTransferred: curBytes, totalBytes: totalBytesToUpload,
                                 filesCompleted: curCompleted, filesTotal: total,
                                 bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
                                 pendingFiles: pending,
-                                currentFileBytes: 0, currentFileTotal: fileSize
+                                currentFileBytes: 0, currentFileTotal: fileSize,
+                                inFlightEvent: .started(started)
                             ))
 
                             // Ensure parent directories exist on server
@@ -727,7 +733,8 @@ actor SyncEngine {
                                 filesCompleted: Int(await completed.value), filesTotal: total,
                                 bytesPerSecond: fileSpeed,
                                 pendingFiles: pending,
-                                currentFileBytes: fileSize, currentFileTotal: fileSize
+                                currentFileBytes: fileSize, currentFileTotal: fileSize,
+                                inFlightEvent: .finished(relativePath: relativePath)
                             ))
 
                             logger.info("Uploaded: \(relativePath) (\(fileSize) bytes, hash: \(uploadedHash))")
@@ -908,17 +915,57 @@ actor SyncEngine {
                     if case .upload(_, let rp, _) = $0 { return rp }
                     return nil
                 }
+                let dirLabel = dir.isEmpty ? "<root>" : dir
+                let batchKey = "__tar-batch__/\(dirLabel)"
+                let batchDisplay = "Batch: \(relPaths.count) files in \(dirLabel)"
+
+                // Sum batch size so UI can show total bytes
+                var batchBytes: Int64 = 0
+                for rp in relPaths {
+                    let p = (task.localPath as NSString).appendingPathComponent(rp)
+                    batchBytes += (try? FileManager.default.attributesOfItem(atPath: p)[.size] as? Int64) ?? 0
+                }
+
+                // Announce: batch entered the in-flight pool as one virtual item.
+                let batchStart = Date()
+                let batchInFlight = InFlightFile(
+                    filename: batchDisplay, relativePath: batchKey,
+                    action: "Tar-batch", bytesTransferred: 0, totalBytes: batchBytes,
+                    startedAt: batchStart
+                )
+                await onProgress(SyncProgress(
+                    currentFile: batchDisplay, action: "Tar-batch",
+                    bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
+                    filesCompleted: Int(await completed.value), filesTotal: total,
+                    bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
+                    pendingFiles: [],
+                    currentFileBytes: 0, currentFileTotal: batchBytes,
+                    inFlightEvent: .started(batchInFlight)
+                ))
+
                 do {
-                    syncLog("Tar-batch: \(relPaths.count) files in \(dir.isEmpty ? "<root>" : dir)")
+                    syncLog("Tar-batch: \(relPaths.count) files in \(dirLabel)")
                     let tarURL = try Self.buildTarArchive(baseDir: task.localPath, relativePaths: relPaths)
                     defer { try? FileManager.default.removeItem(at: tarURL) }
+
+                    // Progress: tar archive built — half-way through the batch as visual marker.
+                    await onProgress(SyncProgress(
+                        currentFile: batchDisplay, action: "Tar-batch",
+                        bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
+                        filesCompleted: Int(await completed.value), filesTotal: total,
+                        bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
+                        pendingFiles: [],
+                        currentFileBytes: batchBytes / 4, currentFileTotal: batchBytes,
+                        inFlightEvent: .progress(relativePath: batchKey, bytes: batchBytes / 4, total: batchBytes)
+                    ))
 
                     let parentID = try await self.ensureRemoteDirectory(dir, rootID: task.remoteFolderID)
                     let batchResult = try await self.apiClient.uploadTarBatch(tarFileURL: tarURL, parentID: parentID)
 
                     // Record successes + failures in the journal
                     var tarUploadedCount = 0
-                    for entry in batchResult.uploaded {
+                    let totalEntries = batchResult.uploaded.count
+                    for (idx, entry) in batchResult.uploaded.enumerated() {
                         let relPath = entry.relative_path
                         let fullRelPath = dir.isEmpty ? relPath : "\(dir)/\(relPath)"
                         if let serverFile = entry.file {
@@ -940,6 +987,22 @@ actor SyncEngine {
                             let item = ActivityItem(filename: (relPath as NSString).lastPathComponent, action: "uploaded", timestamp: Date(), relativePath: fullRelPath)
                             result.fileActivity.append(item)
                             tarUploadedCount += 1
+
+                            // Emit completedItem so each file pops into Recently Changed —
+                            // gives the user real per-file feedback for a batched upload.
+                            await onProgress(SyncProgress(
+                                currentFile: item.filename, action: "Uploaded",
+                                bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
+                                filesCompleted: Int(await completed.value), filesTotal: total,
+                                bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
+                                pendingFiles: [],
+                                completedItem: item,
+                                inFlightEvent: .progress(
+                                    relativePath: batchKey,
+                                    bytes: Int64(Double(batchBytes) * Double(idx + 1) / Double(totalEntries)),
+                                    total: batchBytes
+                                )
+                            ))
                         } else if let err = entry.error {
                             self.db.markFileFailed(taskID: task.id.uuidString, relativePath: fullRelPath, error: err)
                             result.errors += 1
@@ -948,9 +1011,19 @@ actor SyncEngine {
                     }
                     syncLog("Tar-batch uploaded \(tarUploadedCount)/\(relPaths.count) files in one request")
                 } catch {
-                    syncLog("Tar-batch failed for \(dir): \(error.localizedDescription), falling back to parallel uploads")
+                    syncLog("Tar-batch failed for \(dirLabel): \(error.localizedDescription), falling back to parallel uploads")
                     // Don't mark handled; fall through to parallel upload below
                 }
+
+                // Announce: batch left the in-flight pool.
+                await onProgress(SyncProgress(
+                    currentFile: batchDisplay, action: "Batch done",
+                    bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
+                    filesCompleted: Int(await completed.value), filesTotal: total,
+                    bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
+                    pendingFiles: [],
+                    inFlightEvent: .finished(relativePath: batchKey)
+                ))
             }
 
             // Remove tar-handled uploads from parallelUploads
@@ -1057,21 +1130,40 @@ actor SyncEngine {
 
             var uploadedHash = ""
 
-            // Small files (<10MB) rarely benefit from delta sync since there's not much to save,
-            // and delta has overhead. Use streaming upload directly.
             let uploadStart = Date()
-            // Small-file progress: single "Uploading" + "Uploaded" update per file (not per-byte)
-            // to keep the UI legible when multiple uploads are in flight.
+
+            // Announce: file entered the in-flight pool. UI shows it next to other concurrent uploads.
+            let started = InFlightFile(
+                filename: displayName, relativePath: relativePath,
+                action: "Uploading", bytesTransferred: 0, totalBytes: fileSize,
+                startedAt: uploadStart
+            )
             await onProgress(SyncProgress(
                 currentFile: displayName, action: "Uploading",
                 bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
                 filesCompleted: Int(await completed.value), filesTotal: total,
                 bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
                 pendingFiles: [],
-                currentFileBytes: 0, currentFileTotal: fileSize
+                currentFileBytes: 0, currentFileTotal: fileSize,
+                inFlightEvent: .started(started)
             ))
 
-            let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID)
+            // Per-byte progress: emit InFlightEvent.progress for the activity list (cheap UI update).
+            let f = try await self.apiClient.uploadFileStreaming(fileURL: fileURL, parentID: parentID) { [weak self] bytesSent, totalBytes in
+                guard let self else { return }
+                Task {
+                    await onProgress(SyncProgress(
+                        currentFile: displayName, action: "Uploading",
+                        bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
+                        filesCompleted: Int(await completed.value), filesTotal: total,
+                        bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
+                        pendingFiles: [],
+                        currentFileBytes: bytesSent, currentFileTotal: totalBytes,
+                        inFlightEvent: .progress(relativePath: relativePath, bytes: bytesSent, total: totalBytes)
+                    ))
+                    _ = self // silence unused-self warning
+                }
+            }
             uploadedHash = f.contentHash ?? ""
             let uploadDuration = Date().timeIntervalSince(uploadStart)
             let speed = Double(fileSize) / max(uploadDuration, 0.001)
@@ -1087,12 +1179,37 @@ actor SyncEngine {
             try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: uploadedHash, isDir: false, fileSize: currentSize, modTime: currentMtime)
             self.db.clearFileFailure(taskID: task.id.uuidString, relativePath: relativePath) // reset retry count on success
             await self.markUploaded(relativePath)
+
+            // Announce: file left the in-flight pool.
+            await onProgress(SyncProgress(
+                currentFile: displayName, action: "Uploaded",
+                bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
+                filesCompleted: Int(await completed.value), filesTotal: total,
+                bytesPerSecond: Self.speed(bytes: await bytesTransferred.value, since: start),
+                pendingFiles: [],
+                currentFileBytes: fileSize, currentFileTotal: fileSize,
+                inFlightEvent: .finished(relativePath: relativePath)
+            ))
             return .uploaded(displayName, relativePath)
         } catch let error as APIError where error == .unauthorized {
+            await onProgress(SyncProgress(
+                currentFile: displayName, action: "Failed",
+                bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
+                filesCompleted: Int(await completed.value), filesTotal: total,
+                bytesPerSecond: 0, pendingFiles: [],
+                inFlightEvent: .finished(relativePath: relativePath)
+            ))
             return .authFailed
         } catch {
             logger.info("Parallel upload failed \(relativePath): \(error)")
             self.db.markFileFailed(taskID: task.id.uuidString, relativePath: relativePath, error: "\(error)")
+            await onProgress(SyncProgress(
+                currentFile: displayName, action: "Failed",
+                bytesTransferred: await bytesUploaded.value, totalBytes: totalBytesToUpload,
+                filesCompleted: Int(await completed.value), filesTotal: total,
+                bytesPerSecond: 0, pendingFiles: [],
+                inFlightEvent: .finished(relativePath: relativePath)
+            ))
             return .error
         }
     }
@@ -1630,6 +1747,27 @@ struct LocalFileInfo {
     var deletedLocally: Bool = false
 }
 
+/// Per-file progress snapshot for a single in-flight upload/download.
+/// AppState aggregates these into a live "Now Syncing" list — the UI shows
+/// parallel uploads + tar-batch progress side-by-side instead of just one file.
+struct InFlightFile: Identifiable {
+    var id: String { relativePath }
+    let filename: String
+    let relativePath: String
+    let action: String              // "Uploading", "Downloading", "Tar-batch"
+    var bytesTransferred: Int64
+    var totalBytes: Int64
+    var startedAt: Date
+}
+
+/// Lifecycle event for one file. Emitted alongside the aggregate SyncProgress
+/// so AppState can maintain the activeUploads dictionary in real time.
+enum InFlightEvent {
+    case started(InFlightFile)
+    case progress(relativePath: String, bytes: Int64, total: Int64)
+    case finished(relativePath: String)
+}
+
 struct SyncProgress {
     var currentFile: String
     var action: String
@@ -1642,6 +1780,7 @@ struct SyncProgress {
     var completedItem: ActivityItem?  // Set when a file just finished
     var currentFileBytes: Int64 = 0   // Bytes uploaded for current file
     var currentFileTotal: Int64 = 0   // Total size of current file
+    var inFlightEvent: InFlightEvent? = nil  // Per-file lifecycle event for activity stream
 }
 
 struct SyncResult {

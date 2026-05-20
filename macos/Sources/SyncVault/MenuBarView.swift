@@ -31,6 +31,12 @@ struct MenuBarView: View {
             subtleDivider
 
             if appState.isConnected {
+                // MARK: - Now Syncing (live list of in-flight uploads)
+                if !appState.activeUploads.isEmpty {
+                    nowSyncingSection
+                    subtleDivider
+                }
+
                 // MARK: - Recently Changed
                 if !appState.recentActivity.isEmpty {
                     recentlyChangedSection
@@ -286,6 +292,77 @@ struct MenuBarView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(minHeight: 90, alignment: .top)
+    }
+
+    // MARK: - Now Syncing (live in-flight uploads)
+
+    private var nowSyncingSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            menuSectionHeader("Now Syncing — \(appState.activeUploads.count) active")
+
+            // Sort by start time so the order is stable as items finish/appear.
+            // Cap at 5 visible to keep the menu bar small; show "+N more" tail.
+            let items = appState.activeUploads.values.sorted { $0.startedAt < $1.startedAt }
+            let visible = Array(items.prefix(5))
+            let overflow = items.count - visible.count
+
+            ForEach(visible) { item in
+                HStack(spacing: 8) {
+                    Image(systemName: nowSyncingIcon(for: item))
+                        .font(.system(size: 12))
+                        .foregroundColor(.blue)
+                        .frame(width: 16)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.filename)
+                            .font(.system(size: 11))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .foregroundColor(.primary)
+
+                        if item.totalBytes > 0 {
+                            ProgressView(
+                                value: Double(item.bytesTransferred),
+                                total: Double(max(item.totalBytes, 1))
+                            )
+                            .tint(.blue)
+                            .scaleEffect(y: 0.45)
+                        }
+
+                        HStack(spacing: 0) {
+                            Text(item.action)
+                                .foregroundColor(.secondary)
+                            if item.totalBytes > 0 {
+                                Text(" · ")
+                                    .foregroundColor(Color(white: 0.35))
+                                Text("\(formatBytes(item.bytesTransferred)) / \(formatBytes(item.totalBytes))")
+                                    .foregroundColor(Color(white: 0.4))
+                            }
+                        }
+                        .font(.system(size: 9, design: .monospaced))
+                    }
+
+                    Spacer()
+                }
+                .padding(.vertical, 2)
+            }
+
+            if overflow > 0 {
+                Text("+ \(overflow) more")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .padding(.leading, 24)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
+    /// SF Symbol icon for an in-flight item — folder icon for tar-batch, file icon for normal.
+    private func nowSyncingIcon(for item: InFlightFile) -> String {
+        if item.action == "Tar-batch" { return "shippingbox.fill" }
+        if item.action == "Downloading" { return "arrow.down.circle" }
+        return "arrow.up.circle"
     }
 
     // MARK: - Recently Changed
