@@ -388,8 +388,9 @@ class AppState: ObservableObject {
             let watcher = FileWatcher(path: task.localPath)
             let taskID = task.id.uuidString
             watcher.onEvents = { [weak self] paths in
-                guard let db = self?.syncDatabase else { return }
-                for p in paths { db.enqueueChange(taskID: taskID, path: p) }
+                // Batched in one SQLite transaction — bursts of hundreds of events
+                // don't block the FSEvents queue on per-row autocommits.
+                self?.syncDatabase?.enqueueChanges(taskID: taskID, paths: paths)
             }
             watcher.onChange = { [weak self] in
                 self?.onFileChanged()
@@ -400,9 +401,12 @@ class AppState: ObservableObject {
 
         // Crash recovery: if pending_changes has entries from a previous session,
         // trigger an immediate sync to catch up.
-        if let db = syncDatabase, db.pendingChangeCount() > 0 {
-            logger.info("Crash recovery: \(db.pendingChangeCount()) pending changes from previous session")
-            Task { await runSync() }
+        if let db = syncDatabase {
+            let pending = db.pendingChangeCount()
+            if pending > 0 {
+                logger.info("Crash recovery: \(pending) pending changes from previous session")
+                Task { await runSync() }
+            }
         }
 
         // 4-hour fallback timer (FSEvents handles real-time changes, this catches anything missed)

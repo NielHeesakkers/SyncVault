@@ -2,6 +2,8 @@ package rest
 
 import (
 	"archive/tar"
+	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -26,8 +28,6 @@ func (s *Server) handleBatchTar(w http.ResponseWriter, r *http.Request) {
 	claims := auth.GetClaims(r.Context())
 	rootParentID := r.URL.Query().Get("parent_id")
 
-	tr := tar.NewReader(r.Body)
-
 	type tarResult struct {
 		RelativePath string       `json:"relative_path"`
 		File         fileResponse `json:"file,omitempty"`
@@ -38,10 +38,9 @@ func (s *Server) handleBatchTar(w http.ResponseWriter, r *http.Request) {
 	// Cache parent folder IDs so we don't hit the DB for every file in the same subdir
 	folderCache := map[string]string{"": rootParentID}
 
-	// Limit overall body size: 2 GB absolute cap to prevent DoS
+	// 2 GB absolute body cap prevents DoS
 	const maxTarSize int64 = 2 << 30
-	limitedBody := http.MaxBytesReader(w, r.Body, maxTarSize)
-	tr = tar.NewReader(limitedBody)
+	tr := tar.NewReader(http.MaxBytesReader(w, r.Body, maxTarSize))
 
 	for {
 		hdr, err := tr.Next()
@@ -86,8 +85,8 @@ func (s *Server) handleBatchTar(w http.ResponseWriter, r *http.Request) {
 		peek := peekBuf[:n]
 		mimeType := http.DetectContentType(peek)
 
-		// Prepend peeked bytes to the remaining tar content
-		combined := io.MultiReader(strings.NewReader(string(peek)), tr)
+		// Prepend peeked bytes to the remaining tar content (no extra copy via string conversion)
+		combined := io.MultiReader(bytes.NewReader(peek), tr)
 
 		contentHash, size, putErr := s.store.PutDirect(combined)
 		if putErr != nil {
@@ -141,30 +140,14 @@ func (s *Server) ensureTarParents(dirPath, rootParentID, userID string, cache ma
 			currentParent = cached
 			continue
 		}
-		// Create or find
+		// CreateFile is idempotent for directories: returns the existing dir if one already
+		// exists, or creates a new one. No ListChildren fallback needed.
 		f, err := s.db.CreateFile(currentParent, userID, part, true, 0, "", "")
 		if err != nil {
-			// Probably already exists — try to find it via ListChildren
-			children, listErr := s.db.ListChildren(currentParent)
-			if listErr != nil {
-				return "", err
-			}
-			found := false
-			for _, child := range children {
-				if child.Name == part && child.IsDir {
-					currentParent = child.ID
-					cache[currentPath] = child.ID
-					found = true
-					break
-				}
-			}
-			if !found {
-				return "", err
-			}
-		} else {
-			currentParent = f.ID
-			cache[currentPath] = f.ID
+			return "", fmt.Errorf("create dir %q: %w", currentPath, err)
 		}
+		currentParent = f.ID
+		cache[currentPath] = f.ID
 	}
 	return currentParent, nil
 }

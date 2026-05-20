@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/NielHeesakkers/SyncVault/internal/auth"
@@ -372,10 +373,29 @@ func (s *Server) handleDeltaUpload(w http.ResponseWriter, r *http.Request) {
 		errCh <- nil
 	}()
 
+	// Tee the reconstructed stream into a parallel signature-compute pipeline so we
+	// only read the data once: PutDirect hashes/stores it, computeBlockSignaturesFromReader
+	// fingerprints it. Previously we did GetDirect after storage to re-read the file just
+	// for signatures — doubling disk reads on every delta upload.
+	sigPR, sigPW := io.Pipe()
+	type sigResult struct {
+		sigs []blockSignature
+		err  error
+	}
+	sigCh := make(chan sigResult, 1)
+	go func() {
+		sigs, err := computeBlockSignaturesFromReader(sigPR)
+		sigCh <- sigResult{sigs: sigs, err: err}
+	}()
+	teedReader := io.TeeReader(pr, sigPW)
+
 	// Store streamed reconstruction. PutDirect hashes + writes atomically.
-	contentHash, size, err := s.store.PutDirect(pr)
+	contentHash, size, err := s.store.PutDirect(teedReader)
+	// Close the signature pipe regardless of PutDirect outcome so the sig goroutine exits.
+	_ = sigPW.Close()
 	if err != nil {
 		pr.CloseWithError(err)
+		<-sigCh // drain to avoid goroutine leak
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not store reconstructed file: " + err.Error()})
 		return
 	}
@@ -383,6 +403,7 @@ func (s *Server) handleDeltaUpload(w http.ResponseWriter, r *http.Request) {
 	select {
 	case rerr := <-errCh:
 		if rerr != nil {
+			<-sigCh
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": rerr.Error()})
 			return
 		}
@@ -391,6 +412,7 @@ func (s *Server) handleDeltaUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Update file metadata.
 	if err := s.db.UpdateFileContent(id, contentHash, size); err != nil {
+		<-sigCh
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update file metadata"})
 		return
 	}
@@ -402,30 +424,19 @@ func (s *Server) handleDeltaUpload(w http.ResponseWriter, r *http.Request) {
 		nextVersionNum = latestVersion.VersionNum + 1
 	}
 	if _, err := s.db.CreateVersion(id, nextVersionNum, contentHash, "", size, claims.UserID); err != nil {
+		<-sigCh
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create version"})
 		return
 	}
 
-	// Compute and cache block signatures for the new version via streaming pipe
-	// (avoids loading the reconstructed file into memory a second time).
-	sigPR, sigPW := io.Pipe()
-	sigCh := make(chan []blockSignature, 1)
-	go func() {
-		sigs, err := computeBlockSignaturesFromReader(sigPR)
-		if err != nil {
-			sigCh <- nil
-			return
-		}
-		sigCh <- sigs
-	}()
-	if err := s.store.GetDirect(contentHash, sigPW); err != nil {
-		sigPW.CloseWithError(err)
-	} else {
-		sigPW.Close()
-	}
-	if newSigs := <-sigCh; newSigs != nil {
-		dbBlocks := make([]metadata.FileBlock, len(newSigs))
-		for i, sig := range newSigs {
+	// Collect block signatures computed in parallel with the storage write.
+	sigRes := <-sigCh
+	if sigRes.err != nil {
+		// Non-fatal: signatures are a cache for the next delta. Log + continue.
+		log.Printf("delta: signature computation failed for %s: %v", contentHash, sigRes.err)
+	} else if len(sigRes.sigs) > 0 {
+		dbBlocks := make([]metadata.FileBlock, len(sigRes.sigs))
+		for i, sig := range sigRes.sigs {
 			dbBlocks[i] = metadata.FileBlock{
 				FileID:     id,
 				VersionNum: nextVersionNum,
@@ -434,7 +445,9 @@ func (s *Server) handleDeltaUpload(w http.ResponseWriter, r *http.Request) {
 				StrongHash: sig.StrongHash,
 			}
 		}
-		_ = s.db.SaveFileBlocks(dbBlocks)
+		if err := s.db.SaveFileBlocks(dbBlocks); err != nil {
+			log.Printf("delta: SaveFileBlocks failed for %s: %v", contentHash, err)
+		}
 	}
 
 	updatedFile, err := s.db.GetFileByID(id)

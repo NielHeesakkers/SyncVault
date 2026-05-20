@@ -92,13 +92,6 @@ final class FileWatcher {
         return false
     }
 
-    /// Mark that initial scan is complete (future calls return incremental changes).
-    func markInitialScanComplete() {
-        lock.lock()
-        defer { lock.unlock() }
-        isInitialScan = false
-    }
-
     private func handleEvents(paths: [String], flags: [FSEventStreamEventFlags]) {
         var relevantPaths: [String] = []
         relevantPaths.reserveCapacity(paths.count)

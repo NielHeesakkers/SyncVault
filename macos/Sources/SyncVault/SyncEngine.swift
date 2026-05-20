@@ -27,6 +27,28 @@ func syncLog(_ msg: String) {
     }
 }
 
+/// Tunable thresholds for the sync engine. Centralised so they're discoverable and
+/// changelog entries can refer to named knobs instead of magic numbers.
+enum SyncTuning {
+    /// Files smaller than this go via the parallel upload path (<10 MB).
+    static let parallelUploadMaxSize: Int64 = 10 * 1024 * 1024
+    /// Files at-or-above this size go via resumable chunked uploads (>=100 MB).
+    static let resumableUploadMinSize: Int64 = 100 * 1024 * 1024
+    /// Delta sync only used when both sides ≥1 MB and ≤500 MB.
+    static let deltaMinFileSize: Int64 = 1_000_000
+    static let deltaMaxFileSize: Int64 = 500_000_000
+    /// If more than this fraction of blocks changed, fall back to full upload.
+    static let deltaFallbackRatio = 0.7
+    /// Tar-batch only triggers for directories with at least this many small files.
+    static let tarBatchMinFiles = 20
+    /// Max concurrent uploads in the parallel phase.
+    static let parallelUploadLimit = 4
+    /// Files modified within this many seconds are skipped (file is likely still being written).
+    static let activeWriteSkipSeconds: TimeInterval = 30
+    /// Per-file upload debounce (don't re-upload the same path within this window).
+    static let recentUploadCooldown: TimeInterval = 300
+}
+
 actor SyncEngine {
     private let apiClient: APIClient
     private let db: SyncDatabase
@@ -533,7 +555,7 @@ actor SyncEngine {
         // - Large uploads (>= 10 MB) → serial (big files already saturate network)
         // - Small uploads (< 10 MB) → parallel with max 4 concurrent
         // Also: filter out files that exceeded their retry budget (permanent failures)
-        let parallelThreshold: Int64 = 10 * 1024 * 1024
+        let parallelThreshold = SyncTuning.parallelUploadMaxSize
         var serialActions: [SyncAction] = []
         var parallelUploads: [SyncAction] = []
         var skippedPermanent = 0
@@ -575,9 +597,9 @@ actor SyncEngine {
                             let fileSize = (attrs[.size] as? Int64) ?? 0
                             let displayName = URL(fileURLWithPath: relativePath).lastPathComponent
 
-                            // Debounce: skip files uploaded in the last 5 minutes
-                            if await self.wasRecentlyUploaded(relativePath, cooldown: 300) {
-                                syncLog("Skipped \(displayName) (uploaded < 5min ago)")
+                            // Debounce: skip files uploaded in the last cooldown window
+                            if await self.wasRecentlyUploaded(relativePath, cooldown: SyncTuning.recentUploadCooldown) {
+                                syncLog("Skipped \(displayName) (uploaded < \(Int(SyncTuning.recentUploadCooldown / 60))min ago)")
                                 await completed.increment()
                                 await bytesUploaded.add(fileSize)
                                 actionResult = .uploaded(displayName, relativePath)
@@ -608,7 +630,7 @@ actor SyncEngine {
                             // and is 1-500MB, try delta upload. Skip for very large files
                             // (server loads entire file in memory for reconstruction).
                             let didDelta: Bool
-                            if let remoteID = remoteFileID, fileSize > 1_000_000 && fileSize < 500_000_000 {
+                            if let remoteID = remoteFileID, fileSize > SyncTuning.deltaMinFileSize && fileSize < SyncTuning.deltaMaxFileSize {
                                 didDelta = true
                                 syncLog("Delta check: \(displayName) (\(fileSize) bytes, remoteID=\(remoteID))")
                                 do {
@@ -631,8 +653,7 @@ actor SyncEngine {
                             } else {
                                 didDelta = false
                                 // Files >= 100 MB go via resumable upload — chunked + resumeable on crash/network failure
-                                let resumableThreshold: Int64 = 100 * 1024 * 1024
-                                if fileSize >= resumableThreshold {
+                                if fileSize >= SyncTuning.resumableUploadMinSize {
                                     syncLog("RESUMABLE UPLOAD START \(displayName) (\(fileSize) bytes)")
                                     let mtime = ((try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate]) as? Date)?.timeIntervalSince1970 ?? 0
                                     let existingID = self.db.getResumableUploadID(taskID: task.id.uuidString, relativePath: relativePath, currentSize: fileSize, currentModTime: mtime)
@@ -881,7 +902,7 @@ actor SyncEngine {
             }
 
             var handledByTar: Set<String> = []
-            for (dir, actions) in byDir where actions.count >= 20 {
+            for (dir, actions) in byDir where actions.count >= SyncTuning.tarBatchMinFiles {
                 // Only batch new-file uploads; existing files may have delta paths
                 let relPaths: [String] = actions.compactMap {
                     if case .upload(_, let rp, _) = $0 { return rp }
@@ -941,7 +962,7 @@ actor SyncEngine {
 
         // Phase 2: Parallel uploads for remaining small files (<10 MB). Up to 4 concurrent.
         if !authFailed && !parallelUploads.isEmpty {
-            let sem = AsyncSemaphore(limit: 4)
+            let sem = AsyncSemaphore(limit: SyncTuning.parallelUploadLimit)
             // Collect results; update state once per completion on this actor.
             try await withThrowingTaskGroup(of: SyncActionResult.self) { group in
                 for action in parallelUploads {
@@ -1010,7 +1031,9 @@ actor SyncEngine {
         start: Date,
         onProgress: @Sendable @escaping (SyncProgress) async -> Void
     ) async -> SyncActionResult {
-        guard case .upload(let path, let relativePath, let remoteFileID) = action else {
+        // remoteFileID isn't used here: the partition logic only routes small new uploads
+        // (<10 MB) into this path. Delta sync against existing files happens in the serial loop.
+        guard case .upload(let path, let relativePath, _) = action else {
             return .error
         }
         let fileURL = URL(fileURLWithPath: path)
@@ -1019,9 +1042,9 @@ actor SyncEngine {
             let attrs = try FileManager.default.attributesOfItem(atPath: path)
             let fileSize = (attrs[.size] as? Int64) ?? 0
 
-            // Debounce: skip files uploaded in the last 5 minutes
-            if await self.wasRecentlyUploaded(relativePath, cooldown: 300) {
-                syncLog("Skipped \(displayName) (uploaded < 5min ago)")
+            // Debounce: skip files uploaded in the last cooldown window
+            if await self.wasRecentlyUploaded(relativePath, cooldown: SyncTuning.recentUploadCooldown) {
+                syncLog("Skipped \(displayName) (uploaded < \(Int(SyncTuning.recentUploadCooldown / 60))min ago)")
                 await completed.increment()
                 await bytesUploaded.add(fileSize)
                 return .uploaded(displayName, relativePath)
@@ -1064,8 +1087,6 @@ actor SyncEngine {
             try? self.db.updateState(taskID: task.id.uuidString, relativePath: relativePath, contentHash: uploadedHash, isDir: false, fileSize: currentSize, modTime: currentMtime)
             self.db.clearFileFailure(taskID: task.id.uuidString, relativePath: relativePath) // reset retry count on success
             await self.markUploaded(relativePath)
-
-            _ = remoteFileID // unused for small files (they go via streaming, not delta)
             return .uploaded(displayName, relativePath)
         } catch let error as APIError where error == .unauthorized {
             return .authFailed
@@ -1170,8 +1191,8 @@ actor SyncEngine {
 
             var hash: String? = nil
             if !isDir {
-                // Skip files being actively written (modified < 30 seconds ago)
-                if Date().timeIntervalSince(modified) < 30 {
+                // Skip files being actively written (modified within the active-write window)
+                if Date().timeIntervalSince(modified) < SyncTuning.activeWriteSkipSeconds {
                     skipCount += 1
                     continue
                 }
@@ -1396,21 +1417,19 @@ actor SyncEngine {
         syncLog("Delta: \(totalBlocks) blocks total, \(reuseCount) reuse, \(changedBlocks) changed (\(newBytesWritten) bytes to send)")
 
         // 4. Fallback: if more than 70% changed, full upload is more efficient
-        if totalBlocks > 0 && Double(changedBlocks) / Double(totalBlocks) > 0.7 {
+        if totalBlocks > 0 && Double(changedBlocks) / Double(totalBlocks) > SyncTuning.deltaFallbackRatio {
             throw NSError(domain: "DeltaSync", code: 2, userInfo: [NSLocalizedDescriptionKey: "Delta too large (\(changedBlocks)/\(totalBlocks) blocks changed), falling back to full upload"])
         }
 
-        // 5. Upload delta. Read the scratch file back as Data only in the happy path.
-        // For very large deltas we could stream it directly — kept as Data here to
-        // preserve the current multipart assembly path in APIClient.uploadDelta.
-        let newBlocksData = try Data(contentsOf: tmpURL, options: .mappedIfSafe)
+        // 5. Upload delta. APIClient.uploadDelta now streams the scratch file directly into
+        // the multipart body — no Data round-trip in the client, no 500 MB in RAM.
         let result = try await apiClient.uploadDelta(
             fileID: remoteFileID,
             reuseBlocks: reuseBlocks,
-            newBlocksData: newBlocksData,
+            newBlocksFileURL: tmpURL,
             newBlockEntries: newBlockEntries
         )
-        committedToUpload = true // keep-tmp defer still cleans up via the early `defer` above
+        committedToUpload = true // tmp file is still cleaned up by the early defer
         return DeltaResult(hash: result.contentHash ?? "", bytesSent: Int64(newBytesWritten))
     }
 

@@ -1,5 +1,8 @@
 import Foundation
 import SQLite
+import os
+
+private let dbLogger = Logger(subsystem: "com.syncvault.app", category: "SyncDatabase")
 
 struct SyncFileState {
     let taskID: String
@@ -108,15 +111,45 @@ class SyncDatabase {
 
     // MARK: - Pending Changes Queue
 
+    /// Run a DB write, logging any error to dbLogger instead of silently swallowing it.
+    /// Used for fire-and-forget writes (event queues, retry counters) where the caller
+    /// can't propagate errors but we still want visibility when something fails.
+    private func tryRun(_ label: String, _ op: () throws -> Void) {
+        do {
+            try op()
+        } catch {
+            dbLogger.error("\(label) failed: \(error.localizedDescription)")
+        }
+    }
+
     /// Enqueue an FSEvents-detected change. Idempotent on (task_id, path).
     func enqueueChange(taskID: String, path: String) {
         let now = Date().timeIntervalSince1970
-        // INSERT OR IGNORE semantics via the unique constraint
-        _ = try? db.run(pendingChanges.insert(or: .ignore,
-            colPendingTaskID <- taskID,
-            colPendingPath <- path,
-            colPendingDetectedAt <- now
-        ))
+        tryRun("enqueueChange") {
+            try db.run(pendingChanges.insert(or: .ignore,
+                colPendingTaskID <- taskID,
+                colPendingPath <- path,
+                colPendingDetectedAt <- now
+            ))
+        }
+    }
+
+    /// Batch-enqueue multiple FSEvents paths in a single transaction. Avoids one
+    /// autocommit per row when FSEvents reports bursts of hundreds of paths.
+    func enqueueChanges(taskID: String, paths: [String]) {
+        guard !paths.isEmpty else { return }
+        let now = Date().timeIntervalSince1970
+        tryRun("enqueueChanges(\(paths.count))") {
+            try db.transaction {
+                for p in paths {
+                    try db.run(pendingChanges.insert(or: .ignore,
+                        colPendingTaskID <- taskID,
+                        colPendingPath <- p,
+                        colPendingDetectedAt <- now
+                    ))
+                }
+            }
+        }
     }
 
     /// Drain all pending changes for a task — returns paths and deletes them atomically.
@@ -243,20 +276,24 @@ class SyncDatabase {
             colRetryTaskID == taskID && colRetryRelPath == relativePath
         )))
         let count = (existing?[colRetryCount] ?? 0) + 1
-        _ = try? db.run(fileRetries.insert(or: .replace,
-            colRetryTaskID <- taskID,
-            colRetryRelPath <- relativePath,
-            colRetryCount <- count,
-            colRetryLastError <- String(error.prefix(500)), // cap error message length
-            colRetryLastAttempt <- now
-        ))
+        tryRun("markFileFailed") {
+            try db.run(fileRetries.insert(or: .replace,
+                colRetryTaskID <- taskID,
+                colRetryRelPath <- relativePath,
+                colRetryCount <- count,
+                colRetryLastError <- String(error.prefix(500)), // cap error message length
+                colRetryLastAttempt <- now
+            ))
+        }
     }
 
     /// Clear retry state for a file (called after a successful sync).
     func clearFileFailure(taskID: String, relativePath: String) {
-        _ = try? db.run(fileRetries.filter(
-            colRetryTaskID == taskID && colRetryRelPath == relativePath
-        ).delete())
+        tryRun("clearFileFailure") {
+            try db.run(fileRetries.filter(
+                colRetryTaskID == taskID && colRetryRelPath == relativePath
+            ).delete())
+        }
     }
 
     /// Should we attempt this file in the current sync cycle?
@@ -296,9 +333,11 @@ class SyncDatabase {
         let storedMtime = row[colResumableModTime]
         if storedSize != currentSize || abs(storedMtime - currentModTime) > 0.001 {
             // File changed since the session was created — drop the stale row.
-            _ = try? db.run(resumableUploads.filter(
-                colResumableTaskID == taskID && colResumableRelPath == relativePath
-            ).delete())
+            tryRun("getResumableUploadID/cleanup-stale") {
+                try db.run(resumableUploads.filter(
+                    colResumableTaskID == taskID && colResumableRelPath == relativePath
+                ).delete())
+            }
             return nil
         }
         return row[colResumableUploadID]
@@ -307,21 +346,25 @@ class SyncDatabase {
     /// Remember a newly-created resumable upload session so it can be resumed after a crash.
     func saveResumableUploadID(taskID: String, relativePath: String, uploadID: String, fileSize: Int64, modTime: Double) {
         let now = Date().timeIntervalSince1970
-        _ = try? db.run(resumableUploads.insert(or: .replace,
-            colResumableTaskID <- taskID,
-            colResumableRelPath <- relativePath,
-            colResumableUploadID <- uploadID,
-            colResumableFileSize <- fileSize,
-            colResumableModTime <- modTime,
-            colResumableCreatedAt <- now
-        ))
+        tryRun("saveResumableUploadID") {
+            try db.run(resumableUploads.insert(or: .replace,
+                colResumableTaskID <- taskID,
+                colResumableRelPath <- relativePath,
+                colResumableUploadID <- uploadID,
+                colResumableFileSize <- fileSize,
+                colResumableModTime <- modTime,
+                colResumableCreatedAt <- now
+            ))
+        }
     }
 
     /// Clear a resumable upload session (called after successful completion).
     func clearResumableUpload(taskID: String, relativePath: String) {
-        _ = try? db.run(resumableUploads.filter(
-            colResumableTaskID == taskID && colResumableRelPath == relativePath
-        ).delete())
+        tryRun("clearResumableUpload") {
+            try db.run(resumableUploads.filter(
+                colResumableTaskID == taskID && colResumableRelPath == relativePath
+            ).delete())
+        }
     }
 
     // MARK: - Legacy compatibility

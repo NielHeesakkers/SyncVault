@@ -309,7 +309,8 @@ actor APIClient {
         return response.existing
     }
 
-    /// Upload a single block directly to storage. Nonisolated for parallel uploads.
+    /// Upload a single block directly to storage. Nonisolated static so parallel block
+    /// uploads can run concurrently without actor serialization.
     nonisolated static func uploadBlock(baseURL: String, token: String, hash: String, data: Data) async throws {
         var lastError: Error?
         for attempt in 1...3 {
@@ -329,8 +330,7 @@ actor APIClient {
             } catch {
                 lastError = error
                 let nsError = error as NSError
-                let retryableCodes = [-1005, -1001, -1009, -1004, -1003] // connection lost, timeout, not connected, can't connect, can't find host
-                if nsError.domain == NSURLErrorDomain && retryableCodes.contains(nsError.code) && attempt < 3 {
+                if nsError.domain == NSURLErrorDomain && Self.retryableURLErrors.contains(nsError.code) && attempt < 3 {
                     try await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
                     continue
                 }
@@ -408,39 +408,28 @@ actor APIClient {
     }
 
     /// Upload a single chunk with retry on transient network errors.
-    /// The chunk body is passed as raw bytes (no multipart wrapper).
-    nonisolated static func uploadChunk(baseURL: String, token: String, uploadID: String, chunkIndex: Int, fileURL: URL, offset: Int64, length: Int) async throws {
+    /// Uses the actor's shared URLSession so HTTP/2 keep-alive + multiplexing apply.
+    /// Reads the chunk slice into RAM and uploads via session.upload(for:from:) — no
+    /// double disk-write to a scratch file.
+    func uploadChunk(uploadID: String, chunkIndex: Int, fileURL: URL, offset: Int64, length: Int) async throws {
+        let url = URL(string: "\(baseURL)/api/uploads/\(uploadID)/chunks/\(chunkIndex)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.timeoutInterval = Self.dynamicUploadTimeout(forBytes: Int64(length))
+
+        // Read the chunk window into Data and upload directly. Max in-flight RAM is one
+        // chunk (server-decided, typically 8-64 MB). For sequential resumable uploads
+        // that's acceptable; for concurrent chunk uploads later we'd want a slice-InputStream.
+        let chunkData = try Self.readSlice(of: fileURL, offset: offset, length: length)
+
         var lastError: Error?
         for attempt in 1...3 {
             do {
-                let url = URL(string: "\(baseURL)/api/uploads/\(uploadID)/chunks/\(chunkIndex)")!
-                var request = URLRequest(url: url)
-                request.httpMethod = "PUT"
-                request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                // Dynamic per-chunk timeout: 60s base + 1s/MB
-                let mbChunk = max(1.0, Double(length) / 1_000_000)
-                request.timeoutInterval = 60 + mbChunk
-
-                // Read the exact chunk window to a temp file → uploadTask(fromFile:).
-                // This streams from disk instead of loading the chunk into memory.
-                let tmpURL = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("syncvault-chunk-\(UUID().uuidString).bin")
-                defer { try? FileManager.default.removeItem(at: tmpURL) }
-
-                let inHandle = try FileHandle(forReadingFrom: fileURL)
-                defer { try? inHandle.close() }
-                try inHandle.seek(toOffset: UInt64(offset))
-                let chunkData = inHandle.readData(ofLength: length)
-                try chunkData.write(to: tmpURL)
-
-                let config = URLSessionConfiguration.ephemeral
-                config.timeoutIntervalForRequest = request.timeoutInterval
-                config.timeoutIntervalForResource = request.timeoutInterval * 2
-                let session = URLSession(configuration: config)
-                defer { session.finishTasksAndInvalidate() }
-
-                let (_, response) = try await session.upload(for: request, fromFile: tmpURL)
+                let (_, response) = try await session.upload(for: request, from: chunkData)
                 guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
                     throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 500)
                 }
@@ -448,8 +437,7 @@ actor APIClient {
             } catch {
                 lastError = error
                 let nsError = error as NSError
-                let retryableCodes = [-1005, -1001, -1009, -1004, -1003, -1017]
-                if nsError.domain == NSURLErrorDomain && retryableCodes.contains(nsError.code) && attempt < 3 {
+                if nsError.domain == NSURLErrorDomain && Self.retryableURLErrors.contains(nsError.code) && attempt < 3 {
                     try await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
                     continue
                 }
@@ -458,6 +446,23 @@ actor APIClient {
         }
         throw lastError!
     }
+
+    /// Read exactly `length` bytes from `fileURL` starting at `offset` into a Data buffer.
+    static func readSlice(of fileURL: URL, offset: Int64, length: Int) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: UInt64(offset))
+        return handle.readData(ofLength: length)
+    }
+
+    /// Standard upload timeout: 60s base + 1s per MB so small files don't wait 1 hour
+    /// and large files don't time out mid-flight.
+    static func dynamicUploadTimeout(forBytes bytes: Int64) -> TimeInterval {
+        return max(60, Double(bytes) / 1_000_000 + 60)
+    }
+
+    /// URLSession error codes that are worth retrying (transient network issues).
+    static let retryableURLErrors: Set<Int> = [-1005, -1001, -1009, -1004, -1003, -1017]
 
     /// Finalize a resumable upload — assembles chunks server-side + creates file record.
     func completeResumableUpload(uploadID: String) async throws -> ServerFile {
@@ -547,8 +552,6 @@ actor APIClient {
             onUploadIDAssigned?(uploadID)
         }
 
-        let token = self.accessToken ?? ""
-        let base = self.baseURL
         // Report already-completed chunks as progress
         var bytesSent: Int64 = Int64(receivedChunks.count) * chunkSize
         if bytesSent > fileSize { bytesSent = fileSize }
@@ -559,8 +562,7 @@ actor APIClient {
             let offset = Int64(i) * chunkSize
             let length = min(Int(chunkSize), Int(fileSize - offset))
             if length <= 0 { break }
-            try await APIClient.uploadChunk(
-                baseURL: base, token: token,
+            try await uploadChunk(
                 uploadID: uploadID, chunkIndex: i,
                 fileURL: fileURL, offset: offset, length: length
             )
@@ -652,14 +654,16 @@ actor APIClient {
         return response
     }
 
-    /// Upload delta — only changed blocks. Much faster than full upload for modified files.
+    /// Upload delta — only changed blocks. Streams the multipart body from disk so a
+    /// 500 MB delta never lands in RAM.
     ///
-    /// Body is streamed from a temp file via URLSession.uploadTask(fromFile:) so we never
-    /// hold more than one 8 MB write buffer in memory, even for hundreds of MB of delta data.
-    func uploadDelta(fileID: String, reuseBlocks: [Int], newBlocksData: Data, newBlockEntries: [(index: Int, offset: Int)]) async throws -> ServerFile {
+    /// `newBlocksFileURL` points to a file containing just the changed blocks (caller
+    /// produces this during the local rolling-hash scan). uploadDelta concatenates
+    /// the multipart headers + that file + the boundary footer into a body temp file
+    /// and posts it via uploadTask(fromFile:).
+    func uploadDelta(fileID: String, reuseBlocks: [Int], newBlocksFileURL: URL, newBlockEntries: [(index: Int, offset: Int)]) async throws -> ServerFile {
         let boundary = UUID().uuidString
 
-        // Build manifest JSON
         struct DeltaManifest: Codable {
             let reuse_blocks: [Int]
             let new_blocks: [NewBlock]
@@ -674,30 +678,38 @@ actor APIClient {
         )
         let manifestJSON = try JSONEncoder().encode(manifest)
 
-        // Stream the multipart body to a temp file to keep memory usage bounded.
-        let tmpURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("syncvault-delta-\(UUID().uuidString).bin")
-        FileManager.default.createFile(atPath: tmpURL.path, contents: nil)
-        defer { try? FileManager.default.removeItem(at: tmpURL) }
+        // Build multipart body in a temp file by streaming the newBlocks file through.
+        let bodyURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("syncvault-delta-body-\(UUID().uuidString).bin")
+        FileManager.default.createFile(atPath: bodyURL.path, contents: nil)
+        defer { try? FileManager.default.removeItem(at: bodyURL) }
 
-        guard let handle = try? FileHandle(forWritingTo: tmpURL) else {
+        guard let out = try? FileHandle(forWritingTo: bodyURL) else {
             throw NSError(domain: "DeltaSync", code: 3, userInfo: [NSLocalizedDescriptionKey: "Could not create temp file for delta body"])
         }
+        defer { try? out.close() }
 
-        let manifestHeader = "--\(boundary)\r\nContent-Disposition: form-data; name=\"manifest\"\r\n\r\n"
-        let dataHeader = "\r\n--\(boundary)\r\nContent-Disposition: form-data; name=\"data\"; filename=\"delta.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n"
-        let footer = "\r\n--\(boundary)--\r\n"
+        let manifestHeader = "--\(boundary)\r\nContent-Disposition: form-data; name=\"manifest\"\r\n\r\n".data(using: .utf8)!
+        let dataHeader = "\r\n--\(boundary)\r\nContent-Disposition: form-data; name=\"data\"; filename=\"delta.bin\"\r\nContent-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!
+        let footer = "\r\n--\(boundary)--\r\n".data(using: .utf8)!
 
-        // Write parts sequentially (streaming) — no intermediate Data accumulation beyond the
-        // newBlocksData we were passed.
-        try handle.write(contentsOf: manifestHeader.data(using: .utf8)!)
-        try handle.write(contentsOf: manifestJSON)
-        try handle.write(contentsOf: dataHeader.data(using: .utf8)!)
-        try handle.write(contentsOf: newBlocksData)
-        try handle.write(contentsOf: footer.data(using: .utf8)!)
-        try handle.close()
+        try out.write(contentsOf: manifestHeader)
+        try out.write(contentsOf: manifestJSON)
+        try out.write(contentsOf: dataHeader)
 
-        let bodySize = (try? FileManager.default.attributesOfItem(atPath: tmpURL.path)[.size] as? Int64) ?? 0
+        // Stream the new-blocks file through in 8 MB chunks — no RAM accumulation.
+        let inHandle = try FileHandle(forReadingFrom: newBlocksFileURL)
+        defer { try? inHandle.close() }
+        let copyBufSize = 8 * 1024 * 1024
+        while true {
+            let chunk = autoreleasepool { inHandle.readData(ofLength: copyBufSize) }
+            if chunk.isEmpty { break }
+            try out.write(contentsOf: chunk)
+        }
+        try out.write(contentsOf: footer)
+        try out.close()
+
+        let bodySize = (try? FileManager.default.attributesOfItem(atPath: bodyURL.path)[.size] as? Int64) ?? 0
 
         var request = URLRequest(url: URL(string: "\(baseURL)/api/files/\(fileID)/delta")!)
         request.httpMethod = "POST"
@@ -705,8 +717,7 @@ actor APIClient {
         if let token = accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        // Dynamic timeout matching the streaming uploader: 60s base + 1s/MB.
-        let timeoutSeconds = max(60, Double(bodySize) / 1_000_000 + 60)
+        let timeoutSeconds = Self.dynamicUploadTimeout(forBytes: bodySize)
         request.timeoutInterval = timeoutSeconds
 
         let delegate = UploadProgressDelegate(totalBytes: bodySize, onProgress: nil)
@@ -716,7 +727,7 @@ actor APIClient {
             config.timeoutIntervalForRequest = timeoutSeconds
             config.timeoutIntervalForResource = 7200
             let uploadSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
-            let task = uploadSession.uploadTask(with: request, fromFile: tmpURL)
+            let task = uploadSession.uploadTask(with: request, fromFile: bodyURL)
             delegate.session = uploadSession
             task.resume()
         }
