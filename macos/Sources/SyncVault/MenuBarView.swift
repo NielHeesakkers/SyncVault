@@ -32,7 +32,9 @@ struct MenuBarView: View {
 
             if appState.isConnected {
                 // MARK: - Now Syncing (live list of in-flight uploads)
-                if !appState.activeUploads.isEmpty {
+                // Only show when there are 2+ active uploads — a single upload is already
+                // displayed in the status header above, so duplicating it here is confusing.
+                if appState.activeUploads.count >= 2 {
                     nowSyncingSection
                     subtleDivider
                 }
