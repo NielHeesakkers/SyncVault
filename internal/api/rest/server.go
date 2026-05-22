@@ -257,7 +257,7 @@ func (s *Server) setupRoutes() {
 	r.NotFound(ServeSPA().ServeHTTP)
 }
 
-const AppVersion = "2.9.0"
+const AppVersion = "3.0.0"
 
 // handleHealth returns a health check with subsystem detail so you can diagnose
 // problems remotely without server-side log access.

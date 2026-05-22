@@ -1,3 +1,16 @@
+## [3.0.0] — 2026-05-22
+- **Real-time push sync (Synology-style)**: server pushes file events via SSE, client no longer polls
+- **In-memory tree cache (rank-versioned)**: tree fetches return in microseconds — auto-invalidated by global change_rank counter
+- **Per-device replay cursor**: reconnecting devices catch up only the events they missed, no full tree refetch
+- **ETag/304 on /api/files/tree**: zero-byte responses when tree unchanged
+- **O(1) tree fingerprint**: replaced expensive recursive CTE with primary-key lookup
+- **Live sync visibility**: "Now Syncing" section shows parallel uploads + progress per file, green check on done
+- **Re-upload loop fix**: replaceAllStates now prefers DB hash over stale scan hash; URL `+` no longer decoded as space
+- **Persistent FSEvents queue**: app crashes during sync no longer drop pending changes
+- **Per-file retry budget**: 3 failed attempts → 1-hour cooldown for that file, rest of sync continues
+- **FSEvents debounce 10min → 30s**: drops trigger sync within seconds, not minutes
+- **Scanning progress visible**: header shows "Fetching remote file list…" → "Scanning local files…" etc
+
 ## [2.9.0] — 2026-05-20
 - Real-streaming delta: no 500 MB Data round-trip on client; multipart body streamed from disk
 - Per-chunk HTTP/2 reuse: resumable uploads now use shared URLSession (not per-chunk ephemeral)

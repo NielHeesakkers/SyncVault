@@ -1,9 +1,26 @@
 {
-  "version": "2.9.0",
+  "version": "3.0.0",
   "min_version": "1.0",
-  "release_date": "2026-04-20",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v2.9.0/SyncVault-2.9.0.dmg",
+  "release_date": "2026-05-22",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.0.0/SyncVault-3.0.0.dmg",
   "history": [
+    {
+      "version": "3.0.0",
+      "date": "2026-05-22",
+      "changes": [
+        "Real-time push sync (Synology-style): server pushes file events via SSE, client no longer polls",
+        "In-memory tree cache (rank-versioned): tree fetches return in microseconds",
+        "Per-device replay cursor: reconnecting devices catch up only missed events",
+        "ETag/304 on /api/files/tree: zero-byte responses when tree unchanged",
+        "O(1) tree fingerprint: replaced expensive recursive CTE with primary-key lookup",
+        "Live sync visibility: 'Now Syncing' section shows parallel uploads + per-file progress",
+        "Re-upload loop fix: replaceAllStates prefers DB hash; URL + no longer decoded as space",
+        "Persistent FSEvents queue: crash-resilient pending changes",
+        "Per-file retry budget: 1 bad file no longer poisons the sync cycle",
+        "FSEvents debounce 10min to 30s: drops trigger sync within seconds",
+        "Scanning progress visible in header during 'Fetching remote file list' phase"
+      ]
+    },
     {
       "version": "2.9.0",
       "date": "2026-05-20",
