@@ -24,6 +24,7 @@ struct ServerFileEvent: Codable {
 /// reconnect loop. `stop()` cancels everything cleanly.
 final class ServerEventStream {
     private let baseURL: String
+    private let deviceID: String
     private let tokenProvider: () async -> String?
     private let onFileEvent: (ServerFileEvent) -> Void
     private let onConnected: (() -> Void)?
@@ -33,11 +34,13 @@ final class ServerEventStream {
 
     init(
         baseURL: String,
+        deviceID: String,
         tokenProvider: @escaping () async -> String?,
         onFileEvent: @escaping (ServerFileEvent) -> Void,
         onConnected: (() -> Void)? = nil
     ) {
         self.baseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        self.deviceID = deviceID
         self.tokenProvider = tokenProvider
         self.onFileEvent = onFileEvent
         self.onConnected = onConnected
@@ -85,7 +88,9 @@ final class ServerEventStream {
             // No token yet — wait, will retry via backoff
             throw URLError(.userAuthenticationRequired)
         }
-        let url = URL(string: "\(baseURL)/api/events")!
+        // device_id query param lets server replay events we missed while offline.
+        let encodedID = deviceID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceID
+        let url = URL(string: "\(baseURL)/api/events?device_id=\(encodedID)")!
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")

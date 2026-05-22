@@ -100,6 +100,16 @@ func Open(path string) (*DB, error) {
 		`ALTER TABLE files ADD COLUMN folder_size INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE users ADD COLUMN avatar_hash TEXT NOT NULL DEFAULT ''`,
+		// Phase C: per-device SSE replay cursor. Lets a reconnecting client
+		// fetch the events it missed while offline instead of doing a full
+		// tree refetch.
+		`CREATE TABLE IF NOT EXISTS device_sync_cursor (
+			device_id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			last_seen_rank INTEGER NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_device_cursor_user ON device_sync_cursor(user_id)`,
 	}
 	for _, m := range migrations {
 		if _, err := rawDB.Exec(m); err != nil {

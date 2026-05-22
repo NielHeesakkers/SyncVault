@@ -462,6 +462,7 @@ class AppState: ObservableObject {
         let baseURL = serverURL
         let stream = ServerEventStream(
             baseURL: baseURL,
+            deviceID: getDeviceID(),
             tokenProvider: { [weak client] in await client?.currentToken() },
             onFileEvent: { [weak self] event in
                 Task { @MainActor [weak self] in

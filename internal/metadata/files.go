@@ -1231,6 +1231,83 @@ func (d *DB) GetTreeFingerprint(folderID, ownerID string, isAdmin bool) (TreeFin
 // kept as a no-op so existing call sites compile without churn.
 func (d *DB) invalidateFingerprintCache() {}
 
+// GetDeviceLastSeenRank returns the last _change_rank value this device saw,
+// or 0 if the device has never connected. Used by the SSE handler to replay
+// events missed while the device was offline.
+func (d *DB) GetDeviceLastSeenRank(deviceID string) (int64, error) {
+	var rank int64
+	err := d.db.QueryRow(
+		`SELECT last_seen_rank FROM device_sync_cursor WHERE device_id = ?`, deviceID,
+	).Scan(&rank)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return rank, nil
+}
+
+// UpdateDeviceLastSeenRank persists the cursor for this device. Idempotent /
+// upsert via INSERT OR REPLACE. Called by the SSE handler on every emitted
+// event so a hard reconnect picks up where we left off.
+func (d *DB) UpdateDeviceLastSeenRank(deviceID, userID string, rank int64) error {
+	_, err := d.db.Exec(
+		`INSERT OR REPLACE INTO device_sync_cursor (device_id, user_id, last_seen_rank, updated_at)
+		 VALUES (?, ?, ?, ?)`,
+		deviceID, userID, rank, time.Now().UTC().Format(time.RFC3339Nano),
+	)
+	return err
+}
+
+// ChangedFile is the minimal payload needed to construct a replay FileEvent
+// during SSE catch-up: identity + change_rank + deletion status. Smaller and
+// faster to fetch than full File rows.
+type ChangedFile struct {
+	ID          string
+	OwnerID     string
+	Name        string
+	IsDir       bool
+	Size        int64
+	ContentHash string
+	Deleted     bool
+	ChangeRank  int64
+}
+
+// ListFilesChangedSinceRank returns files whose change_rank is strictly greater
+// than the given rank, owned by ownerID. Used to replay missed events for a
+// reconnecting device. Ordered ASC so replay is in mutation order.
+func (d *DB) ListFilesChangedSinceRank(sinceRank int64, ownerID string) ([]ChangedFile, error) {
+	rows, err := d.db.Query(
+		`SELECT id, owner_id, name, is_dir, size, content_hash, deleted_at, change_rank
+		 FROM files
+		 WHERE owner_id = ? AND change_rank > ?
+		 ORDER BY change_rank ASC`,
+		ownerID, sinceRank,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("metadata: list files since rank: %w", err)
+	}
+	defer rows.Close()
+	var files []ChangedFile
+	for rows.Next() {
+		var f ChangedFile
+		var isDir int
+		var hash sql.NullString
+		var deletedAt sql.NullString
+		if err := rows.Scan(&f.ID, &f.OwnerID, &f.Name, &isDir, &f.Size, &hash, &deletedAt, &f.ChangeRank); err != nil {
+			return nil, err
+		}
+		f.IsDir = isDir != 0
+		if hash.Valid {
+			f.ContentHash = hash.String
+		}
+		f.Deleted = deletedAt.Valid
+		files = append(files, f)
+	}
+	return files, rows.Err()
+}
+
 // notifyChange fires OnFileChange if registered. Safe with nil callback.
 // Called after every mutation so subscribers (SSE clients) get push events.
 func (d *DB) notifyChange(eventType string, f *File) {
