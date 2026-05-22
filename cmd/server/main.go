@@ -195,6 +195,19 @@ func main() {
 		return nil
 	})
 
+	// Warm the per-folder tree cache in the background so the first client poll
+	// after restart doesn't have to pay the cold-recursive-CTE cost (which on
+	// a 50K-row folder can take many minutes and time out the client). Runs
+	// async — server starts accepting requests immediately; the warmup just
+	// makes those requests fast.
+	go func() {
+		started := time.Now()
+		warmed, total := db.WarmTreeCache()
+		if warmed > 0 {
+			log.Printf("Tree cache warmed: %d folders / %d rows in %s", warmed, total, time.Since(started).Round(time.Millisecond))
+		}
+	}()
+
 	addr := fmt.Sprintf(":%d", cfg.HTTPPort)
 	httpServer := &http.Server{
 		Addr:    addr,

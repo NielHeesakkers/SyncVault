@@ -163,14 +163,28 @@ actor APIClient {
 
     /// Get full recursive file tree under a folder. Uses HTTP ETag / If-None-Match
     /// so syncs against an unchanged remote skip the body transfer entirely.
+    ///
+    /// Uses a dedicated 15-min-timeout session because the FIRST cold fetch on a
+    /// huge folder (e.g. 50K+ rows on the server) can take minutes when the server
+    /// cache is empty (cold start, after restart). Once it succeeds, the result is
+    /// cached locally + the server caches it too; every subsequent fetch is 304
+    /// (sub-second) regardless of tree size.
     func getFileTree(folderID: String) async throws -> [RemoteTreeFile] {
         var request = URLRequest(url: URL(string: "\(baseURL)/api/files/tree?folder_id=\(folderID)")!)
         request.httpMethod = "GET"
+        request.timeoutInterval = 900 // 15 min — covers cold-start CTE on huge trees
         addAuth(&request)
         if let cached = treeCache[folderID] {
             request.setValue(cached.etag, forHTTPHeaderField: "If-None-Match")
         }
-        let (data, response) = try await execute(request)
+
+        // Dedicated session per call so the long timeout doesn't bleed into other requests.
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 900
+        config.timeoutIntervalForResource = 900
+        let session = URLSession(configuration: config)
+        defer { session.finishTasksAndInvalidate() }
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
         }

@@ -1231,6 +1231,45 @@ func (d *DB) GetTreeFingerprint(folderID, ownerID string, isAdmin bool) (TreeFin
 // kept as a no-op so existing call sites compile without churn.
 func (d *DB) invalidateFingerprintCache() {}
 
+// WarmTreeCache pre-populates the in-memory tree cache for every folder that
+// has an associated sync task. Run once at server startup so the FIRST client
+// poll after a restart hits cache instead of paying the cold recursive CTE cost
+// (which on huge trees can take many minutes and exceed client timeouts).
+//
+// Runs serially — concurrent CTEs on the same DB would contend without helping.
+// Returns (warmed, totalRows). Safe to call multiple times.
+func (d *DB) WarmTreeCache() (warmedFolders int, totalRows int) {
+	rows, err := d.db.Query(`
+		SELECT DISTINCT t.folder_id, f.owner_id
+		FROM sync_tasks t
+		JOIN files f ON f.id = t.folder_id
+		WHERE f.deleted_at IS NULL
+	`)
+	if err != nil {
+		return 0, 0
+	}
+	type pair struct{ folderID, ownerID string }
+	var folders []pair
+	for rows.Next() {
+		var p pair
+		if err := rows.Scan(&p.folderID, &p.ownerID); err == nil {
+			folders = append(folders, p)
+		}
+	}
+	rows.Close()
+
+	for _, p := range folders {
+		// isAdmin=false means the per-owner filter is applied, matching the
+		// usual sync-client query shape.
+		entries, err := d.ListFilesRecursive(p.folderID, p.ownerID, false)
+		if err == nil {
+			warmedFolders++
+			totalRows += len(entries)
+		}
+	}
+	return
+}
+
 // GetDeviceLastSeenRank returns the last _change_rank value this device saw,
 // or 0 if the device has never connected. Used by the SSE handler to replay
 // events missed while the device was offline.
