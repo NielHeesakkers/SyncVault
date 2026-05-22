@@ -88,7 +88,10 @@ func (s *Server) setupRoutes() {
 	r.Use(SecurityHeadersMiddleware)
 	r.Use(CORSMiddleware)
 	r.Use(LoggingMiddleware)
-	r.Use(chimiddleware.Compress(6, "application/json", "text/html", "text/css", "text/javascript", "application/javascript", "text/event-stream", "image/svg+xml"))
+	// NOTE: text/event-stream MUST NOT be compressed — gzip buffers bytes before
+	// emitting them, which breaks SSE's per-event streaming guarantee. Even with
+	// flusher.Flush() the gzip writer holds events until its internal buffer fills.
+	r.Use(chimiddleware.Compress(6, "application/json", "text/html", "text/css", "text/javascript", "application/javascript", "image/svg+xml"))
 
 	// Public routes.
 	r.Get("/api/health", s.handleHealth)
