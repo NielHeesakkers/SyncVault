@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -17,7 +18,21 @@ var schemaSQL string
 // DB wraps a *sql.DB and provides access to the SyncVault metadata store.
 type DB struct {
 	db *sql.DB
+	// fpCacheMu guards fpCache. The cache is small (one entry per actively-polled
+	// (folder, owner) pair) so a single mutex is fine.
+	fpCacheMu sync.Mutex
+	fpCache   map[string]cachedFingerprint
 }
+
+// cachedFingerprint is a TTL'd snapshot of a folder subtree's ETag stamp.
+type cachedFingerprint struct {
+	fp        TreeFingerprint
+	expiresAt time.Time
+}
+
+// fingerprintCacheTTL keeps the fingerprint warm just long enough that a typical
+// burst of sync polls hits cache without a noticeable staleness window.
+const fingerprintCacheTTL = 10 * time.Second
 
 // DB returns the underlying *sql.DB for direct queries (e.g. metrics).
 func (d *DB) DB() *sql.DB { return d.db }
@@ -156,7 +171,7 @@ func Open(path string) (*DB, error) {
 		}
 	}()
 
-	return &DB{db: rawDB}, nil
+	return &DB{db: rawDB, fpCache: make(map[string]cachedFingerprint)}, nil
 }
 
 // isDuplicateColumnError returns true when SQLite reports that a column already exists.

@@ -170,6 +170,7 @@ func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, 
 		d.updateAncestorSizes(f.ID)
 	}
 
+	d.invalidateFingerprintCache()
 	return f, nil
 }
 
@@ -349,6 +350,7 @@ func (d *DB) SoftDeleteFile(id string) error {
 	// Update ancestor folder sizes after soft delete.
 	d.updateAncestorSizes(id)
 
+	d.invalidateFingerprintCache()
 	return nil
 }
 
@@ -370,6 +372,7 @@ func (d *DB) RestoreFile(id string) error {
 	// Update ancestor folder sizes after restore.
 	d.updateAncestorSizes(id)
 
+	d.invalidateFingerprintCache()
 	return nil
 }
 
@@ -457,6 +460,7 @@ func (d *DB) PermanentlyDeleteFile(id string) error {
 	if n == 0 {
 		return ErrFileNotFound
 	}
+	d.invalidateFingerprintCache()
 	return nil
 }
 
@@ -521,6 +525,7 @@ func (d *DB) UpdateFileContent(id, contentHash string, size int64) error {
 	if n == 0 {
 		return ErrFileNotFound
 	}
+	d.invalidateFingerprintCache()
 	return nil
 }
 
@@ -1181,7 +1186,22 @@ type TreeFingerprint struct {
 // GetTreeFingerprint returns (max change_rank, count) over the recursive subtree
 // under folderID. Excludes soft-deleted rows. Uses the same CTE shape as
 // ListFilesRecursive so the existing indexes apply.
+//
+// Results are cached in-memory for fingerprintCacheTTL. The recursive CTE is as
+// expensive as the full listing itself; without this cache an ETag-hit sync still
+// pays the full DB cost. The cache is invalidated whenever a file is created /
+// updated / deleted via invalidateFingerprintCache().
 func (d *DB) GetTreeFingerprint(folderID, ownerID string, isAdmin bool) (TreeFingerprint, error) {
+	key := fmt.Sprintf("%s|%s|%t", folderID, ownerID, isAdmin)
+	d.fpCacheMu.Lock()
+	if entry, ok := d.fpCache[key]; ok && entry.expiresAt.After(time.Now()) {
+		fp := entry.fp
+		d.fpCacheMu.Unlock()
+		return fp, nil
+	}
+	d.fpCacheMu.Unlock()
+
+	// Compute outside the lock so concurrent callers for different folders aren't blocked.
 	ownerFilter := ""
 	args := []interface{}{folderID}
 	if !isAdmin {
@@ -1203,7 +1223,23 @@ func (d *DB) GetTreeFingerprint(folderID, ownerID string, isAdmin bool) (TreeFin
 	if err := d.db.QueryRow(query, args...).Scan(&fp.MaxChangeRank, &fp.Count); err != nil {
 		return TreeFingerprint{}, fmt.Errorf("metadata: tree fingerprint: %w", err)
 	}
+
+	d.fpCacheMu.Lock()
+	d.fpCache[key] = cachedFingerprint{fp: fp, expiresAt: time.Now().Add(fingerprintCacheTTL)}
+	d.fpCacheMu.Unlock()
 	return fp, nil
+}
+
+// invalidateFingerprintCache clears all cached tree fingerprints. Called from
+// any code path that mutates files so the next /api/files/tree request gets a
+// fresh ETag instead of a stale 304. Clearing all entries is cheap because the
+// cache is tiny (one entry per actively-polled folder).
+func (d *DB) invalidateFingerprintCache() {
+	d.fpCacheMu.Lock()
+	if len(d.fpCache) > 0 {
+		d.fpCache = make(map[string]cachedFingerprint)
+	}
+	d.fpCacheMu.Unlock()
 }
 
 // FileTreeEntry is a file with its relative path for tree listing.
