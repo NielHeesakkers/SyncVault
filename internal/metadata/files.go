@@ -1169,6 +1169,43 @@ func nullStringVal(ns sql.NullString) interface{} {
 	return nil
 }
 
+// TreeFingerprint is a cheap version stamp for a folder subtree. The REST tree
+// endpoint uses it as an ETag so the client can return early when nothing changed.
+// MaxChangeRank bumps on any insert/update; Count drops on delete — together they
+// catch every visible mutation without hashing the whole listing.
+type TreeFingerprint struct {
+	MaxChangeRank int64
+	Count         int
+}
+
+// GetTreeFingerprint returns (max change_rank, count) over the recursive subtree
+// under folderID. Excludes soft-deleted rows. Uses the same CTE shape as
+// ListFilesRecursive so the existing indexes apply.
+func (d *DB) GetTreeFingerprint(folderID, ownerID string, isAdmin bool) (TreeFingerprint, error) {
+	ownerFilter := ""
+	args := []interface{}{folderID}
+	if !isAdmin {
+		ownerFilter = "AND owner_id = ?"
+		args = append(args, ownerID)
+	}
+	query := fmt.Sprintf(`
+		WITH RECURSIVE tree AS (
+			SELECT id, change_rank
+			FROM files
+			WHERE parent_id = ? AND deleted_at IS NULL %s
+			UNION ALL
+			SELECT f.id, f.change_rank
+			FROM files f JOIN tree t ON f.parent_id = t.id
+			WHERE f.deleted_at IS NULL
+		)
+		SELECT COALESCE(MAX(change_rank), 0), COUNT(*) FROM tree`, ownerFilter)
+	var fp TreeFingerprint
+	if err := d.db.QueryRow(query, args...).Scan(&fp.MaxChangeRank, &fp.Count); err != nil {
+		return TreeFingerprint{}, fmt.Errorf("metadata: tree fingerprint: %w", err)
+	}
+	return fp, nil
+}
+
 // FileTreeEntry is a file with its relative path for tree listing.
 type FileTreeEntry struct {
 	ID           string

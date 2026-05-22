@@ -152,10 +152,49 @@ actor APIClient {
         return response.existing
     }
 
-    /// Get full recursive file tree under a folder (single API call replaces recursive listFiles).
+    /// Per-folder cache of the last tree response + its ETag.
+    /// Server returns 304 Not Modified when nothing in the subtree has changed;
+    /// we then serve the cached files instead of re-downloading 600 KB+ of JSON.
+    private struct CachedTree {
+        let etag: String
+        let files: [RemoteTreeFile]
+    }
+    private var treeCache: [String: CachedTree] = [:]
+
+    /// Get full recursive file tree under a folder. Uses HTTP ETag / If-None-Match
+    /// so syncs against an unchanged remote skip the body transfer entirely.
     func getFileTree(folderID: String) async throws -> [RemoteTreeFile] {
-        let response: FileTreeResponse = try await get("/api/files/tree?folder_id=\(folderID)")
-        return response.files
+        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/tree?folder_id=\(folderID)")!)
+        request.httpMethod = "GET"
+        addAuth(&request)
+        if let cached = treeCache[folderID] {
+            request.setValue(cached.etag, forHTTPHeaderField: "If-None-Match")
+        }
+        let (data, response) = try await execute(request)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        if http.statusCode == 304, let cached = treeCache[folderID] {
+            return cached.files
+        }
+        if http.statusCode == 401 { throw APIError.unauthorized }
+        if http.statusCode >= 400 { throw APIError.serverError(http.statusCode) }
+        let decoded = try JSONDecoder().decode(FileTreeResponse.self, from: data)
+        if let etag = http.value(forHTTPHeaderField: "ETag"), !etag.isEmpty {
+            treeCache[folderID] = CachedTree(etag: etag, files: decoded.files)
+        }
+        return decoded.files
+    }
+
+    /// Manually clear the tree cache for a folder (e.g. after explicit invalidation).
+    /// AppState calls this on disconnect; the SyncEngine doesn't need it because the
+    /// ETag mechanism handles staleness automatically.
+    func invalidateTreeCache(folderID: String? = nil) {
+        if let folderID = folderID {
+            treeCache.removeValue(forKey: folderID)
+        } else {
+            treeCache.removeAll()
+        }
     }
 
     func createTask(body: [String: Any]) async throws -> TaskResponse {

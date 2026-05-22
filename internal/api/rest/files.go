@@ -1213,6 +1213,21 @@ func (s *Server) handleFileTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Compute a cheap fingerprint of the subtree so the client can skip the body when
+	// nothing changed. ETag = "<max_change_rank>-<file_count>". A single change anywhere
+	// in the tree bumps max_change_rank; a delete drops the count. Together these catch
+	// every visible mutation without having to hash the whole listing.
+	fp, fpErr := s.db.GetTreeFingerprint(folderID, claims.UserID, claims.Role == "admin")
+	if fpErr == nil {
+		etag := fmt.Sprintf(`W/"tree-%d-%d"`, fp.MaxChangeRank, fp.Count)
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Cache-Control", "private, must-revalidate")
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+
 	files, err := s.db.ListFilesRecursive(folderID, claims.UserID, claims.Role == "admin")
 	if err != nil {
 		log.Printf("handleFileTree error for folder %s: %v", folderID, err)
