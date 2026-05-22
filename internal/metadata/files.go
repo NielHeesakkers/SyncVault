@@ -84,6 +84,55 @@ func (d *DB) updateFolderSizeChain(folderID sql.NullString) {
 	d.updateAncestorSizes(folderID.String)
 }
 
+// bumpAncestorChangeRank propagates the file's change_rank up the parent chain,
+// raising each ancestor folder's change_rank to MAX(current, file's rank).
+//
+// This is the key to per-folder cache invalidation: ListFilesRecursive validates
+// its cache against the FOLDER's change_rank (not the global counter), so an
+// upload in /A/B/C only invalidates the cache for C, B, A, and root — folder
+// /X stays warm. Without this propagation a single upload anywhere would force
+// every cached subtree to be recomputed via the recursive CTE, which on a
+// 50K-file Development folder takes minutes and locks up the client.
+//
+// Each step is an indexed primary-key UPDATE; tree depth is typically <10 so
+// total cost is sub-millisecond — far cheaper than the saved CTE recomputation.
+// Use MAX(change_rank, ?) so concurrent bumps from different mutations never
+// accidentally decrement an ancestor that a newer write already set higher.
+func (d *DB) bumpAncestorChangeRank(fileID string) {
+	var rank int64
+	if err := d.db.QueryRow(`SELECT change_rank FROM files WHERE id = ?`, fileID).Scan(&rank); err != nil || rank == 0 {
+		return
+	}
+	var parentID sql.NullString
+	d.db.QueryRow(`SELECT parent_id FROM files WHERE id = ?`, fileID).Scan(&parentID)
+	for parentID.Valid {
+		d.db.Exec(`UPDATE files SET change_rank = MAX(change_rank, ?) WHERE id = ?`, rank, parentID.String)
+		var nextParent sql.NullString
+		d.db.QueryRow(`SELECT parent_id FROM files WHERE id = ?`, parentID.String).Scan(&nextParent)
+		parentID = nextParent
+	}
+}
+
+// folderChangeRank returns the change_rank stored on the given folder's row.
+// Bumped by bumpAncestorChangeRank whenever any file in this folder's subtree
+// is mutated. Used by ListFilesRecursive and GetTreeFingerprint as the cheap
+// per-folder version stamp — O(1) primary-key lookup.
+func (d *DB) folderChangeRank(folderID string) (int64, error) {
+	if folderID == "" {
+		// Root listing has no folder row; fall back to global rank.
+		return d.currentChangeRank()
+	}
+	var rank int64
+	err := d.db.QueryRow(`SELECT change_rank FROM files WHERE id = ?`, folderID).Scan(&rank)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return rank, nil
+}
+
 // CreateFile inserts a new file or directory record.
 // For directories: idempotent find-or-create — if a non-deleted directory with the same
 // name already exists, it is returned directly (no rename, no conflict).
@@ -169,6 +218,7 @@ func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, 
 	if parentID != "" {
 		d.updateAncestorSizes(f.ID)
 	}
+	d.bumpAncestorChangeRank(f.ID)
 
 	d.invalidateFingerprintCache()
 	d.notifyChange("file_created", f)
@@ -300,6 +350,12 @@ func (d *DB) MoveFile(id, newParentID, newName string) error {
 	// Update folder sizes for both old and new parent trees.
 	d.updateFolderSizeChain(oldParentID)
 	d.updateAncestorSizes(id)
+	// Bump change_rank up BOTH old and new ancestor chains so caches on both
+	// sides of the move invalidate appropriately.
+	if oldParentID.Valid {
+		d.bumpAncestorChangeRank(oldParentID.String)
+	}
+	d.bumpAncestorChangeRank(id)
 
 	return nil
 }
@@ -350,6 +406,7 @@ func (d *DB) SoftDeleteFile(id string) error {
 
 	// Update ancestor folder sizes after soft delete.
 	d.updateAncestorSizes(id)
+	d.bumpAncestorChangeRank(id)
 
 	d.invalidateFingerprintCache()
 	if deleted, err := d.GetFileByID(id); err == nil {
@@ -375,6 +432,7 @@ func (d *DB) RestoreFile(id string) error {
 
 	// Update ancestor folder sizes after restore.
 	d.updateAncestorSizes(id)
+	d.bumpAncestorChangeRank(id)
 
 	d.invalidateFingerprintCache()
 	if restored, err := d.GetFileByID(id); err == nil {
@@ -532,6 +590,7 @@ func (d *DB) UpdateFileContent(id, contentHash string, size int64) error {
 	if n == 0 {
 		return ErrFileNotFound
 	}
+	d.bumpAncestorChangeRank(id)
 	d.invalidateFingerprintCache()
 	if updated, err := d.GetFileByID(id); err == nil {
 		d.notifyChange("file_updated", updated)
@@ -1025,6 +1084,7 @@ func (d *DB) MarkRemovedLocally(fileID string) error {
 	if n == 0 {
 		return ErrFileNotFound
 	}
+	d.bumpAncestorChangeRank(fileID)
 	return nil
 }
 
@@ -1038,6 +1098,7 @@ func (d *DB) UnmarkRemovedLocally(fileID string) error {
 	if n == 0 {
 		return ErrFileNotFound
 	}
+	d.bumpAncestorChangeRank(fileID)
 	return nil
 }
 
@@ -1193,34 +1254,23 @@ type TreeFingerprint struct {
 	Count         int
 }
 
-// GetTreeFingerprint returns the global change rank as a cheap ETag stamp.
+// GetTreeFingerprint returns the per-folder change_rank as a cheap ETag stamp.
 //
-// The previous implementation walked a recursive CTE which was as expensive as
-// the full tree listing itself (60 s+ on the production tree under concurrent
-// upload load), defeating the point of ETag/304. We switched to reading the
-// `_change_rank` counter from the settings table — O(1) primary-key lookup that
-// already increments on every file mutation via nextChangeRank().
+// O(1) primary-key lookup on the folder's own row. bumpAncestorChangeRank keeps
+// every ancestor folder's change_rank ≥ the max rank of any file in its subtree,
+// so this single read captures every visible mutation under folderID without
+// scanning anything.
 //
-// Trade-off: this stamp covers the entire database, not just one folder subtree.
-// When any file changes (in any sync task), every folder's ETag invalidates and
-// each task pays one full tree fetch before resuming 304s. Acceptable because
-// the recovery cost is bounded (one fetch per task per real change) while the
-// steady-state cost is now near-zero.
+// Per-folder (not global): a mutation in folder /X does NOT invalidate the ETag
+// for unrelated folder /Y, so the client gets fast 304s on /Y even when /X is
+// busy. Empty folderID (root-level listings) falls back to the global counter.
 //
-// folderID/ownerID/isAdmin are kept in the signature for backwards compatibility
-// and future per-folder fingerprinting. Currently unused.
+// ownerID/isAdmin kept in the signature for future per-user fingerprinting.
 func (d *DB) GetTreeFingerprint(folderID, ownerID string, isAdmin bool) (TreeFingerprint, error) {
-	_ = folderID
 	_ = ownerID
 	_ = isAdmin
-
-	var rank int64
-	err := d.db.QueryRow(`SELECT CAST(value AS INTEGER) FROM settings WHERE key = '_change_rank'`).Scan(&rank)
+	rank, err := d.folderChangeRank(folderID)
 	if err != nil {
-		// Fresh database with no _change_rank yet → treat as version 0
-		if errors.Is(err, sql.ErrNoRows) {
-			return TreeFingerprint{}, nil
-		}
 		return TreeFingerprint{}, fmt.Errorf("metadata: tree fingerprint: %w", err)
 	}
 	return TreeFingerprint{MaxChangeRank: rank, Count: 0}, nil
@@ -1383,13 +1433,16 @@ type FileTreeEntry struct {
 
 // ListFilesRecursive returns all files (recursively) under a folder with relative paths.
 //
-// Cached in-memory and validated by the global _change_rank counter. Cache hits
-// return in microseconds (just a map lookup + rank compare). Cache misses run
-// the recursive CTE once and store the result; subsequent calls until the next
-// file mutation hit cache. This is the win that delivers "Synology-style" snappy
-// tree fetches without any architectural changes.
+// Cached in-memory and validated by the FOLDER's own change_rank (not the global
+// counter). Cache hits return in microseconds (a map lookup + indexed rank read).
+// A mutation in /A/B/C only invalidates the cached trees for C, B, A and root —
+// unrelated subtrees like Development stay warm. This is the difference between
+// "tree fetch takes minutes because someone uploaded a file 3 folders away" and
+// "tree fetch is instant unless this folder itself changed".
+//
+// The rank propagation lives in bumpAncestorChangeRank, called by every mutation.
 func (d *DB) ListFilesRecursive(folderID, ownerID string, isAdmin bool) ([]FileTreeEntry, error) {
-	currentRank, _ := d.currentChangeRank()
+	currentRank, _ := d.folderChangeRank(folderID)
 	cacheKey := folderID + "|" + ownerID + boolTag(isAdmin)
 
 	d.treeCacheMu.RLock()
