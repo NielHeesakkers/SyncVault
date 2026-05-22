@@ -171,6 +171,7 @@ func (d *DB) CreateFile(parentID, ownerID, name string, isDir bool, size int64, 
 	}
 
 	d.invalidateFingerprintCache()
+	d.notifyChange("file_created", f)
 	return f, nil
 }
 
@@ -351,6 +352,9 @@ func (d *DB) SoftDeleteFile(id string) error {
 	d.updateAncestorSizes(id)
 
 	d.invalidateFingerprintCache()
+	if deleted, err := d.GetFileByID(id); err == nil {
+		d.notifyChange("file_deleted", deleted)
+	}
 	return nil
 }
 
@@ -373,6 +377,9 @@ func (d *DB) RestoreFile(id string) error {
 	d.updateAncestorSizes(id)
 
 	d.invalidateFingerprintCache()
+	if restored, err := d.GetFileByID(id); err == nil {
+		d.notifyChange("file_created", restored) // re-appears in clients' view
+	}
 	return nil
 }
 
@@ -526,6 +533,9 @@ func (d *DB) UpdateFileContent(id, contentHash string, size int64) error {
 		return ErrFileNotFound
 	}
 	d.invalidateFingerprintCache()
+	if updated, err := d.GetFileByID(id); err == nil {
+		d.notifyChange("file_updated", updated)
+	}
 	return nil
 }
 
@@ -1220,6 +1230,29 @@ func (d *DB) GetTreeFingerprint(folderID, ownerID string, isAdmin bool) (TreeFin
 // The new fingerprint query is O(1) so no cache is needed; this function is
 // kept as a no-op so existing call sites compile without churn.
 func (d *DB) invalidateFingerprintCache() {}
+
+// notifyChange fires OnFileChange if registered. Safe with nil callback.
+// Called after every mutation so subscribers (SSE clients) get push events.
+func (d *DB) notifyChange(eventType string, f *File) {
+	if d.OnFileChange == nil || f == nil {
+		return
+	}
+	currentRank, _ := d.currentChangeRank()
+	hash := ""
+	if f.ContentHash.Valid {
+		hash = f.ContentHash.String
+	}
+	d.OnFileChange(FileChangeEvent{
+		Type:        eventType,
+		FileID:      f.ID,
+		OwnerID:     f.OwnerID,
+		Name:        f.Name,
+		IsDir:       f.IsDir,
+		Size:        f.Size,
+		ContentHash: hash,
+		Rank:        currentRank,
+	})
+}
 
 // FileTreeEntry is a file with its relative path for tree listing.
 type FileTreeEntry struct {

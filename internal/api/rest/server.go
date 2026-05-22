@@ -18,12 +18,13 @@ import (
 
 // Server is the SyncVault REST API server.
 type Server struct {
-	db         *metadata.DB
-	store      *storage.Store
-	jwt        *auth.JWT
-	email      *email.Service
-	router     chi.Router
-	uploadsDir string // base directory for chunked upload staging files
+	db          *metadata.DB
+	store       *storage.Store
+	jwt         *auth.JWT
+	email       *email.Service
+	router      chi.Router
+	uploadsDir  string // base directory for chunked upload staging files
+	broadcaster *Broadcaster
 
 	// Build / runtime info — populated by main via SetBuildInfo.
 	gitSHA    string
@@ -42,13 +43,31 @@ func (s *Server) SetBuildInfo(sha, builtAt string, startedAt time.Time) {
 // NewServer creates a new Server and registers all routes.
 // uploadsDir is the base directory for temporary chunked upload staging files (e.g. /data/uploads).
 func NewServer(db *metadata.DB, store *storage.Store, jwt *auth.JWT, emailSvc *email.Service, uploadsDir string) *Server {
+	bc := NewBroadcaster()
 	s := &Server{
-		db:         db,
-		store:      store,
-		jwt:        jwt,
-		email:      emailSvc,
-		router:     chi.NewRouter(),
-		uploadsDir: uploadsDir,
+		db:          db,
+		store:       store,
+		jwt:         jwt,
+		email:       emailSvc,
+		router:      chi.NewRouter(),
+		uploadsDir:  uploadsDir,
+		broadcaster: bc,
+	}
+	// Bridge metadata-layer mutations to SSE subscribers. Translation keeps the
+	// metadata package free of HTTP concerns.
+	db.OnFileChange = func(ev metadata.FileChangeEvent) {
+		bc.Publish(FileEvent{
+			Type:         ev.Type,
+			FileID:       ev.FileID,
+			OwnerID:      ev.OwnerID,
+			RelativePath: ev.RelativePath,
+			Name:         ev.Name,
+			IsDir:        ev.IsDir,
+			Size:         ev.Size,
+			ContentHash:  ev.ContentHash,
+			Rank:         ev.Rank,
+			At:           time.Now(),
+		})
 	}
 	// Clean up any expired upload sessions left from a previous run.
 	_, _ = db.DeleteExpiredUploadSessions()

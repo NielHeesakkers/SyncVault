@@ -25,6 +25,27 @@ type DB struct {
 	// (cached.rank != current rank) — no explicit invalidation needed.
 	treeCacheMu sync.RWMutex
 	treeCache   map[string]cachedTree
+
+	// OnFileChange is invoked after every successful file mutation (create,
+	// update content, soft delete, restore, move, permanent delete). The REST
+	// layer hooks this to fan out events to SSE subscribers. Optional — nil
+	// means no broadcast. Always called synchronously after the DB commit so
+	// observers see post-mutation state if they query the DB.
+	OnFileChange func(event FileChangeEvent)
+}
+
+// FileChangeEvent is the payload of OnFileChange. Kept in metadata package so
+// the metadata layer can describe its own mutations without depending on rest.
+type FileChangeEvent struct {
+	Type         string // "file_created" | "file_updated" | "file_deleted"
+	FileID       string
+	OwnerID      string
+	RelativePath string
+	Name         string
+	IsDir        bool
+	Size         int64
+	ContentHash  string
+	Rank         int64
 }
 
 type cachedTree struct {
