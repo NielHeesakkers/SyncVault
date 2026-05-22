@@ -1233,8 +1233,26 @@ type FileTreeEntry struct {
 }
 
 // ListFilesRecursive returns all files (recursively) under a folder with relative paths.
-// Uses a single recursive CTE query instead of N+1 queries per folder.
+//
+// Cached in-memory and validated by the global _change_rank counter. Cache hits
+// return in microseconds (just a map lookup + rank compare). Cache misses run
+// the recursive CTE once and store the result; subsequent calls until the next
+// file mutation hit cache. This is the win that delivers "Synology-style" snappy
+// tree fetches without any architectural changes.
 func (d *DB) ListFilesRecursive(folderID, ownerID string, isAdmin bool) ([]FileTreeEntry, error) {
+	currentRank, _ := d.currentChangeRank()
+	cacheKey := folderID + "|" + ownerID + boolTag(isAdmin)
+
+	d.treeCacheMu.RLock()
+	if entry, ok := d.treeCache[cacheKey]; ok && entry.rank == currentRank {
+		// Defensive copy: caller may sort/filter the slice.
+		out := make([]FileTreeEntry, len(entry.files))
+		copy(out, entry.files)
+		d.treeCacheMu.RUnlock()
+		return out, nil
+	}
+	d.treeCacheMu.RUnlock()
+
 	ownerFilter := ""
 	args := []interface{}{folderID}
 	if !isAdmin {
@@ -1274,7 +1292,40 @@ func (d *DB) ListFilesRecursive(folderID, ownerID string, isAdmin bool) ([]FileT
 		e.RemovedLocally = removedLocally != 0
 		entries = append(entries, e)
 	}
-	return entries, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Store the freshly-computed tree for next time. Use the rank we read BEFORE the
+	// query so we don't accidentally cache against a mutation that happened mid-query.
+	d.treeCacheMu.Lock()
+	d.treeCache[cacheKey] = cachedTree{files: entries, rank: currentRank}
+	d.treeCacheMu.Unlock()
+
+	// Return defensive copy too — caller owns the slice.
+	out := make([]FileTreeEntry, len(entries))
+	copy(out, entries)
+	return out, nil
+}
+
+// currentChangeRank reads the global _change_rank counter. O(1) primary-key lookup.
+func (d *DB) currentChangeRank() (int64, error) {
+	var rank int64
+	err := d.db.QueryRow(`SELECT CAST(value AS INTEGER) FROM settings WHERE key = '_change_rank'`).Scan(&rank)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return rank, nil
+}
+
+func boolTag(b bool) string {
+	if b {
+		return "|admin"
+	}
+	return "|user"
 }
 
 // CheckHashes takes a list of content hashes and returns those that already exist in the database.

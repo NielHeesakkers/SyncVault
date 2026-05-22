@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -17,6 +18,18 @@ var schemaSQL string
 // DB wraps a *sql.DB and provides access to the SyncVault metadata store.
 type DB struct {
 	db *sql.DB
+
+	// treeCache memoises ListFilesRecursive output per folder, validated by the
+	// global _change_rank counter. Cache hits return in microseconds instead of
+	// re-running the recursive CTE. Stale entries are detected automatically
+	// (cached.rank != current rank) — no explicit invalidation needed.
+	treeCacheMu sync.RWMutex
+	treeCache   map[string]cachedTree
+}
+
+type cachedTree struct {
+	files []FileTreeEntry
+	rank  int64 // _change_rank snapshot when this entry was built
 }
 
 // DB returns the underlying *sql.DB for direct queries (e.g. metrics).
@@ -156,7 +169,7 @@ func Open(path string) (*DB, error) {
 		}
 	}()
 
-	return &DB{db: rawDB}, nil
+	return &DB{db: rawDB, treeCache: make(map[string]cachedTree)}, nil
 }
 
 // isDuplicateColumnError returns true when SQLite reports that a column already exists.
