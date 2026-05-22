@@ -47,6 +47,11 @@ func CORSMiddleware(next http.Handler) http.Handler {
 }
 
 // responseWriter wraps http.ResponseWriter to capture the status code for logging.
+//
+// IMPORTANT: we must forward Flush() to the underlying writer. SSE handlers do
+// `w.(http.Flusher)` and bail out if the assertion fails — without an explicit
+// Flush method on this wrapper, Go's type assertion sees no Flusher and the
+// SSE handler returns 500 "SSE not supported" before any bytes hit the wire.
 type responseWriter struct {
 	http.ResponseWriter
 	status int
@@ -55,6 +60,13 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(status int) {
 	rw.status = status
 	rw.ResponseWriter.WriteHeader(status)
+}
+
+// Flush forwards to the underlying writer so SSE streaming works.
+func (rw *responseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 // SecurityHeadersMiddleware adds common security headers to every response.
