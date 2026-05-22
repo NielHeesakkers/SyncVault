@@ -79,6 +79,11 @@ class AppState: ObservableObject {
     private var notificationTimer: Timer?
     private var fileWatchers: [UUID: FileWatcher] = [:]  // per sync task
     private var syncDatabase: SyncDatabase?
+    private var serverEventStream: ServerEventStream?
+    /// Throttle SSE-triggered sync re-runs so a burst of server events doesn't
+    /// stack up sync invocations. 5s is enough that uploading a folder of 50
+    /// files only triggers 1 sync, but small enough to feel instant.
+    private var lastServerEventSync: Date = .distantPast
     private var wakeObserver: NSObjectProtocol?
 
     init() {
@@ -185,11 +190,17 @@ class AppState: ObservableObject {
 
         // Start notification polling
         startNotificationPolling()
+
+        // Subscribe to server-pushed file events (Synology-style real-time sync).
+        // On event arrival we invalidate the API client's tree cache so the next
+        // sync sees fresh state, then kick off an immediate sync.
+        startServerEventStream()
     }
 
     func disconnect() {
         stopSyncLoop()
         stopNotificationPolling()
+        stopServerEventStream()
         apiClient = nil
         isConnected = false
         isSyncing = false
@@ -437,6 +448,47 @@ class AppState: ObservableObject {
             try? await Task.sleep(nanoseconds: 300_000_000_000) // 5 min
             await runIntegrityCheck()
         }
+    }
+
+    // MARK: - Server Event Stream (real-time push)
+
+    /// Open a persistent SSE connection to /api/events. The server pushes file
+    /// mutations as they happen so we don't need to poll. On every event we
+    /// invalidate the API client's tree cache + trigger an immediate sync
+    /// (debounced to once per 5s to coalesce bursts).
+    func startServerEventStream() {
+        stopServerEventStream()
+        guard let client = apiClient else { return }
+        let baseURL = serverURL
+        let stream = ServerEventStream(
+            baseURL: baseURL,
+            tokenProvider: { [weak client] in await client?.currentToken() },
+            onFileEvent: { [weak self] event in
+                Task { @MainActor [weak self] in
+                    guard let self = self else { return }
+                    // Server's authoritative state changed — drop any cached tree.
+                    if let client = self.apiClient {
+                        await client.invalidateTreeCache()
+                    }
+                    let now = Date()
+                    if now.timeIntervalSince(self.lastServerEventSync) > 5 {
+                        self.lastServerEventSync = now
+                        Task { await self.runSync() }
+                    }
+                    syncLog("Server push: \(event.type) \(event.name ?? event.file_id)")
+                }
+            },
+            onConnected: {
+                syncLog("Server event stream connected")
+            }
+        )
+        stream.start()
+        serverEventStream = stream
+    }
+
+    func stopServerEventStream() {
+        serverEventStream?.stop()
+        serverEventStream = nil
     }
 
     /// Remove items from activeUploads that have been marked done for >3 seconds.

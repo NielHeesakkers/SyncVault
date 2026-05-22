@@ -24,6 +24,7 @@
 		4BF3C5D5D1ED893E1663C578 /* InfoTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = E28CF52AF24FAC1F1B5D8570 /* InfoTab.swift */; };
 		4FE5B71D31457C6AC1BA5AAE /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F74C8C1FCEBD361908B1935 /* AppState.swift */; };
 		57CFF9CFA5E9E6683AA05A36 /* SyncDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1584B409E0C60E69FD3EE564 /* SyncDatabase.swift */; };
+		B688C5865AD44E8DB8FA6ADC /* ServerEventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = A534D820D1D14E6DAABB9F88 /* ServerEventStream.swift */; };
 		5A4A5121BFCF8D803956A78E /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92068AE2AC3CF43472FD2719 /* MenuBarView.swift */; };
 		6C28CEC8AE32102FA34F3DE0 /* GeneralTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70702DA21BB966F6734603A7 /* GeneralTab.swift */; };
 		7A88DB90FDF8F8BB0FDA8BAE /* UpdaterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56862DE9E2BFB3086920F77A /* UpdaterService.swift */; };
@@ -83,6 +84,7 @@
 		0B5DF716BCC97ACDFA90DFF5 /* FileProviderEnumerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileProviderEnumerator.swift; sourceTree = "<group>"; };
 		1101721817B68D9FDCC83C38 /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
 		1584B409E0C60E69FD3EE564 /* SyncDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncDatabase.swift; sourceTree = "<group>"; };
+		A534D820D1D14E6DAABB9F88 /* ServerEventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerEventStream.swift; sourceTree = "<group>"; };
 		1D6A705710CD5005939F3450 /* FPAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FPAPIClient.swift; sourceTree = "<group>"; };
 		204C64400A8693CBA6D01313 /* RemoteFolderBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFolderBrowserView.swift; sourceTree = "<group>"; };
 		34330AC2DE1AF95341AE2396 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
@@ -199,6 +201,7 @@
 				EF107C55783154AA71C89068 /* SettingsView.swift */,
 				399F63F3155D3C438B3B33DF /* SpeedGraphView.swift */,
 				1584B409E0C60E69FD3EE564 /* SyncDatabase.swift */,
+				A534D820D1D14E6DAABB9F88 /* ServerEventStream.swift */,
 				1101721817B68D9FDCC83C38 /* SyncEngine.swift */,
 				A21276B1C44E0B61C8955956 /* SyncTask.swift */,
 				75F5B9CC449B3A42443B1E69 /* SyncTasksTab.swift */,
@@ -402,6 +405,7 @@
 				EB4A8CA6F3D18A60B7E394FC /* SettingsView.swift in Sources */,
 				3E590498FEC86B6AE280B494 /* SpeedGraphView.swift in Sources */,
 				57CFF9CFA5E9E6683AA05A36 /* SyncDatabase.swift in Sources */,
+				B688C5865AD44E8DB8FA6ADC /* ServerEventStream.swift in Sources */,
 				1DAD634F2B3829A9536687C1 /* SyncEngine.swift in Sources */,
 				2B88568F36CADC4599DA338C /* SyncTask.swift in Sources */,
 				1B4100C50A43336FD88467C9 /* SyncTasksTab.swift in Sources */,
