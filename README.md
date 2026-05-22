@@ -182,6 +182,10 @@ proxy_read_timeout 86400;
 proxy_send_timeout 86400;
 proxy_connect_timeout 86400;
 proxy_request_buffering off;
+# Required for /api/events SSE push (real-time sync)
+proxy_buffering off;
+proxy_cache off;
+proxy_http_version 1.1;
 ```
 
 ## API
