@@ -365,9 +365,9 @@ func (d *DB) GetFolderSize(folderID string) (int64, error) {
 	var size int64
 	err := d.db.QueryRow(
 		`WITH RECURSIVE descendants(id) AS (
-		   SELECT id FROM files WHERE parent_id = ? AND deleted_at IS NULL
+		   SELECT id FROM files INDEXED BY idx_files_parent_deleted WHERE parent_id = ? AND deleted_at IS NULL
 		   UNION ALL
-		   SELECT f.id FROM files f JOIN descendants d ON f.parent_id = d.id WHERE f.deleted_at IS NULL
+		   SELECT f.id FROM files f INDEXED BY idx_files_parent_deleted JOIN descendants d ON f.parent_id = d.id WHERE f.deleted_at IS NULL
 		 )
 		 SELECT COALESCE(SUM(f.size), 0)
 		 FROM files f
@@ -1462,16 +1462,21 @@ func (d *DB) ListFilesRecursive(folderID, ownerID string, isAdmin bool) ([]FileT
 		args = append(args, ownerID)
 	}
 
+	// CRITICAL: INDEXED BY forces use of idx_files_parent_deleted in the recursive
+	// step. Without it SQLite picks idx_files_deleted_at and re-scans the entire
+	// non-deleted file table for every node in the tree — a 9K-file walk that
+	// should be 0.4s instead takes 4½ minutes (verified on production data).
+	// The hint converts the join into an indexed lookup by parent_id.
 	query := fmt.Sprintf(`
 		WITH RECURSIVE tree AS (
 			SELECT id, name, is_dir, size, content_hash, removed_locally,
 			       name as rel_path
-			FROM files
+			FROM files INDEXED BY idx_files_parent_deleted
 			WHERE parent_id = ? AND deleted_at IS NULL %s
 			UNION ALL
 			SELECT f.id, f.name, f.is_dir, f.size, f.content_hash, f.removed_locally,
 			       t.rel_path || '/' || f.name
-			FROM files f JOIN tree t ON f.parent_id = t.id
+			FROM files f INDEXED BY idx_files_parent_deleted JOIN tree t ON f.parent_id = t.id
 			WHERE f.deleted_at IS NULL
 		)
 		SELECT id, name, rel_path, is_dir, size, content_hash, removed_locally
