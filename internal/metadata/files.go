@@ -1183,64 +1183,43 @@ type TreeFingerprint struct {
 	Count         int
 }
 
-// GetTreeFingerprint returns (max change_rank, count) over the recursive subtree
-// under folderID. Excludes soft-deleted rows. Uses the same CTE shape as
-// ListFilesRecursive so the existing indexes apply.
+// GetTreeFingerprint returns the global change rank as a cheap ETag stamp.
 //
-// Results are cached in-memory for fingerprintCacheTTL. The recursive CTE is as
-// expensive as the full listing itself; without this cache an ETag-hit sync still
-// pays the full DB cost. The cache is invalidated whenever a file is created /
-// updated / deleted via invalidateFingerprintCache().
+// The previous implementation walked a recursive CTE which was as expensive as
+// the full tree listing itself (60 s+ on the production tree under concurrent
+// upload load), defeating the point of ETag/304. We switched to reading the
+// `_change_rank` counter from the settings table — O(1) primary-key lookup that
+// already increments on every file mutation via nextChangeRank().
+//
+// Trade-off: this stamp covers the entire database, not just one folder subtree.
+// When any file changes (in any sync task), every folder's ETag invalidates and
+// each task pays one full tree fetch before resuming 304s. Acceptable because
+// the recovery cost is bounded (one fetch per task per real change) while the
+// steady-state cost is now near-zero.
+//
+// folderID/ownerID/isAdmin are kept in the signature for backwards compatibility
+// and future per-folder fingerprinting. Currently unused.
 func (d *DB) GetTreeFingerprint(folderID, ownerID string, isAdmin bool) (TreeFingerprint, error) {
-	key := fmt.Sprintf("%s|%s|%t", folderID, ownerID, isAdmin)
-	d.fpCacheMu.Lock()
-	if entry, ok := d.fpCache[key]; ok && entry.expiresAt.After(time.Now()) {
-		fp := entry.fp
-		d.fpCacheMu.Unlock()
-		return fp, nil
-	}
-	d.fpCacheMu.Unlock()
+	_ = folderID
+	_ = ownerID
+	_ = isAdmin
 
-	// Compute outside the lock so concurrent callers for different folders aren't blocked.
-	ownerFilter := ""
-	args := []interface{}{folderID}
-	if !isAdmin {
-		ownerFilter = "AND owner_id = ?"
-		args = append(args, ownerID)
-	}
-	query := fmt.Sprintf(`
-		WITH RECURSIVE tree AS (
-			SELECT id, change_rank
-			FROM files
-			WHERE parent_id = ? AND deleted_at IS NULL %s
-			UNION ALL
-			SELECT f.id, f.change_rank
-			FROM files f JOIN tree t ON f.parent_id = t.id
-			WHERE f.deleted_at IS NULL
-		)
-		SELECT COALESCE(MAX(change_rank), 0), COUNT(*) FROM tree`, ownerFilter)
-	var fp TreeFingerprint
-	if err := d.db.QueryRow(query, args...).Scan(&fp.MaxChangeRank, &fp.Count); err != nil {
+	var rank int64
+	err := d.db.QueryRow(`SELECT CAST(value AS INTEGER) FROM settings WHERE key = '_change_rank'`).Scan(&rank)
+	if err != nil {
+		// Fresh database with no _change_rank yet → treat as version 0
+		if errors.Is(err, sql.ErrNoRows) {
+			return TreeFingerprint{}, nil
+		}
 		return TreeFingerprint{}, fmt.Errorf("metadata: tree fingerprint: %w", err)
 	}
-
-	d.fpCacheMu.Lock()
-	d.fpCache[key] = cachedFingerprint{fp: fp, expiresAt: time.Now().Add(fingerprintCacheTTL)}
-	d.fpCacheMu.Unlock()
-	return fp, nil
+	return TreeFingerprint{MaxChangeRank: rank, Count: 0}, nil
 }
 
-// invalidateFingerprintCache clears all cached tree fingerprints. Called from
-// any code path that mutates files so the next /api/files/tree request gets a
-// fresh ETag instead of a stale 304. Clearing all entries is cheap because the
-// cache is tiny (one entry per actively-polled folder).
-func (d *DB) invalidateFingerprintCache() {
-	d.fpCacheMu.Lock()
-	if len(d.fpCache) > 0 {
-		d.fpCache = make(map[string]cachedFingerprint)
-	}
-	d.fpCacheMu.Unlock()
-}
+// invalidateFingerprintCache used to clear an in-memory fingerprint cache.
+// The new fingerprint query is O(1) so no cache is needed; this function is
+// kept as a no-op so existing call sites compile without churn.
+func (d *DB) invalidateFingerprintCache() {}
 
 // FileTreeEntry is a file with its relative path for tree listing.
 type FileTreeEntry struct {
