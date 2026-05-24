@@ -13,92 +13,89 @@ struct SyncTasksTab: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if appState.syncTasks.isEmpty {
-                VStack(spacing: 12) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // Header
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Sync Tasks").font(SVFont.bodyBold(17))
                     Spacer()
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 36))
-                        .foregroundColor(.secondary.opacity(0.3))
-                    Text("No sync tasks")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.secondary)
-                    Text("Add a task to start syncing files.")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary.opacity(0.7))
-                    Spacer()
+                    Menu {
+                        Button {
+                            addMode = .twoWay
+                            showingAddSheet = true
+                        } label: {
+                            Label("Two-way Sync", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .disabled(!appState.isConnected)
+
+                        Button {
+                            addMode = .uploadOnly
+                            showingAddSheet = true
+                        } label: {
+                            Label("Backup (Upload Only)", systemImage: "arrow.up.doc")
+                        }
+                        .disabled(!appState.isConnected)
+
+                        Button {
+                            addMode = .onDemand
+                            showingAddSheet = true
+                        } label: {
+                            Label("On-demand", systemImage: "icloud.and.arrow.down")
+                        }
+                        .disabled(!appState.isConnected || hasOnDemandTask)
+                    } label: {
+                        Text("+ Add Task")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .tint(SVColor.accentBlue)
+                    .controlSize(.small)
+                    .disabled(!appState.isConnected)
                 }
-                .frame(maxWidth: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(appState.syncTasks) { task in
-                            TaskCard(
-                                task: task,
-                                isSyncing: appState.isSyncing,
-                                onEdit: { taskToEdit = task },
-                                onDelete: {
-                                    taskToDelete = task
-                                    showingDeleteConfirmation = true
-                                },
-                                onToggle: { newValue in
-                                    var updated = task
-                                    updated.isEnabled = newValue
-                                    appState.updateSyncTask(updated)
-                                }
-                            )
+                .padding(.bottom, SVSpacing.s)
+
+                Text(summaryLine)
+                    .font(SVFont.mono(11))
+                    .foregroundStyle(SVColor.textSecondary)
+                    .padding(.bottom, SVSpacing.xl)
+
+                if appState.syncTasks.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 36))
+                            .foregroundStyle(SVColor.textTertiary)
+                        Text("No sync tasks")
+                            .font(SVFont.bodyBold(14))
+                            .foregroundStyle(SVColor.textSecondary)
+                        Text("Add a task to start syncing files.")
+                            .font(SVFont.body(12))
+                            .foregroundStyle(SVColor.textTertiary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, SVSpacing.xxxl)
+                } else {
+                    let tasks = sortedTasks
+                    ForEach(Array(tasks.enumerated()), id: \.element.id) { idx, task in
+                        taskCard(task)
+                            .padding(.bottom, SVSpacing.l)
+
+                        // Hairline divider after the on-demand block
+                        if task.mode == .onDemand,
+                           idx + 1 < tasks.count,
+                           tasks[idx + 1].mode != .onDemand {
+                            Rectangle()
+                                .fill(LinearGradient(
+                                    colors: [.clear, SVColor.hairline, .clear],
+                                    startPoint: .leading, endPoint: .trailing))
+                                .frame(height: 1)
+                                .padding(.bottom, SVSpacing.l)
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
                 }
             }
-
-            // Bottom bar
-            Divider()
-            HStack(spacing: 8) {
-                Button {
-                    addMode = .twoWay
-                    showingAddSheet = true
-                } label: {
-                    Label("Sync", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 11))
-                }
-                .disabled(!appState.isConnected)
-
-                Button {
-                    addMode = .uploadOnly
-                    showingAddSheet = true
-                } label: {
-                    Label("Backup", systemImage: "arrow.up.doc")
-                        .font(.system(size: 11))
-                }
-                .disabled(!appState.isConnected)
-
-                Button {
-                    addMode = .onDemand
-                    showingAddSheet = true
-                } label: {
-                    Label("On-demand", systemImage: "icloud.and.arrow.down")
-                        .font(.system(size: 11))
-                }
-                .disabled(!appState.isConnected || hasOnDemandTask)
-                .help(hasOnDemandTask ? "Only one on-demand task allowed" : "Files download on open")
-
-                Spacer()
-
-                if appState.isSyncing {
-                    HStack(spacing: 4) {
-                        ProgressView().scaleEffect(0.5)
-                        Text("Syncing...")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(SVSpacing.xxxl)
         }
+        .background(SVColor.windowBg)
         .sheet(isPresented: $showingAddSheet) {
             AddSyncTaskWizardView(isPresented: $showingAddSheet, initialMode: addMode)
                 .environmentObject(appState)
@@ -120,102 +117,106 @@ struct SyncTasksTab: View {
             }
         }
     }
-}
 
-// MARK: - Task Card
-
-struct TaskCard: View {
-    let task: SyncTask
-    let isSyncing: Bool
-    let onEdit: () -> Void
-    let onDelete: () -> Void
-    let onToggle: (Bool) -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Status dot with pulse when syncing
-            Group {
-                if task.isEnabled && isSyncing {
-                    PulsingDot(color: dotColor)
-                } else {
-                    Circle()
-                        .fill(dotColor)
-                        .frame(width: 8, height: 8)
-                }
-            }
-
-            // Main info
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(task.remoteFolderName)
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1)
-                    if task.isTeamFolder {
-                        Text("Team")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.purple, in: Capsule())
-                    }
-                }
-                HStack(spacing: 4) {
-                    Image(systemName: "folder.fill")
-                        .font(.system(size: 9))
-                        .foregroundColor(.yellow)
-                    Text(task.localPath)
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-
-            Spacer()
-
-            // Mode badge
-            ModeBadge(mode: task.mode)
-
-            // Toggle
-            Toggle("", isOn: Binding(
-                get: { task.isEnabled },
-                set: { onToggle($0) }
-            ))
-            .labelsHidden()
-            .scaleEffect(0.8)
-
-            // Edit button
-            Button(action: onEdit) {
-                Image(systemName: "pencil")
-                    .font(.system(size: 11))
-                    .foregroundColor(.accentColor)
-            }
-            .buttonStyle(.borderless)
-
-            // Delete button
-            Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.system(size: 11))
-                    .foregroundColor(.red)
-            }
-            .buttonStyle(.borderless)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.7))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 0.5)
-                )
-        )
+    private var summaryLine: String {
+        let n = appState.syncTasks.count
+        let plural = n == 1 ? "task" : "tasks"
+        return "\(n) \(plural)"
     }
 
-    private var dotColor: Color {
-        if !task.isEnabled { return Color(white: 0.35) }
-        if task.mode == .onDemand { return .purple }
-        return isSyncing ? .blue : .green
+    private var sortedTasks: [SyncTask] {
+        let onDemand = appState.syncTasks.filter { $0.mode == .onDemand }
+        let folders = appState.syncTasks.filter { $0.mode != .onDemand }
+            .sorted { $0.localPath < $1.localPath }
+        return onDemand + folders
+    }
+
+    private func taskCard(_ task: SyncTask) -> some View {
+        VStack(spacing: 0) {
+            // Head row
+            HStack(spacing: SVSpacing.xl) {
+                SVChip(variant: task.mode == .onDemand ? .cloud : .folder, size: 30)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(taskDisplayName(task)).font(SVFont.bodyBold(14))
+                    Text("\(task.localPath) ↔ \(task.remoteFolderName)")
+                        .font(SVFont.mono(10.5))
+                        .foregroundStyle(SVColor.textSecondary)
+                        .lineLimit(1).truncationMode(.middle)
+                }
+                Spacer()
+                SVStatusPill(text: modeLabel(task.mode),
+                             kind: task.mode == .onDemand ? .cloud : .neutral)
+                Toggle("", isOn: Binding(
+                    get: { task.isEnabled },
+                    set: { newValue in
+                        var updated = task
+                        updated.isEnabled = newValue
+                        appState.updateSyncTask(updated)
+                    }
+                )).labelsHidden()
+
+                Button {
+                    taskToEdit = task
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 11))
+                        .foregroundStyle(SVColor.accentBlue)
+                }
+                .buttonStyle(.borderless)
+                .help("Edit task")
+
+                Button {
+                    taskToDelete = task
+                    showingDeleteConfirmation = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11))
+                        .foregroundStyle(SVColor.accentRed)
+                }
+                .buttonStyle(.borderless)
+                .help("Delete task")
+            }
+            .padding(SVSpacing.xl)
+
+            // Stats grid
+            HStack(spacing: 0) {
+                statCell("Files",     "—")
+                statCell("Size",      "—")
+                statCell("Last sync", "—", isLast: true)
+            }
+            .overlay(Rectangle().fill(SVColor.hairline).frame(height: 1), alignment: .top)
+        }
+        .background(SVColor.cardBg)
+        .clipShape(RoundedRectangle(cornerRadius: SVRadius.card))
+    }
+
+    private func taskDisplayName(_ task: SyncTask) -> String {
+        URL(fileURLWithPath: task.localPath).lastPathComponent
+    }
+
+    private func modeLabel(_ mode: SyncTask.SyncMode) -> String {
+        switch mode {
+        case .twoWay:     return "two-way"
+        case .uploadOnly: return "backup"
+        case .onDemand:   return "on-demand"
+        }
+    }
+
+    private func statCell(_ label: String, _ value: String, isLast: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label.uppercased())
+                .font(SVFont.sectionLabel)
+                .foregroundStyle(SVColor.textTertiary)
+            Text(value)
+                .font(SVFont.mono(13))
+                .foregroundStyle(SVColor.textPrimary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, SVSpacing.xl)
+        .padding(.vertical, SVSpacing.l)
+        .overlay(alignment: .trailing) {
+            if !isLast { Rectangle().fill(SVColor.hairline).frame(width: 1) }
+        }
     }
 }
 
