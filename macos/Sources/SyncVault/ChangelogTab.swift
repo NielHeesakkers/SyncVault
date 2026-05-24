@@ -1,70 +1,97 @@
 import SwiftUI
 
 struct ChangelogTab: View {
-    @State private var changelog: String? = nil
-    @State private var isLoading = false
+    private let entries = ChangelogEntry.parseBundle()
+    private let currentVersion = Bundle.main.shortVersion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("CHANGELOG")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.secondary)
-                .tracking(0.5)
-
-            Text("Current version: v\(appVersion)")
-                .font(.system(size: 12, weight: .medium))
-
-            if isLoading {
-                HStack(spacing: 6) {
-                    ProgressView().scaleEffect(0.6)
-                    Text("Loading changelog...")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: SVSpacing.xl) {
+                Text("Changelog").font(SVFont.bodyBold(17))
+                ForEach(entries) { entry in
+                    versionCard(entry)
                 }
-            } else if let notes = changelog {
-                ScrollView {
-                    Text(notes)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                }
-            } else {
-                Text("Changelog unavailable. Connect to the server to load.")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
             }
-
-            Spacer()
+            .padding(SVSpacing.xxxl)
         }
-        .padding(20)
-        .task {
-            await loadChangelog()
-        }
+        .background(SVColor.windowBg)
     }
 
-    private func loadChangelog() async {
-        let sharedDefaults = UserDefaults(suiteName: "DE59N86W33.com.syncvault.shared")
-        guard let serverURL = sharedDefaults?.string(forKey: "serverURL"), !serverURL.isEmpty else { return }
-
-        isLoading = true
-        defer { isLoading = false }
-
-        do {
-            let urlStr = serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/version"
-            guard let url = URL(string: urlStr) else { return }
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 5
-            if let token = KeychainHelper.load(key: "access_token") {
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    private func versionCard(_ entry: ChangelogEntry) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: SVSpacing.l) {
+                Text(entry.version)
+                    .font(SVFont.monoBold(14))
+                    .foregroundStyle(entry.version == currentVersion ? SVColor.accentGreen : SVColor.textPrimary)
+                if entry.version == currentVersion {
+                    Text("· current").font(SVFont.body(11)).foregroundStyle(SVColor.textSecondary)
+                }
+                Text(entry.date).font(SVFont.mono(11)).foregroundStyle(SVColor.textTertiary)
+                if let tag = entry.tag {
+                    Text(tag.uppercased())
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundStyle(SVColor.textSecondary)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(SVColor.subtleBg)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
+                Spacer(minLength: 0)
             }
-            let (data, _) = try await URLSession.shared.data(for: request)
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let notes = json["changelog"] as? String ?? (json["release_notes"] as? String) {
-                changelog = notes
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(entry.bullets, id: \.self) { bullet in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("•").foregroundStyle(SVColor.textSecondary)
+                        Text(.init(bullet)).font(SVFont.body(12.5))
+                    }
+                }
             }
-        } catch {
-            // Silently ignore
+            .padding(SVSpacing.xl)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(SVColor.cardBg)
+            .clipShape(RoundedRectangle(cornerRadius: SVRadius.card))
         }
+    }
+}
+
+struct ChangelogEntry: Identifiable {
+    var id: String { version }
+    let version: String
+    let date: String
+    let tag: String?
+    let bullets: [String]
+
+    /// Parse `internal/api/rest/changelog.txt` shipped as a bundle resource.
+    /// Format:
+    ///   ## [3.2.0] — 2026-05-24
+    ///   - bullet text
+    ///   - **bold** bullet
+    ///
+    ///   ## [3.1.6] — 2026-05-24 (server-only)
+    ///   - ...
+    static func parseBundle() -> [ChangelogEntry] {
+        guard let url = Bundle.main.url(forResource: "changelog", withExtension: "txt"),
+              let raw = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        var entries: [ChangelogEntry] = []
+        let lines = raw.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var pending: (version: String, date: String, tag: String?, bullets: [String])? = nil
+        let header = try! NSRegularExpression(pattern: #"^##\s*\[([^\]]+)\]\s*[—-]\s*([^()]+?)(?:\s*\(([^)]+)\))?\s*$"#)
+        for line in lines {
+            let nsLine = line as NSString
+            let range = NSRange(location: 0, length: nsLine.length)
+            if let m = header.firstMatch(in: line, range: range) {
+                if let p = pending { entries.append(.init(version: p.version, date: p.date, tag: p.tag, bullets: p.bullets)) }
+                let v = nsLine.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces)
+                let d = nsLine.substring(with: m.range(at: 2)).trimmingCharacters(in: .whitespaces)
+                let t = m.range(at: 3).location != NSNotFound
+                    ? nsLine.substring(with: m.range(at: 3)).trimmingCharacters(in: .whitespaces)
+                    : nil
+                pending = (v, d, t, [])
+            } else if line.hasPrefix("- ") {
+                pending?.bullets.append(String(line.dropFirst(2)))
+            }
+        }
+        if let p = pending { entries.append(.init(version: p.version, date: p.date, tag: p.tag, bullets: p.bullets)) }
+        return entries
     }
 }

@@ -25,6 +25,8 @@ targets:
     platform: macOS
     sources:
       - path: Sources/SyncVault
+      - path: Sources/SyncVault/Resources/changelog.txt
+        buildPhase: resources
     dependencies:
       - package: SQLite.swift
         product: SQLite

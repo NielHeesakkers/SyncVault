@@ -13,6 +13,9 @@ let package = Package(
             dependencies: [
                 .product(name: "SQLite", package: "SQLite.swift"),
             ],
+            resources: [
+                .copy("Resources/changelog.txt"),
+            ]
         ),
         .testTarget(
             name: "SyncVaultTests",
