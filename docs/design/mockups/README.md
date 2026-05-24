@@ -124,3 +124,15 @@ and a right-click submenu with Share, Open on Server, Show Versions,
 Lock for editing, and Free Up Space.
 
 ![Finder integration](finder-integration.png)
+
+### Notifications + widgets
+
+Rich desktop notifications carry a file preview and inline actions —
+Show in Finder for completed uploads, Resolve for conflicts, View
+Activity for opened share links — so common follow-ups never require
+opening the app. Three widget sizes round it out: a 160×160 small
+status tile, a 340×160 medium widget listing each sync task with its
+mode and live state, and a 280×56 lock-screen widget for at-a-glance
+status.
+
+![Notifications and widgets](notifications-widgets.png)
