@@ -1,3 +1,10 @@
+## [3.1.0] — 2026-05-22 (server-only)
+- **SSE actually works now**: two bugs killed every SSE connection in 3.0.0 — `text/event-stream` was being gzipped (gzip buffers, breaking per-event delivery), and the LoggingMiddleware response wrapper didn't implement `http.Flusher` so the handler bailed with 500 before any bytes left the server. Both fixed.
+- **Per-folder cache invalidation**: tree cache and ETag/304 now key off each folder's own `change_rank` instead of the global counter. An upload in `/Werkmap` no longer wipes the `/Development` cache — unrelated subtrees stay warm.
+- **SQLite tree CTE 680× faster**: forced `INDEXED BY idx_files_parent_deleted` on the recursive step. SQLite was picking `idx_files_deleted_at` and re-scanning the entire 154K-row non-deleted table per node — 273 s for a 9 K-file subtree dropped to 0.4 s.
+- **Tree fetch resilience**: client uses a dedicated 15-min URLSession for tree fetches; server warms the per-folder cache on startup so the first poll after a restart hits cache instead of paying the cold CTE cost.
+- **nginx documentation**: README now lists the `proxy_buffering off` / `proxy_cache off` / `proxy_http_version 1.1` directives required for SSE to work through reverse proxies.
+
 ## [3.0.0] — 2026-05-22
 - **Real-time push sync (Synology-style)**: server pushes file events via SSE, client no longer polls
 - **In-memory tree cache (rank-versioned)**: tree fetches return in microseconds — auto-invalidated by global change_rank counter

@@ -1,9 +1,20 @@
 {
-  "version": "3.0.0",
+  "version": "3.1.0",
   "min_version": "1.0",
   "release_date": "2026-05-22",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.0.0/SyncVault-3.0.0.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.1.0/SyncVault-3.1.0.dmg",
   "history": [
+    {
+      "version": "3.1.0",
+      "date": "2026-05-22",
+      "changes": [
+        "SSE actually works now: gzip middleware was buffering text/event-stream and the logging response wrapper swallowed Flush()",
+        "Per-folder cache invalidation: uploads in one folder no longer wipe unrelated subtree caches",
+        "SQLite tree CTE 680x faster: INDEXED BY idx_files_parent_deleted forces the right query plan (273s -> 0.4s)",
+        "Tree fetch resilience: 15-min client URLSession + server cache warm-up at startup",
+        "Server-only release: macOS app stays on 3.0.0, all fixes are backend"
+      ]
+    },
     {
       "version": "3.0.0",
       "date": "2026-05-22",

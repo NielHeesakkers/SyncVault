@@ -4,10 +4,12 @@ Open-source file sync and backup platform. A self-hosted alternative to Synology
 
 ## Features
 
+- **Real-time Push Sync** — Server pushes file events to clients via SSE; changes propagate in under 100 ms without polling (Synology Drive-style)
 - **File Sync** — Two-way sync between your devices and the server
 - **Backup** — One-way backup with real-time file change detection (FSEvents)
 - **On-Demand Sync** — Files appear in Finder via FileProvider, download only when opened
 - **Delta Sync** — Only changed bytes are uploaded (rsync-style block comparison)
+- **Per-folder Cache** — Tree listings return in microseconds; only the touched subtree invalidates on a mutation
 - **File Versioning** — Up to 32 versions per file with retention policies
 - **File Preview** — Inline preview for images, video, audio, PDF, and code with syntax highlighting
 - **Team Folders** — Shared folders with per-user read/write permissions
@@ -62,6 +64,25 @@ When a file that already exists on the server is modified:
 ### Server Storage
 
 Files are stored as single files on disk (no chunking for new uploads). The server writes at full network speed first, then computes SHA-256 hash after — decoupling network I/O from CPU work. Block reference counting prevents data loss when files sharing blocks are deleted.
+
+### Real-time Push (SSE)
+
+Every mutation publishes a `FileEvent` (id, owner, hash, rank) to subscribers of `/api/events`. Clients keep one long-lived connection open (HTTP/2, keep-alive) and:
+
+1. On connect: get a `connected` event, then any events missed since `device_id`'s last cursor (per-device replay).
+2. On every server-side mutation: a `file` event is pushed within milliseconds.
+3. Keep-alive comment every 30 s prevents middleboxes from closing the connection.
+
+Result: a file saved on Mac A appears on Mac B in under 100 ms, no polling, no full tree refetch.
+
+### Tree Cache & ETag
+
+`GET /api/files/tree` is the hot path. Two layers keep it cheap:
+
+- **Per-folder in-memory cache**, validated by each folder's own `change_rank`. An upload in `/Werkmap` only invalidates the cache for that subtree and its ancestors — unrelated folders like `/Development` stay warm.
+- **ETag / If-None-Match (304)** on every tree response, derived from the same per-folder rank. The client skips parsing entirely when nothing changed.
+
+The recursive CTE under the cache uses `INDEXED BY idx_files_parent_deleted` to force the right query plan — without it SQLite picks the deleted_at index and degrades from 0.4 s to 273 s on a 9 K-file subtree.
 
 ### Performance
 
@@ -176,17 +197,29 @@ All configuration is via environment variables:
 
 Add to **Advanced** > **Custom Nginx Configuration**:
 
+Main proxy block:
+
 ```nginx
 client_max_body_size 0;
 proxy_read_timeout 86400;
 proxy_send_timeout 86400;
 proxy_connect_timeout 86400;
 proxy_request_buffering off;
-# Required for /api/events SSE push (real-time sync)
-proxy_buffering off;
-proxy_cache off;
 proxy_http_version 1.1;
 ```
+
+Then add a per-location override for `/api/events` so SSE bytes flush immediately:
+
+```nginx
+location /api/events {
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_set_header Connection "";
+    # ...same proxy_pass as the main block
+}
+```
+
+> **Nginx Proxy Manager users:** enable `Websockets Support` on the host (which already injects `proxy_http_version 1.1` — do NOT duplicate it in the custom location, nginx refuses to start). Then add a Custom Location for `/api/events` with `proxy_buffering off; proxy_cache off; proxy_set_header Connection "";`.
 
 ## API
 
@@ -195,11 +228,15 @@ proxy_http_version 1.1;
 - `POST /api/auth/refresh` — Refresh token
 
 ### Files
-- `GET /api/files?parent_id=` — List files
+- `GET /api/files?parent_id=` — List files (one level)
+- `GET /api/files/tree?folder_id=` — Recursive tree listing (ETag/304-aware, per-folder cache)
 - `PUT /api/files/put?parent_id=&filename=` — Upload file (raw bytes)
 - `GET /api/files/{id}/download` — Download
 - `GET /api/files/{id}/blocks` — Block signatures for delta sync
 - `POST /api/files/{id}/delta` — Delta upload (changed blocks only)
+
+### Real-time push
+- `GET /api/events?device_id=` — SSE stream of file events (server push, per-device replay cursor)
 
 ### Versions
 - `GET /api/files/{id}/versions` — List versions
