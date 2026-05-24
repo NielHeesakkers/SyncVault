@@ -1,132 +1,126 @@
-# Look & feel mockups — v3.1.2 → v3.2.0
+# SyncVault 3.2.0 — Design
 
-These are the design mockups from the brainstorm session that scoped the look-and-feel overhaul shipping in v3.2.0. They explore the menu bar app's visual direction, the settings window architecture, the in-app update flow, and the new onboarding wizard. Each image was rendered from the interactive brainstorm HTML fragments and captured as a full-page PNG, so they sort and review in order.
+The next major release refreshes the menu bar app's visual language, restructures
+the settings window, replaces the in-app update flow with a dedicated window,
+adds a guided first-launch wizard, and lays out the next round of features
+(conflict resolution and deeper Finder integration).
 
-## Contents
+## Visual language
 
-| # | Mockup | What it shows |
-|---|--------|---------------|
-| 01 | [Style direction](01-style-direction.png) | Three global style directions compared (utilitair vs karaktervol vs polish-only) |
-| 02 | [Style hybrid](02-style-hybrid.png) | Hybrid options for the icon language used across rows |
-| 03 | [Style mono chips](03-style-mono-chips.png) | Four monochrome icon variants on subtle chip backgrounds |
-| 04 | [Style final](04-style-final.png) | Final folder / file / cloud row treatment |
-| 05 | [Full menu (v2)](05-full-menu-v2.png) | Final menu bar popover in rest and active states |
-| 06 | [Menu bar icon](06-menubar-icon.png) | Seven menu bar status icon states |
-| 07 | [Menu bar glyph exploration](07-menubar-glyph-explore.png) | Glyph alternatives for the menu bar icon |
-| 08 | [Settings architecture](08-settings-arch.png) | Sidebar vs top-tab layout exploration |
-| 09 | [Settings — Sync Tasks](09-settings-sync-tasks-v2.png) | Sync Tasks tab (configuration only, no live status) |
-| 10 | [Settings — Connection](10-settings-connection.png) | Connection tab (server URL, credentials, status) |
-| 11 | [Settings — General](11-settings-general.png) | General tab (launch at login, notifications, theme) |
-| 12 | [Settings — Changelog + Info](12-settings-changelog-info.png) | Changelog viewer and About / Info panel |
-| 13 | [Update window](13-update-window.png) | Dedicated update window across three states |
-| 14 | [Update trigger flow](14-update-trigger-flow.png) | Which flow triggers when (auto-check, manual, etc.) |
-| 15 | [Update flow storyboard](15-update-flow-storyboard.png) | Five-step storyboard of the full update flow |
-| 16 | [Onboarding (v2)](16-onboarding-v2.png) | Final four-step onboarding wizard |
+The whole app moves to a denser, utilitarian look — Linear/Notion-inspired
+mono-font for stats, soft-fill chips per file type, and a consistent row pattern
+that scales from menu bar to settings.
 
-## 1. Style direction
+![Row pattern](row-pattern.png)
 
-The opening exploration: how dense, how warm, how custom should SyncVault feel? Each mockup narrows the visual language down to a single shared row pattern.
+Folder → folder chip. File → file chip. On-demand task → cloud chip with a
+blue tint. No type sniffing from names — the chip reflects what the row
+represents, not what software it was made with.
 
-### Three directions
+## Menu bar
 
-![Style direction](01-style-direction.png)
+The popover keeps a clean three-block layout: a header with sync state, a
+Recently changed feed, and the configured sync tasks. On-demand tasks pin
+above folder syncs, separated by a hairline divider. All live activity —
+progress bars, current file, throughput — lives here. Settings stays
+configuration-only.
 
-Utilitair (Linear/Notion-stijl, mono-font, hoge density) tegenover karaktervol (Things/Bear-stijl, gradients, custom iconografie) tegenover een conservatieve polish-pass op de huidige stijl.
+![Menu bar](menu-bar.png)
 
-### Iconen-opties — hybrid
+The status icon in the menu bar itself has seven well-defined states, all built
+from the same base glyph with at most one badge overlay. The glyph stays
+constant across four of seven states so users recognise the app first,
+status second.
 
-![Style hybrid](02-style-hybrid.png)
+![Menu bar icon states](menu-bar-icon-states.png)
 
-Hybrid varianten voor row-iconen: kies tussen monochrome SF Symbols, kleurrijke emoji-stijl en lichte tinted chips per task-type.
+## Settings
 
-### Monochrome chips
-
-![Style mono chips](03-style-mono-chips.png)
-
-Vier monochrome icoon-varianten op subtiele chip-achtergronden — verschil zit in chip-grootte, hoekstraal en contrast.
-
-### Finale rij
-
-![Style final](04-style-final.png)
-
-Het gekozen row-patroon voor folder / file / cloud — toegepast op alle sync tasks in het menu en de settings.
-
-## 2. Menu bar
-
-### Volledig menu (v2)
-
-![Full menu v2](05-full-menu-v2.png)
-
-De finale menu bar popover in rust en tijdens actieve sync. Toont status-header, sync tasks lijst, recent activity en footer-acties.
-
-### Menu bar icon — alle staten
-
-![Menu bar icon](06-menubar-icon.png)
-
-Zeven status-iconen voor de menu balk: idle, syncing, paused, offline, error, update beschikbaar, recently completed.
-
-### Glyph exploratie
-
-![Menu bar glyph explore](07-menubar-glyph-explore.png)
-
-Alternatieve glyphs voor het basis-icoon — pijltjes, wolk, vault, gestileerde S — om te bepalen welk symbool het beste herkenbaar is in de menu bar.
-
-## 3. Settings window
-
-### Architectuur
-
-![Settings architecture](08-settings-arch.png)
-
-Sidebar-navigatie vs top-tabs — pros en cons voor een settings-venster met circa vijf hoofdsecties.
-
-### Sync Tasks
-
-![Settings Sync Tasks](09-settings-sync-tasks-v2.png)
-
-De Sync Tasks-tab bevat alleen configuratie (toevoegen, verwijderen, instellen) — live status verhuist naar het menu.
-
-### Connection
-
-![Settings Connection](10-settings-connection.png)
-
-Server-URL, inloggegevens, verbindingsstatus en account-info op één tab.
+The settings window uses a sidebar with five sections. All live activity
+(progress bars, current upload, "syncing" labels) lives in the menu bar —
+settings is purely configuration.
 
 ### General
 
-![Settings General](11-settings-general.png)
+Local app preferences grouped by intent: Startup, Notifications, Bandwidth,
+and Updates. Each toggle carries a one-line subtitle so users never have to
+guess what it does. The Updates section keeps only the auto-check toggle
+and a Check Now button; the actual update flow opens in its own window.
 
-Algemene voorkeuren: launch at login, notificaties, theme, taal.
+![Settings: General](settings-general.png)
+
+### Connection
+
+Three live health cards across the top (status, latency, server uptime),
+then server URL, signed-in user with sign-out, TLS certificate validity,
+version match between client and server, and this device's name and ID.
+Reconnect and Test Server actions live at the bottom for quick recovery.
+
+![Settings: Connection](settings-connection.png)
+
+### Sync Tasks
+
+Configuration only — no status pills, no progress strips. Each task card
+shows its name, paths, mode chip, enabled toggle, and aggregate stats
+(files, size, last sync timestamp). On-demand tasks pin above the
+divider; folder syncs follow alphabetically.
+
+![Settings: Sync Tasks](settings-sync-tasks.png)
 
 ### Changelog + Info
 
-![Settings Changelog + Info](12-settings-changelog-info.png)
+A scrollable in-app changelog with versioned cards (current version
+highlighted in green, tagged "major" or "server-only" where relevant),
+plus an About panel with app hero, version, build metadata, and links
+to the website, GitHub, issue tracker and diagnostics export.
 
-In-app changelog viewer plus een Info-panel met versie, build, licenties en links.
+![Settings: Changelog + Info](settings-changelog-info.png)
 
-## 4. Update flow
+## Update flow
 
-### Dedicated update window
+The in-app updater moves out of settings into its own window. Three states
+in one place: available → downloading → ready to install. Settings keeps
+only the auto-check toggle and a "Check Now" button.
 
-![Update window](13-update-window.png)
+![Update window](update-window.png)
 
-Eigen venster voor de update-flow in drie staten: nieuwe versie beschikbaar, downloaden, klaar om te installeren.
+End-to-end, the user sees this flow:
 
-### Trigger flow
+![Update flow storyboard](update-flow.png)
 
-![Update trigger flow](14-update-trigger-flow.png)
+Auto-check finds a new version → a passive banner appears in Settings
+and an extra row in the menu bar. Clicking either opens the update
+window. Install, watch the progress bar, then a green Quit & Install
+button takes the user the last mile.
 
-Wanneer welke flow loopt: automatische check, handmatige check, "Check Now"-knop, post-install dialoog.
+## First-launch onboarding
 
-### Storyboard
+A four-step wizard takes a new user from install to first sync in about
+two minutes: welcome, server connection (with live test), first sync task,
+and confirmation. Defaults are pre-filled, dots at the bottom show
+progress, and the success step nudges the user toward the menu bar
+where the app now lives.
 
-![Update flow storyboard](15-update-flow-storyboard.png)
+![Onboarding](onboarding.png)
 
-Volledige update-ervaring in vijf stappen, van eerste melding tot succesvolle herstart.
+## Planned for 3.2.x
 
-## 5. Onboarding
+### Conflict resolution
 
-### Wizard v2
+Today, simultaneous edits on two devices result in a silent overwrite or
+a duplicated file with a suffix. The new dedicated conflict window pairs
+the local and server versions side by side with thumbnails, mtime and
+size, then lets the user pick Keep Local, Keep Server, or Keep Both.
+Multiple conflicts are walked one at a time with arrow navigation.
 
-![Onboarding v2](16-onboarding-v2.png)
+![Conflict resolution](conflict-resolution.png)
 
-De finale onboarding-wizard in vier stappen: welkom, server verbinden, eerste sync task aanmaken, klaar.
+### Finder integration
+
+A Finder extension surfaces SyncVault everywhere the user already looks
+at files: overlay badges on each icon (synced, syncing, on-demand,
+locked, error), a dedicated SyncVault section in the Finder sidebar,
+and a right-click submenu with Share, Open on Server, Show Versions,
+Lock for editing, and Free Up Space.
+
+![Finder integration](finder-integration.png)
