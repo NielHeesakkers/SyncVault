@@ -26,441 +26,224 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // MARK: - Header: Status + active transfer info
             statusHeader
-            subtleDivider
+                .overlay(
+                    Rectangle().fill(SVColor.hairline).frame(height: 1),
+                    alignment: .bottom
+                )
 
             if appState.isConnected {
-                // MARK: - Now Syncing (live list of in-flight uploads)
-                // Only show when there are 2+ active uploads — a single upload is already
-                // displayed in the status header above, so duplicating it here is confusing.
-                if appState.activeUploads.count >= 2 {
-                    nowSyncingSection
-                    subtleDivider
-                }
-
-                // MARK: - Recently Changed
-                if !appState.recentActivity.isEmpty {
-                    recentlyChangedSection
-                    subtleDivider
-                }
-
-                // MARK: - All Sync Tasks (unified: backup + on-demand)
-                if !allTasks.isEmpty {
+                nowSyncingSection
+                recentlyChangedSection
+                if !appState.syncTasks.isEmpty {
                     syncTasksSection
-                    subtleDivider
                 }
             }
 
-            // MARK: - Actions
             actionsSection
 
-            // Version
-            HStack {
-                Spacer()
-                Text("v\(appVersion)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(Color(white: 0.4))
-            }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 6)
+            footerView
         }
-        .frame(width: 300)
+        .frame(width: 340)
+        .background(SVColor.windowBg)
     }
 
     // MARK: - Status Header
 
     private var statusHeader: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if !appState.isConnected {
-                // Disconnected
-                HStack(spacing: 10) {
-                    Image(systemName: "xmark.icloud")
-                        .font(.system(size: 20))
-                        .foregroundColor(Color(white: 0.4))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Disconnected")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.primary)
-                    }
-                }
-            } else if appState.isPaused {
-                // Paused
-                HStack(spacing: 10) {
-                    Image(systemName: "pause.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(Color(white: 0.4))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Paused")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.primary)
-                        Text(serverDisplayURL)
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
-                }
-            } else if let error = appState.lastError {
-                // Error
-                HStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(.orange)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Warning")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.orange)
-                        Text(error)
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-            } else if let progress = appState.syncProgress {
-                // Syncing with progress
-                VStack(alignment: .leading, spacing: 6) {
-                    if progress.filesCompleted >= progress.filesTotal && progress.filesTotal > 0 && !appState.isSyncing {
-                        // All files done — show completion
-                        HStack(spacing: 10) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(.green)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("Sync complete")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                Text("\(progress.filesTotal) files · \(formatBytes(progress.bytesTransferred))")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    } else {
-                        // Still uploading
-                        HStack(spacing: 10) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.system(size: 20))
-                                .foregroundColor(.blue)
-                                .rotationEffect(.degrees(appState.isSyncing ? 360 : 0))
-                                .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: appState.isSyncing)
-                            VStack(alignment: .leading, spacing: 1) {
-                                HStack(spacing: 4) {
-                                    Text("Syncing")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundColor(.primary)
-                                    if let taskName = appState.activeSyncTaskName {
-                                        Text("— \(taskName)")
-                                            .font(.system(size: 13))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                Text(progress.currentFile)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-                            Spacer()
-                        }
-
-                        // Per-file bytes + speed
-                        HStack(spacing: 4) {
-                            if progress.currentFileTotal > 0 {
-                                if progress.currentFileBytes > 0 {
-                                    Text("\(formatBytes(progress.currentFileBytes)) / \(formatBytes(progress.currentFileTotal))")
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundColor(.secondary)
-                                } else {
-                                    Text(formatBytes(progress.currentFileTotal))
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            if progress.bytesPerSecond > 100 {
-                                Text("·")
-                                    .foregroundColor(Color(white: 0.35))
-                                Text(formatSpeed(progress.bytesPerSecond))
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(.blue)
-                            }
-                            Spacer()
-                        }
-
-                        // Per-file progress bar (smooth, per byte)
-                        if progress.currentFileTotal > 0 && progress.currentFileBytes > 0 {
-                            ProgressView(value: Double(progress.currentFileBytes), total: Double(max(progress.currentFileTotal, 1)))
-                                .tint(.blue)
-                                .scaleEffect(y: 0.6)
-                        } else if progress.filesTotal > 0 {
-                            ProgressView(value: Double(progress.filesCompleted), total: Double(max(progress.filesTotal, 1)))
-                                .tint(.blue)
-                                .scaleEffect(y: 0.6)
-                        }
-                    }
-
-                    // Total files + total bytes
-                    HStack {
-                        Text("\(progress.filesCompleted)/\(progress.filesTotal) files")
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(Color(white: 0.4))
-                        Spacer()
-                        if progress.totalBytes > 0 {
-                            Text("\(formatBytes(progress.bytesTransferred)) / \(formatBytes(progress.totalBytes))")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(Color(white: 0.4))
-                        }
-                    }
-                }
-
-            } else if let fpStatus = appState.fpProgress {
-                // FileProvider on-demand syncing
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.system(size: 20))
-                            .foregroundColor(.blue)
-                            .rotationEffect(.degrees(360))
-                            .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: true)
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 4) {
-                                Text("Syncing")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                Text("— CloudDrive")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.secondary)
-                            }
-                            HStack(spacing: 4) {
-                                Text(fpStatus)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                if appState.fpSpeed > 100 {
-                                    Text("·")
-                                        .foregroundColor(Color(white: 0.35))
-                                    Text(formatSpeed(appState.fpSpeed))
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                        Spacer()
-                    }
-                    ProgressView()
-                        .progressViewStyle(.linear)
-                        .tint(.blue)
-                        .scaleEffect(y: 0.6)
-                }
-            } else if appState.isSyncing {
-                // Syncing without detailed progress (scanning/comparing phase)
-                HStack(spacing: 10) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 20))
-                        .foregroundColor(.blue)
-                        .rotationEffect(.degrees(360))
-                        .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: appState.isSyncing)
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 4) {
-                            Text("Scanning")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.primary)
-                            if let taskName = appState.activeSyncTaskName {
-                                Text("— \(taskName)")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        Text("Comparing files...")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
-                }
-            } else {
-                // Up to date
-                HStack(spacing: 10) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(.green)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Up to date")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.primary)
-                        Text("\(allTasks.count) tasks · \(serverDisplayURL)")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
-                }
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(appState.isSyncing ? SVColor.cloudTint : SVColor.liveTint)
+                    .frame(width: 32, height: 32)
+                Text(appState.isSyncing ? "↻" : "✓")
+                    .font(.system(size: 14))
+                    .foregroundStyle(appState.isSyncing ? SVColor.cloudFg : SVColor.accentGreen)
+                    .rotationEffect(.degrees(appState.isSyncing ? 360 : 0))
+                    .animation(appState.isSyncing
+                        ? .linear(duration: 2).repeatForever(autoreverses: false)
+                        : .default, value: appState.isSyncing)
             }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(headerTitle).font(SVFont.bodyBold(14))
+                Text(headerSub).font(SVFont.mono(11)).foregroundStyle(SVColor.textSecondary)
+            }
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(minHeight: 90, alignment: .top)
+        .padding(.horizontal, SVSpacing.xl)
+        .padding(.vertical, SVSpacing.xl)
+    }
+
+    private var headerTitle: String {
+        if appState.isSyncing, let name = appState.activeSyncTaskName { return "Syncing \(name)" }
+        if appState.isSyncing { return "Syncing…" }
+        if !appState.isConnected { return "Disconnected" }
+        return "Up to date"
+    }
+
+    private var headerSub: String {
+        let count = appState.syncTasks.count
+        let host = URL(string: appState.serverURL)?.host ?? appState.serverURL
+        let size = ByteCountFormatter.string(fromByteCount: appState.storageUsed, countStyle: .file)
+        return "\(count) tasks · \(size) · \(host)"
     }
 
     // MARK: - Now Syncing (live in-flight uploads)
 
+    @ViewBuilder
     private var nowSyncingSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            menuSectionHeader("Now Syncing — \(appState.activeUploads.count) active")
-
-            // Sort by start time so the order is stable as items finish/appear.
-            // Cap at 5 visible to keep the menu bar small; show "+N more" tail.
-            let items = appState.activeUploads.values.sorted { $0.startedAt < $1.startedAt }
-            let visible = Array(items.prefix(5))
-            let overflow = items.count - visible.count
-
-            ForEach(visible) { item in
-                HStack(spacing: 8) {
-                    Image(systemName: item.isDone ? "checkmark.circle.fill" : nowSyncingIcon(for: item))
-                        .font(.system(size: 12))
-                        .foregroundColor(item.isDone ? .green : .blue)
-                        .frame(width: 16)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.filename)
-                            .font(.system(size: 11))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .foregroundColor(item.isDone ? .secondary : .primary)
-
-                        if item.totalBytes > 0 {
-                            ProgressView(
-                                value: Double(item.bytesTransferred),
-                                total: Double(max(item.totalBytes, 1))
-                            )
-                            .tint(item.isDone ? .green : .blue)
-                            .scaleEffect(y: 0.45)
-                        }
-
-                        HStack(spacing: 0) {
-                            Text(item.isDone ? "Done" : item.action)
-                                .foregroundColor(.secondary)
-                            if item.totalBytes > 0 {
-                                Text(" · ")
-                                    .foregroundColor(Color(white: 0.35))
-                                Text("\(formatBytes(item.bytesTransferred)) / \(formatBytes(item.totalBytes))")
-                                    .foregroundColor(Color(white: 0.4))
-                            }
-                        }
-                        .font(.system(size: 9, design: .monospaced))
+        if !appState.activeUploads.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                SVSectionLabel(text: "Now syncing")
+                let items = appState.activeUploads.values.sorted { $0.startedAt < $1.startedAt }
+                ForEach(Array(items.prefix(3))) { upload in
+                    HStack(spacing: 10) {
+                        SVChip(variant: .file)
+                        SVProgressStrip(
+                            filename: upload.filename,
+                            progress: upload.totalBytes > 0
+                                ? Double(upload.bytesTransferred) / Double(upload.totalBytes)
+                                : 0,
+                            fillColor: SVColor.accentGreen
+                        )
                     }
-
-                    Spacer()
+                    .padding(8)
+                    .background(SVColor.liveTint.opacity(0.4))
+                    .clipShape(RoundedRectangle(cornerRadius: SVRadius.chip))
                 }
-                .padding(.vertical, 2)
+                if appState.activeUploads.count > 3 {
+                    Text("+ \(appState.activeUploads.count - 3) more")
+                        .font(SVFont.mono(10.5))
+                        .foregroundStyle(SVColor.textSecondary)
+                }
             }
-
-            if overflow > 0 {
-                Text("+ \(overflow) more")
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-                    .padding(.leading, 24)
-            }
+            .padding(.horizontal, SVSpacing.xl)
+            .padding(.top, SVSpacing.l)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-    }
-
-    /// SF Symbol icon for an in-flight item — folder icon for tar-batch, file icon for normal.
-    private func nowSyncingIcon(for item: InFlightFile) -> String {
-        if item.action == "Tar-batch" { return "shippingbox.fill" }
-        if item.action == "Downloading" { return "arrow.down.circle" }
-        return "arrow.up.circle"
     }
 
     // MARK: - Recently Changed
 
+    @ViewBuilder
     private var recentlyChangedSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            menuSectionHeader("Recently Changed")
-
-            ForEach(Array(appState.recentActivity.prefix(5))) { item in
-                HStack(spacing: 8) {
-                    let icon = fileTypeIcon(for: item.filename)
-                    Image(systemName: icon.symbol)
-                        .font(.system(size: 12))
-                        .foregroundColor(icon.color)
-                        .frame(width: 16)
-
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(item.filename)
-                            .font(.system(size: 11))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .foregroundColor(.primary)
-
-                        HStack(spacing: 0) {
-                            if !item.taskName.isEmpty {
-                                Text(item.taskName)
-                                    .foregroundColor(.secondary)
-                                Text(" · ")
-                                    .foregroundColor(Color(white: 0.35))
-                            }
-                            Text(item.action.capitalized)
-                                .foregroundColor(.secondary)
-                            Text(" · ")
-                                .foregroundColor(Color(white: 0.35))
-                            Text(timeAgo(item.timestamp))
-                                .foregroundColor(Color(white: 0.4))
+        if !appState.recentActivity.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                SVSectionLabel(text: "Recently changed")
+                ForEach(appState.recentActivity.prefix(3)) { item in
+                    HStack(spacing: 10) {
+                        SVChip(variant: .file)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.filename)
+                                .font(SVFont.body(12.5))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Text("\(item.taskName) · \(relativeTime(item.timestamp))")
+                                .font(SVFont.body(10.5))
+                                .foregroundStyle(SVColor.textSecondary)
                         }
-                        .font(.system(size: 10))
+                        Spacer()
                     }
-
-                    Spacer()
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                    .onTapGesture { openRecentFile(item) }
                 }
-                .padding(.vertical, 3)
-                .contentShape(Rectangle())
-                .onTapGesture { openRecentFile(item) }
             }
+            .padding(.horizontal, SVSpacing.xl)
+            .padding(.top, SVSpacing.l)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+    }
+
+    private func relativeTime(_ date: Date) -> String {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f.localizedString(for: date, relativeTo: Date())
     }
 
     // MARK: - Unified Sync Tasks (backup + on-demand together)
 
     private var syncTasksSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                menuSectionHeader("Sync Tasks")
-                Spacer()
-                let active = allTasks.count
-                let total = appState.syncTasks.count
-                Text("\(active) / \(total)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(Color(white: 0.4))
-            }
-
-            ForEach(allTasks) { task in
-                HStack(spacing: 8) {
-                    Image(systemName: task.mode == .onDemand ? "icloud.fill" : "folder.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(task.mode == .onDemand ? .blue : .orange)
-                        .frame(width: 14)
-                    Text(task.remoteFolderName)
-                        .font(.system(size: 11))
-                        .lineLimit(1)
-                    Spacer()
-                    Circle()
-                        .fill(taskStatusColor(task))
-                        .frame(width: 6, height: 6)
-                    Text(taskStatusLabel(task))
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(white: 0.4))
-                        .frame(width: 55, alignment: .trailing)
-                }
-                .padding(.vertical, 1)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    if task.mode == .onDemand {
-                        openCloudDrive()
-                    } else {
-                        openTaskFolder(task)
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            SVSectionLabel(text: "Sync tasks", count: "\(syncedCount) / \(appState.syncTasks.count)")
+                .padding(.top, SVSpacing.l)
+            ForEach(sortedTasks) { task in
+                syncTaskRow(task)
+                if task.id == sortedTasks.first?.id,
+                   sortedTasks.first?.mode == .onDemand,
+                   sortedTasks.count > 1 {
+                    Rectangle()
+                        .fill(LinearGradient(
+                            colors: [.clear, SVColor.hairline, .clear],
+                            startPoint: .leading, endPoint: .trailing
+                        ))
+                        .frame(height: 1)
+                        .padding(.vertical, 4)
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, SVSpacing.xl)
+    }
+
+    private var sortedTasks: [SyncTask] {
+        let onDemand = appState.syncTasks.filter { $0.mode == .onDemand }
+        let folders = appState.syncTasks.filter { $0.mode != .onDemand }
+            .sorted { $0.localPath < $1.localPath }
+        return onDemand + folders
+    }
+
+    private func syncTaskRow(_ task: SyncTask) -> some View {
+        HStack(spacing: 10) {
+            SVChip(variant: task.mode == .onDemand ? .cloud : .folder)
+            Text(taskDisplayName(task)).font(SVFont.body(12.5))
+            Spacer()
+            SVStatusPill(text: pillText(task), kind: pillKind(task))
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if task.mode == .onDemand {
+                openCloudDrive()
+            } else {
+                openTaskFolder(task)
+            }
+        }
+    }
+
+    private func taskDisplayName(_ task: SyncTask) -> String {
+        URL(fileURLWithPath: task.localPath).lastPathComponent
+    }
+
+    private func pillKind(_ task: SyncTask) -> SVStatusPill.Kind {
+        if task.mode == .onDemand { return .cloud }
+        if !task.isEnabled { return .paused }
+        return .neutral
+    }
+
+    private func pillText(_ task: SyncTask) -> String {
+        if task.mode == .onDemand { return "on-demand" }
+        if !task.isEnabled { return "paused" }
+        return "synced"
+    }
+
+    private var syncedCount: Int {
+        appState.syncTasks.filter { $0.isEnabled }.count
+    }
+
+    // MARK: - Footer
+
+    private var footerView: some View {
+        HStack {
+            Text("v\(Bundle.main.shortVersion)").font(SVFont.mono(10))
+            Spacer()
+            Text(uptimeFormatted).font(SVFont.mono(10))
+        }
+        .foregroundStyle(SVColor.textTertiary)
+        .padding(.horizontal, SVSpacing.xl)
+        .padding(.top, SVSpacing.m)
+        .padding(.bottom, 2)
+    }
+
+    private var uptimeFormatted: String {
+        ""
     }
 
     // MARK: - Actions
@@ -819,5 +602,11 @@ struct TeamInviteRow: View {
             if key == "team_name" { teamName = value }
         }
         return (id: teamId, name: teamName)
+    }
+}
+
+extension Bundle {
+    var shortVersion: String {
+        infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
     }
 }
