@@ -1,9 +1,21 @@
 {
-  "version": "3.1.2",
+  "version": "3.2.0",
   "min_version": "1.0",
   "release_date": "2026-05-24",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.1.2/SyncVault-3.1.2.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.2.0/SyncVault-3.2.0.dmg",
   "history": [
+    {
+      "version": "3.2.0",
+      "date": "2026-05-24",
+      "changes": [
+        "Major design refresh: new design system, redesigned menu bar, restructured 5-tab settings window with sidebar",
+        "Dedicated update window with three states (Available / Downloading / Ready); auto-check never pops, only manual",
+        "First-launch onboarding wizard (Welcome > Connect with live test > First sync task > Done)",
+        "Menu bar icon: template image with 7-state badge overlay (error > update > syncing > completed priority)",
+        "Settings is configuration-only; live sync activity belongs in the menu bar",
+        "Bundled changelog viewer; Info tab server URL is variable"
+      ]
+    },
     {
       "version": "3.1.2",
       "date": "2026-05-24",

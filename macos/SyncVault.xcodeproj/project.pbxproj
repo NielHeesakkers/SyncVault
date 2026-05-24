@@ -46,6 +46,23 @@
 		FE0384E8AF172509200EA312 /* RemoteFolderBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 204C64400A8693CBA6D01313 /* RemoteFolderBrowserView.swift */; };
 		AAAA000000000000000A0001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000F0001 /* Assets.xcassets */; };
 		AAAA000000000000000A0002 /* changelog.txt in Resources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000F0002 /* changelog.txt */; };
+		E5E9042B41D8C050C48856E4 /* Tokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F00D9817330B1326B27E77 /* Tokens.swift */; };
+		A2E5E45C6EEDFE344F7F8873 /* SVChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5002F8D0E2B2D2567C2BC203 /* SVChip.swift */; };
+		A7E5FE04FDE14EC52E8CFA19 /* SVStatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1873E1CA7BDC76C1EDD151F5 /* SVStatusPill.swift */; };
+		0F7192069B07A4F72B9313C0 /* SVCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D71FF76B73C12584A6D3217 /* SVCard.swift */; };
+		AEC96F184A896363ED2C90FE /* SVSectionLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C620A29F8DE4C00FCC36A092 /* SVSectionLabel.swift */; };
+		08AE5BD9405DAD3CD917DDB3 /* SVSidebarItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9E2B078E45FCB4CBE93264D /* SVSidebarItem.swift */; };
+		CF66300C74FF9E8FC85B3260 /* SVProgressDots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D9BEF1009B49DB649CC1CA4 /* SVProgressDots.swift */; };
+		5CBD35BB1067787D1BEA3AD1 /* SVProgressStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A9ACE93439A309095DDCC67 /* SVProgressStrip.swift */; };
+		A62D3F5C2A588F552353BFEC /* SVBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3320933917403F04C0DB4F9F /* SVBadge.swift */; };
+		2F1D0F618EE711FCA27B8A53 /* UpdateWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD2330FBD04BCDBB7C35127C /* UpdateWindowController.swift */; };
+		A8D04EA9B95D5E97E5B505B3 /* UpdateWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D12ACCC49CC1383C73B85D5 /* UpdateWindowView.swift */; };
+		7C8FE6EECD30A37F69475D91 /* OnboardingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB35812D91FEA4F1D93AE9CB /* OnboardingController.swift */; };
+		292F977A81DE7690BDA8CD3A /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12E74EE96B0B96A3E013141 /* OnboardingView.swift */; };
+		C0FB56C60DD29AA525EFE36D /* WelcomeStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = D25556581D4B9D65DDD553BC /* WelcomeStep.swift */; };
+		91E474FBB9ABC563F0C8ABA2 /* ConnectStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = E16CAD5FC87100DC25C14364 /* ConnectStep.swift */; };
+		B1B4D34FDD2C7CDD115106CE /* FirstTaskStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EB83FCFB68D5EB16DCCFB19 /* FirstTaskStep.swift */; };
+		27057C4B6F2DE18BC364BB9F /* DoneStep.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4C9565F56EDEE6DBA804DFD /* DoneStep.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -124,6 +141,23 @@
 		F1E2C14153ED8339A25D2318 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		AAAA000000000000000F0001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AAAA000000000000000F0002 /* changelog.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/changelog.txt; sourceTree = "<group>"; };
+		B4F00D9817330B1326B27E77 /* Tokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Design/Tokens.swift; sourceTree = "<group>"; };
+		5002F8D0E2B2D2567C2BC203 /* SVChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Design/SVChip.swift; sourceTree = "<group>"; };
+		1873E1CA7BDC76C1EDD151F5 /* SVStatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Design/SVStatusPill.swift; sourceTree = "<group>"; };
+		2D71FF76B73C12584A6D3217 /* SVCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Design/SVCard.swift; sourceTree = "<group>"; };
+		C620A29F8DE4C00FCC36A092 /* SVSectionLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Design/SVSectionLabel.swift; sourceTree = "<group>"; };
+		E9E2B078E45FCB4CBE93264D /* SVSidebarItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Design/SVSidebarItem.swift; sourceTree = "<group>"; };
+		6D9BEF1009B49DB649CC1CA4 /* SVProgressDots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Design/SVProgressDots.swift; sourceTree = "<group>"; };
+		9A9ACE93439A309095DDCC67 /* SVProgressStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Design/SVProgressStrip.swift; sourceTree = "<group>"; };
+		3320933917403F04C0DB4F9F /* SVBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Design/SVBadge.swift; sourceTree = "<group>"; };
+		AD2330FBD04BCDBB7C35127C /* UpdateWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateWindow/UpdateWindowController.swift; sourceTree = "<group>"; };
+		3D12ACCC49CC1383C73B85D5 /* UpdateWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateWindow/UpdateWindowView.swift; sourceTree = "<group>"; };
+		DB35812D91FEA4F1D93AE9CB /* OnboardingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Onboarding/OnboardingController.swift; sourceTree = "<group>"; };
+		D12E74EE96B0B96A3E013141 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Onboarding/OnboardingView.swift; sourceTree = "<group>"; };
+		D25556581D4B9D65DDD553BC /* WelcomeStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Onboarding/WelcomeStep.swift; sourceTree = "<group>"; };
+		E16CAD5FC87100DC25C14364 /* ConnectStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Onboarding/ConnectStep.swift; sourceTree = "<group>"; };
+		5EB83FCFB68D5EB16DCCFB19 /* FirstTaskStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Onboarding/FirstTaskStep.swift; sourceTree = "<group>"; };
+		D4C9565F56EDEE6DBA804DFD /* DoneStep.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Onboarding/DoneStep.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -212,6 +246,23 @@
 				D1724FCD439D8EDFAB32A05C /* SyncVaultApp.swift */,
 				D84AC8EB04849E57CCD57751 /* UIHelpers.swift */,
 				56862DE9E2BFB3086920F77A /* UpdaterService.swift */,
+				3320933917403F04C0DB4F9F /* SVBadge.swift */,
+				2D71FF76B73C12584A6D3217 /* SVCard.swift */,
+				5002F8D0E2B2D2567C2BC203 /* SVChip.swift */,
+				6D9BEF1009B49DB649CC1CA4 /* SVProgressDots.swift */,
+				9A9ACE93439A309095DDCC67 /* SVProgressStrip.swift */,
+				C620A29F8DE4C00FCC36A092 /* SVSectionLabel.swift */,
+				E9E2B078E45FCB4CBE93264D /* SVSidebarItem.swift */,
+				1873E1CA7BDC76C1EDD151F5 /* SVStatusPill.swift */,
+				B4F00D9817330B1326B27E77 /* Tokens.swift */,
+				E16CAD5FC87100DC25C14364 /* ConnectStep.swift */,
+				D4C9565F56EDEE6DBA804DFD /* DoneStep.swift */,
+				5EB83FCFB68D5EB16DCCFB19 /* FirstTaskStep.swift */,
+				DB35812D91FEA4F1D93AE9CB /* OnboardingController.swift */,
+				D12E74EE96B0B96A3E013141 /* OnboardingView.swift */,
+				D25556581D4B9D65DDD553BC /* WelcomeStep.swift */,
+				AD2330FBD04BCDBB7C35127C /* UpdateWindowController.swift */,
+				3D12ACCC49CC1383C73B85D5 /* UpdateWindowView.swift */,
 			);
 			name = SyncVault;
 			path = Sources/SyncVault;
@@ -416,6 +467,23 @@
 				D586C1309BC88FB6D6A7559A /* SyncVaultApp.swift in Sources */,
 				41C91789CE8A5F7D62BEFC51 /* UIHelpers.swift in Sources */,
 				7A88DB90FDF8F8BB0FDA8BAE /* UpdaterService.swift in Sources */,
+				E5E9042B41D8C050C48856E4 /* Tokens.swift in Sources */,
+				A2E5E45C6EEDFE344F7F8873 /* SVChip.swift in Sources */,
+				A7E5FE04FDE14EC52E8CFA19 /* SVStatusPill.swift in Sources */,
+				0F7192069B07A4F72B9313C0 /* SVCard.swift in Sources */,
+				AEC96F184A896363ED2C90FE /* SVSectionLabel.swift in Sources */,
+				08AE5BD9405DAD3CD917DDB3 /* SVSidebarItem.swift in Sources */,
+				CF66300C74FF9E8FC85B3260 /* SVProgressDots.swift in Sources */,
+				5CBD35BB1067787D1BEA3AD1 /* SVProgressStrip.swift in Sources */,
+				A62D3F5C2A588F552353BFEC /* SVBadge.swift in Sources */,
+				2F1D0F618EE711FCA27B8A53 /* UpdateWindowController.swift in Sources */,
+				A8D04EA9B95D5E97E5B505B3 /* UpdateWindowView.swift in Sources */,
+				7C8FE6EECD30A37F69475D91 /* OnboardingController.swift in Sources */,
+				292F977A81DE7690BDA8CD3A /* OnboardingView.swift in Sources */,
+				C0FB56C60DD29AA525EFE36D /* WelcomeStep.swift in Sources */,
+				91E474FBB9ABC563F0C8ABA2 /* ConnectStep.swift in Sources */,
+				B1B4D34FDD2C7CDD115106CE /* FirstTaskStep.swift in Sources */,
+				27057C4B6F2DE18BC364BB9F /* DoneStep.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

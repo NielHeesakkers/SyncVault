@@ -1,3 +1,12 @@
+## [3.2.0] — 2026-05-24
+- **Major design refresh.** Complete visual overhaul of the macOS app: new design-system foundation (SVChip, SVStatusPill, SVCard, etc.), redesigned menu bar with CloudDrive pinning + live progress strips, restructured 5-tab settings window (General/Connection/Sync Tasks/Changelog/Info) with sidebar navigation.
+- **Dedicated update window.** Download + install moved out of Settings into its own three-state window (Available / Downloading / Ready). Auto-check on launch never opens a popup — only manual Check Now or clicking the banner opens it.
+- **First-launch onboarding wizard.** Four-step flow (Welcome → Connect → First sync task → Done) with live connection test that probes /api/health. Sets a UserDefaults flag so it only appears once per install.
+- **Menu bar icon.** Template image (system-tinted) with 7-state priority-ordered badge overlay (error > update > syncing > completed).
+- **Settings is configuration-only.** All live activity (progress, current upload, sync status pills) moved to the menu bar popover where it belongs. Settings stays calm.
+- **Bundled changelog viewer.** Changelog tab parses the same source-of-truth file shipped with the app.
+- Server URL in Settings → Info now pulls dynamically from the user's own configuration.
+
 ## [3.1.2] — 2026-05-24
 - **Auto-update actually installs now**: the old install script silently failed because the FileProvider and FinderSync extensions kept the bundle locked after the main app quit. The new script kills both extensions first, retries the bundle replace 3× with mv-aside fallback, and logs everything to `/tmp/syncvault_update.log` instead of `/dev/null` so failures are debuggable.
 - **Download progress bar**: live percentage + linear ProgressView while the DMG is streaming, both in Settings → Updates and as a compact row in the menu bar.
