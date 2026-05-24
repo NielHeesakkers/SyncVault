@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "SyncVault",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/stephencelis/SQLite.swift.git", from: "0.15.0"),
     ],
