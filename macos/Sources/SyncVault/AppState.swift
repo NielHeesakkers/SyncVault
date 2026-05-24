@@ -67,6 +67,39 @@ class AppState: ObservableObject {
     @Published var lanURL: String = ""       // e.g. "http://192.168.1.2:4282"
     @Published var externalURL: String = ""  // e.g. "https://sync.heesakkers.com"
 
+    // MARK: - Connection tab metadata (v3.2.0)
+    @Published var latencyMs: Int? = nil
+    @Published var serverVersion: String? = nil
+    @Published var serverUptimeShort: String = "—"   // e.g. "3d 14h"
+    @Published var sseConnected: Bool = false
+    @Published var deviceID: String = ""             // 36-char UUID
+
+    var deviceRegisteredDateFormatted: String {
+        UserDefaults.standard.string(forKey: "deviceRegisteredDate") ?? "—"
+    }
+
+    /// Reconnect using stored credentials.
+    func reconnect() async {
+        guard !serverURL.isEmpty, !username.isEmpty,
+              let password = KeychainHelper.load(key: "server_password") else { return }
+        do {
+            try await connect(url: serverURL, username: username, password: password)
+        } catch {
+            lastError = "Reconnect failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Run a server health check (used by Test Server button).
+    func testServer() async {
+        guard let client = apiClient else { return }
+        _ = try? await client.healthCheck()
+    }
+
+    /// Sign out — delegates to existing disconnect() flow.
+    func signOut() async {
+        disconnect()
+    }
+
     // MARK: - General tab preferences (v3.2.0)
     @Published var launchAtLogin: Bool = false {
         didSet {
@@ -130,6 +163,14 @@ class AppState: ObservableObject {
         notifySound       = d.bool(forKey: "notifySound")
         uploadLimitMBps   = d.double(forKey: "uploadLimitMBps")
         concurrentUploads = (d.object(forKey: "concurrentUploads") as? Int) ?? 4
+        // Hydrate deviceID (creates one on first launch via getDeviceID()).
+        deviceID = getDeviceID()
+        // Record when the device was first registered (used by Connection tab).
+        if d.string(forKey: "deviceRegisteredDate") == nil {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            d.set(formatter.string(from: Date()), forKey: "deviceRegisteredDate")
+        }
         // Initialize sync database at app start so known state persists
         initSyncDatabase()
         // Try to auto-reconnect with saved credentials
