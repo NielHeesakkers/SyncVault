@@ -277,7 +277,7 @@ struct MenuBarView: View {
                     .padding(.vertical, 6)
                 } else {
                     actionRow(icon: "arrow.down.circle.fill", label: "Update to v\(version)", color: .orange) {
-                        updaterService.downloadUpdate(version: version)
+                        updaterService.openUpdateWindow()
                     }
                 }
             }

@@ -4,6 +4,10 @@ import os
 
 private let logger = Logger(subsystem: "com.syncvault.app", category: "Updater")
 
+extension Notification.Name {
+    static let openUpdateWindow = Notification.Name("SyncVault.openUpdateWindow")
+}
+
 /// Manages the in-app update flow.
 ///
 /// The flow is split into TWO user-visible steps so the user controls when the
@@ -32,6 +36,10 @@ class UpdaterService: ObservableObject {
     @Published var automaticallyChecksForUpdates: Bool {
         didSet { UserDefaults.standard.set(automaticallyChecksForUpdates, forKey: "autoCheckUpdates") }
     }
+
+    /// Dedicated update window controller — created lazily by `openUpdateWindow()`.
+    /// Drives the download/install UI via callbacks bridged to this service.
+    @Published var updateWindowController: UpdateWindowController? = nil
 
     private let versionURL = "https://raw.githubusercontent.com/NielHeesakkers/SyncVault/main/version.json"
 
@@ -71,13 +79,57 @@ class UpdaterService: ObservableObject {
             if compareVersions(latestVersion, isNewerThan: currentVersion) {
                 availableVersion = latestVersion
                 availableChangelog = changelog
-                // UI picks up the new state automatically (the progress bar + install button
-                // live in the Settings/menu views). No modal — keeps things calm.
+                // Manual check → surface the dedicated update window. Auto-check stays silent.
+                openUpdateWindow()
             } else {
                 availableVersion = nil
                 availableChangelog = nil
                 showAlert(title: "You're Up to Date", message: "SyncVault v\(currentVersion) is the latest version.")
             }
+        }
+    }
+
+    // MARK: - Window
+
+    /// Open the dedicated update window. Idempotent — reuses the existing controller
+    /// if there is one, otherwise builds a fresh one and posts a notification so the
+    /// SwiftUI Scene materializes the window.
+    func openUpdateWindow() {
+        guard let version = availableVersion else { return }
+        if updateWindowController == nil {
+            let changelogBullets = (availableChangelog ?? "")
+                .components(separatedBy: "\n")
+                .filter { $0.hasPrefix("• ") }
+                .map { String($0.dropFirst(2)) }
+            let controller = UpdateWindowController(
+                version: version,
+                changelog: changelogBullets,
+                sizeBytes: 3_000_000   // sized hint — refined when download starts
+            )
+            // Bridge controller callbacks to actual UpdaterService methods
+            controller.onInstallRequested = { [weak self] in
+                Task { @MainActor in
+                    self?.downloadUpdate(version: version)
+                }
+            }
+            controller.onQuitAndInstall = { [weak self] in
+                Task { @MainActor in
+                    self?.quitAndInstall()
+                }
+            }
+            controller.onCancelDownload = { [weak self] in
+                Task { @MainActor in
+                    self?.cancelDownload()
+                }
+            }
+            self.updateWindowController = controller
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        if let win = NSApp.windows.first(where: { $0.identifier?.rawValue == "update-window" }) {
+            win.makeKeyAndOrderFront(nil)
+        } else {
+            // SwiftUI will materialize the window the first time openWindow is called
+            NotificationCenter.default.post(name: .openUpdateWindow, object: nil)
         }
     }
 
@@ -111,6 +163,7 @@ class UpdaterService: ObservableObject {
             onProgress: { [weak self] progress in
                 Task { @MainActor [weak self] in
                     self?.downloadProgress = progress
+                    self?.updateWindowController?.updateProgress(progress)
                 }
             },
             onComplete: { [weak self] result in
@@ -121,10 +174,12 @@ class UpdaterService: ObservableObject {
                     case .success(let savedURL):
                         self.downloadedDMG = savedURL
                         self.downloadProgress = 1.0
+                        self.updateWindowController?.downloadCompleted(at: savedURL)
                         logger.info("Update downloaded to \(savedURL.path)")
                     case .failure(let error):
                         self.downloadError = error.localizedDescription
                         self.downloadProgress = 0
+                        self.updateWindowController?.failed(error.localizedDescription)
                         logger.error("Download failed: \(error.localizedDescription)")
                     }
                     self.downloadDelegate = nil

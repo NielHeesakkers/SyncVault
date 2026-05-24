@@ -18,6 +18,9 @@ struct SyncVaultApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuBarView(appState: appState, updaterService: updaterService)
+                .onReceive(NotificationCenter.default.publisher(for: .openUpdateWindow)) { _ in
+                    openWindow(id: "update-window")
+                }
         } label: {
             MenuBarIcon(state: appState.menuBarState(availableVersion: updaterService.availableVersion))
         }
@@ -38,6 +41,25 @@ struct SyncVaultApp: App {
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
+
+        // Dedicated update window — drives download/install via UpdateWindowController.
+        Window("SyncVault Update", id: "update-window") {
+            if let c = updaterService.updateWindowController {
+                UpdateWindowView(controller: c)
+                    .onDisappear {
+                        // Release controller so a fresh one is built next time, but
+                        // keep it around if a download already finished (so reopening
+                        // still shows the "Quit & Install" state).
+                        if case .ready = c.state { } else {
+                            updaterService.updateWindowController = nil
+                        }
+                    }
+            } else {
+                EmptyView().frame(width: 1, height: 1)
+            }
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
     }
 }
 

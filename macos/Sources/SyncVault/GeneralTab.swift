@@ -108,7 +108,7 @@ struct GeneralTab: View {
                         }
                         Spacer()
                         Button("Show update…") {
-                            // Wired in Task 24 — for now no-op
+                            updaterService.openUpdateWindow()
                         }
                         .buttonStyle(.plain)
                         .font(SVFont.body(12))
