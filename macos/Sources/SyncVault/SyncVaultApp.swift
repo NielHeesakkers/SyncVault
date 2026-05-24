@@ -21,6 +21,18 @@ struct SyncVaultApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: .openUpdateWindow)) { _ in
                     openWindow(id: "update-window")
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .openOnboardingWindow)) { _ in
+                    openWindow(id: "onboarding")
+                }
+                .onAppear {
+                    // First-launch gate: show onboarding once if the user has
+                    // never finished the wizard.
+                    if OnboardingController.needsOnboarding {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            NotificationCenter.default.post(name: .openOnboardingWindow, object: nil)
+                        }
+                    }
+                }
         } label: {
             MenuBarIcon(state: appState.menuBarState(availableVersion: updaterService.availableVersion))
         }
@@ -60,7 +72,23 @@ struct SyncVaultApp: App {
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
+
+        // First-launch onboarding wizard — 4-step modal opened on launch
+        // when OnboardingController.needsOnboarding is true.
+        Window("Welcome to SyncVault", id: "onboarding") {
+            OnboardingView { dismissOnboardingWindow() }
+        }
+        .windowResizability(.contentSize)
+        .windowStyle(.hiddenTitleBar)
     }
+
+    private func dismissOnboardingWindow() {
+        NSApp.windows.first(where: { $0.identifier?.rawValue == "onboarding" })?.close()
+    }
+}
+
+extension Notification.Name {
+    static let openOnboardingWindow = Notification.Name("openOnboardingWindow")
 }
 
 // MARK: - App Delegate for file open events
