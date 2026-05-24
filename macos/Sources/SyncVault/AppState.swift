@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import FileProvider
+import ServiceManagement
 import os
 
 private let logger = Logger(subsystem: "com.syncvault.app", category: "AppState")
@@ -66,6 +67,36 @@ class AppState: ObservableObject {
     @Published var lanURL: String = ""       // e.g. "http://192.168.1.2:4282"
     @Published var externalURL: String = ""  // e.g. "https://sync.heesakkers.com"
 
+    // MARK: - General tab preferences (v3.2.0)
+    @Published var launchAtLogin: Bool = false {
+        didSet {
+            UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin")
+            if launchAtLogin {
+                try? SMAppService.mainApp.register()
+            } else {
+                try? SMAppService.mainApp.unregister()
+            }
+        }
+    }
+    @Published var hideDockIcon: Bool = false {
+        didSet { UserDefaults.standard.set(hideDockIcon, forKey: "hideDockIcon") }
+    }
+    @Published var notifyOnComplete: Bool = false {
+        didSet { UserDefaults.standard.set(notifyOnComplete, forKey: "notifyOnComplete") }
+    }
+    @Published var notifyOnError: Bool = true {
+        didSet { UserDefaults.standard.set(notifyOnError, forKey: "notifyOnError") }
+    }
+    @Published var notifySound: Bool = false {
+        didSet { UserDefaults.standard.set(notifySound, forKey: "notifySound") }
+    }
+    @Published var uploadLimitMBps: Double = 0 {
+        didSet { UserDefaults.standard.set(uploadLimitMBps, forKey: "uploadLimitMBps") }
+    }
+    @Published var concurrentUploads: Int = 4 {
+        didSet { UserDefaults.standard.set(concurrentUploads, forKey: "concurrentUploads") }
+    }
+
     var menuBarIcon: String {
         if !isConnected { return "cloud.slash" }
         if isSyncing { return "arrow.triangle.2.circlepath.icloud" }
@@ -88,6 +119,17 @@ class AppState: ObservableObject {
 
     init() {
         loadConfig()
+        // Hydrate General-tab preferences from UserDefaults. Assignments here
+        // trigger didSet, which writes the value back — harmless one-time write
+        // on first launch.
+        let d = UserDefaults.standard
+        launchAtLogin     = d.bool(forKey: "launchAtLogin")
+        hideDockIcon      = d.bool(forKey: "hideDockIcon")
+        notifyOnComplete  = d.bool(forKey: "notifyOnComplete")
+        notifyOnError     = (d.object(forKey: "notifyOnError") as? Bool) ?? true
+        notifySound       = d.bool(forKey: "notifySound")
+        uploadLimitMBps   = d.double(forKey: "uploadLimitMBps")
+        concurrentUploads = (d.object(forKey: "concurrentUploads") as? Int) ?? 4
         // Initialize sync database at app start so known state persists
         initSyncDatabase()
         // Try to auto-reconnect with saved credentials

@@ -45,7 +45,7 @@ struct SettingsView: View {
         } detail: {
             Group {
                 switch selected {
-                case .general:    GeneralTab(updaterService: updaterService)
+                case .general:    GeneralTab(appState: appState, updaterService: updaterService)
                 case .connection: ConnectionTab(appState: appState)
                 case .syncTasks:  SyncTasksTab(appState: appState)
                 case .changelog:  ChangelogTab()

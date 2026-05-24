@@ -1,193 +1,139 @@
 import SwiftUI
+import ServiceManagement
 
 struct GeneralTab: View {
+    @ObservedObject var appState: AppState
     @ObservedObject var updaterService: UpdaterService
-    @AppStorage("launchAtLogin") private var launchAtLogin = false
-    @AppStorage("showNotifications") private var showNotifications = true
-    @AppStorage("uploadLimitMBps") private var uploadLimitMBps: Double = 0
-    @AppStorage("downloadLimitMBps") private var downloadLimitMBps: Double = 0
 
     var body: some View {
-        Form {
-            // MARK: - App info header
-            Section {
-                HStack(spacing: 14) {
-                    if let appIcon = NSImage(named: "AppIcon") {
-                        Image(nsImage: appIcon)
-                            .resizable()
-                            .frame(width: 52, height: 52)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
-                    } else {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.accentColor.gradient)
-                            .frame(width: 52, height: 52)
-                            .overlay(
-                                Image(systemName: "arrow.triangle.2.circlepath.icloud")
-                                    .font(.system(size: 24, weight: .medium))
-                                    .foregroundColor(.white)
-                            )
-                            .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("General").font(SVFont.bodyBold(17)).padding(.bottom, SVSpacing.xl)
+
+                // STARTUP
+                SVSectionLabel(text: "Startup")
+                SVCard {
+                    SVCardRow {
+                        rowToggle(title: "Launch SyncVault at login",
+                                  sub: "Sync resumes automatically when you log in",
+                                  binding: $appState.launchAtLogin)
                     }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("SyncVault")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text("Version \(appVersion)")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(.secondary)
+                    SVCardRow(isLast: true) {
+                        rowToggle(title: "Hide dock icon",
+                                  sub: "Menu bar only — saves Cmd-Tab space",
+                                  binding: $appState.hideDockIcon)
                     }
-                    Spacer()
                 }
-                .padding(.vertical, 4)
-            }
+                .padding(.bottom, SVSpacing.l)
 
-            // MARK: - Startup
-            Section {
-                Toggle("Launch at login", isOn: $launchAtLogin)
-            } header: {
-                SectionHeader(title: "Startup")
-            }
+                // NOTIFICATIONS
+                SVSectionLabel(text: "Notifications")
+                SVCard {
+                    SVCardRow { rowToggle(title: "Banner when sync completes",
+                                          sub: "macOS notification after each task finishes",
+                                          binding: $appState.notifyOnComplete) }
+                    SVCardRow { rowToggle(title: "Banner on errors",
+                                          sub: "Always recommended",
+                                          binding: $appState.notifyOnError) }
+                    SVCardRow(isLast: true) {
+                        rowToggle(title: "Sound",
+                                  sub: "Subtle chime on completion",
+                                  binding: $appState.notifySound)
+                    }
+                }
+                .padding(.bottom, SVSpacing.l)
 
-            // MARK: - Notifications
-            Section {
-                Toggle("Show sync notifications", isOn: $showNotifications)
-            } header: {
-                SectionHeader(title: "Notifications")
-            }
-
-            // MARK: - Bandwidth
-            Section {
-                HStack {
-                    Text("Upload limit")
-                    Spacer()
-                    TextField("0", value: $uploadLimitMBps, format: .number)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 80)
-                        .multilineTextAlignment(.trailing)
-                        .onChange(of: uploadLimitMBps) { _ in
-                            let bytes = uploadLimitMBps > 0 ? Int64(uploadLimitMBps * 1_000_000) : 0
-                            UserDefaults.standard.set(bytes, forKey: "uploadLimitBytesPerSecond")
+                // BANDWIDTH
+                SVSectionLabel(text: "Bandwidth")
+                SVCard {
+                    SVCardRow {
+                        HStack(spacing: SVSpacing.xl) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Upload limit").font(SVFont.body(13))
+                                Text("Caps outgoing bandwidth — set to unlimited for LAN")
+                                    .font(SVFont.body(11)).foregroundStyle(SVColor.textSecondary)
+                            }
+                            Spacer()
+                            Slider(value: $appState.uploadLimitMBps, in: 0...50).frame(width: 140)
+                            Text(appState.uploadLimitMBps == 0 ? "∞" : String(format: "%.1f MB/s", appState.uploadLimitMBps))
+                                .font(SVFont.mono(11)).foregroundStyle(SVColor.textSecondary)
+                                .frame(width: 70, alignment: .trailing)
                         }
-                    Text("MB/s")
-                        .foregroundColor(.secondary)
-                        .font(.system(size: 12))
-                }
-                HStack {
-                    Text("Download limit")
-                    Spacer()
-                    TextField("0", value: $downloadLimitMBps, format: .number)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 80)
-                        .multilineTextAlignment(.trailing)
-                        .onChange(of: downloadLimitMBps) { _ in
-                            let bytes = downloadLimitMBps > 0 ? Int64(downloadLimitMBps * 1_000_000) : 0
-                            UserDefaults.standard.set(bytes, forKey: "downloadLimitBytesPerSecond")
-                        }
-                    Text("MB/s")
-                        .foregroundColor(.secondary)
-                        .font(.system(size: 12))
-                }
-                Text("Set to 0 for unlimited")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            } header: {
-                SectionHeader(title: "Bandwidth")
-            }
-
-            // MARK: - Updates
-            Section {
-                HStack {
-                    Text("Check for updates now")
-                    Spacer()
-                    Button("Check Now") {
-                        updaterService.checkForUpdates()
                     }
-                    .controlSize(.small)
+                    SVCardRow(isLast: true) {
+                        HStack(spacing: SVSpacing.xl) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Concurrent uploads").font(SVFont.body(13))
+                                Text("More = faster on LAN, but uses more memory")
+                                    .font(SVFont.body(11)).foregroundStyle(SVColor.textSecondary)
+                            }
+                            Spacer()
+                            Picker("", selection: $appState.concurrentUploads) {
+                                Text("1").tag(1); Text("2").tag(2); Text("4").tag(4); Text("8").tag(8)
+                            }
+                            .pickerStyle(.segmented).frame(width: 160)
+                        }
+                    }
                 }
-                Toggle("Automatically check for updates", isOn: $updaterService.automaticallyChecksForUpdates)
+                .padding(.bottom, SVSpacing.l)
+
+                // UPDATES — Check Now + auto-check + optional banner ONLY.
+                // No download/install UI here; that lives in the dedicated update window (Task 24).
+                SVSectionLabel(text: "Updates")
+                SVCard {
+                    SVCardRow {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Check for updates now").font(SVFont.body(13))
+                                Text("Compares this build to the latest published release")
+                                    .font(SVFont.body(11)).foregroundStyle(SVColor.textSecondary)
+                            }
+                            Spacer()
+                            Button("Check Now") { updaterService.checkForUpdates() }.controlSize(.small)
+                        }
+                    }
+                    SVCardRow(isLast: true) {
+                        rowToggle(title: "Automatically check for updates",
+                                  sub: "Every launch + once per day",
+                                  binding: $updaterService.automaticallyChecksForUpdates)
+                    }
+                }
 
                 if let version = updaterService.availableVersion {
-                    // 3 states: not-yet-downloaded → downloading → ready to install.
-                    if updaterService.downloadedDMG != nil {
-                        // Ready: prompt user to quit & install on their schedule.
-                        HStack(spacing: 10) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 15))
-                                .foregroundColor(.green)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("v\(version) ready to install")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.green)
-                                Text("App will quit and relaunch automatically")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Button("Quit & Install") {
-                                updaterService.quitAndInstall()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
+                    HStack {
+                        HStack(spacing: 8) {
+                            Text("↑").foregroundStyle(SVColor.accentOrange)
+                            Text("v\(version) available")
+                                .font(SVFont.body(12.5)).foregroundStyle(SVColor.accentOrange)
                         }
-                    } else if updaterService.isDownloading {
-                        // Downloading: live progress bar + percentage + cancel.
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 10) {
-                                Image(systemName: "arrow.down.circle")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.accentColor)
-                                Text("Downloading v\(version)…")
-                                    .font(.system(size: 12, weight: .medium))
-                                Spacer()
-                                Text("\(Int(updaterService.downloadProgress * 100))%")
-                                    .font(.system(size: 11, weight: .medium).monospacedDigit())
-                                    .foregroundColor(.secondary)
-                                Button("Cancel") {
-                                    updaterService.cancelDownload()
-                                }
-                                .controlSize(.small)
-                            }
-                            ProgressView(value: updaterService.downloadProgress)
-                                .progressViewStyle(.linear)
+                        Spacer()
+                        Button("Show update…") {
+                            // Wired in Task 24 — for now no-op
                         }
-                    } else {
-                        // Available but not yet downloaded.
-                        HStack(spacing: 10) {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .font(.system(size: 15))
-                                .foregroundColor(.orange)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("v\(version) available")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.orange)
-                                Text("A new version is ready to download")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Button("Download") {
-                                updaterService.downloadUpdate(version: version)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                        }
+                        .buttonStyle(.plain)
+                        .font(SVFont.body(12))
+                        .foregroundStyle(SVColor.accentBlue)
                     }
+                    .padding(.horizontal, SVSpacing.xl).padding(.vertical, SVSpacing.l)
+                    .background(SVColor.accentOrange.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: SVRadius.card))
+                    .padding(.top, SVSpacing.m)
                 }
-
-                if let err = updaterService.downloadError {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.red)
-                        Text(err)
-                            .font(.system(size: 11))
-                            .foregroundColor(.red)
-                    }
-                }
-            } header: {
-                SectionHeader(title: "Updates")
             }
+            .padding(SVSpacing.xxxl)
         }
-        .formStyle(.grouped)
-        .padding(.vertical, 4)
+        .background(SVColor.windowBg)
+    }
+
+    @ViewBuilder
+    private func rowToggle(title: String, sub: String, binding: Binding<Bool>) -> some View {
+        HStack(alignment: .center, spacing: SVSpacing.xl) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(SVFont.body(13))
+                Text(sub).font(SVFont.body(11)).foregroundStyle(SVColor.textSecondary)
+            }
+            Spacer()
+            Toggle("", isOn: binding).labelsHidden()
+        }
     }
 }
