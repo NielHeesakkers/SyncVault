@@ -2,6 +2,29 @@
 
 Open-source file sync and backup platform. A self-hosted alternative to Synology Drive.
 
+## Coming in v3.2.0 — Design preview
+
+A complete visual overhaul of the macOS app, a dedicated update window, a
+guided first-launch wizard, and three new features: conflict resolution,
+Finder integration, and rich notifications + widgets.
+
+<table>
+<tr>
+<td width="50%"><b>Menu bar</b><br><img src="docs/design/mockups/menu-bar.png" alt="Menu bar"></td>
+<td width="50%"><b>Settings — Sync Tasks</b><br><img src="docs/design/mockups/settings-sync-tasks.png" alt="Settings Sync Tasks"></td>
+</tr>
+<tr>
+<td><b>Dedicated update window</b><br><img src="docs/design/mockups/update-window.png" alt="Update window"></td>
+<td><b>First-launch onboarding</b><br><img src="docs/design/mockups/onboarding.png" alt="Onboarding"></td>
+</tr>
+<tr>
+<td><b>Conflict resolution</b><br><img src="docs/design/mockups/conflict-resolution.png" alt="Conflict resolution"></td>
+<td><b>Finder integration</b><br><img src="docs/design/mockups/finder-integration.png" alt="Finder integration"></td>
+</tr>
+</table>
+
+[Full design walkthrough →](docs/design/mockups/README.md) · [Design spec →](docs/superpowers/specs/2026-05-24-v3.2.0-design.md)
+
 ## Features
 
 - **Real-time Push Sync** — Server pushes file events to clients via SSE; changes propagate in under 100 ms without polling (Synology Drive-style)
