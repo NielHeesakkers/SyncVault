@@ -96,6 +96,14 @@ struct GeneralTab: View {
 
             // MARK: - Updates
             Section {
+                HStack {
+                    Text("Check for updates now")
+                    Spacer()
+                    Button("Check Now") {
+                        updaterService.checkForUpdates()
+                    }
+                    .controlSize(.small)
+                }
                 Toggle("Automatically check for updates", isOn: $updaterService.automaticallyChecksForUpdates)
 
                 if let version = updaterService.availableVersion {

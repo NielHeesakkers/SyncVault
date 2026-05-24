@@ -1,9 +1,16 @@
 {
-  "version": "3.1.0",
+  "version": "3.1.1",
   "min_version": "1.0",
   "release_date": "2026-05-22",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.1.0/SyncVault-3.1.0.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.1.1/SyncVault-3.1.1.dmg",
   "history": [
+    {
+      "version": "3.1.1",
+      "date": "2026-05-22",
+      "changes": [
+        "Manual Check Now button in Settings > General > Updates"
+      ]
+    },
     {
       "version": "3.1.0",
       "date": "2026-05-22",

@@ -1,3 +1,6 @@
+## [3.1.1] — 2026-05-22
+- **Manual update check**: Settings → General → Updates now has a "Check Now" button so you don't have to relaunch the app to pick up a new release.
+
 ## [3.1.0] — 2026-05-22 (server-only)
 - **SSE actually works now**: two bugs killed every SSE connection in 3.0.0 — `text/event-stream` was being gzipped (gzip buffers, breaking per-event delivery), and the LoggingMiddleware response wrapper didn't implement `http.Flusher` so the handler bailed with 500 before any bytes left the server. Both fixed.
 - **Per-folder cache invalidation**: tree cache and ETag/304 now key off each folder's own `change_rank` instead of the global counter. An upload in `/Werkmap` no longer wipes the `/Development` cache — unrelated subtrees stay warm.
