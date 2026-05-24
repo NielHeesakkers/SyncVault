@@ -467,12 +467,36 @@ struct MenuBarView: View {
 
     private var actionsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Update notification
+            // Update notification — 3 states: available → downloading (with %) → ready to install
             if let version = updaterService.availableVersion {
-                actionRow(icon: "arrow.down.circle.fill", label: "Update to v\(version)", color: .orange) {
-                    updaterService.downloadAndInstallUpdate(version: version)
+                if updaterService.downloadedDMG != nil {
+                    actionRow(icon: "checkmark.circle.fill", label: "Quit & Install v\(version)", color: .green) {
+                        updaterService.quitAndInstall()
+                    }
+                } else if updaterService.isDownloading {
+                    // Compact inline progress so it doesn't dominate the menu
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.system(size: 13))
+                            .foregroundColor(.accentColor)
+                            .frame(width: 16)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Downloading v\(version)…")
+                                .font(.system(size: 12))
+                            ProgressView(value: updaterService.downloadProgress)
+                                .progressViewStyle(.linear)
+                        }
+                        Text("\(Int(updaterService.downloadProgress * 100))%")
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                } else {
+                    actionRow(icon: "arrow.down.circle.fill", label: "Update to v\(version)", color: .orange) {
+                        updaterService.downloadUpdate(version: version)
+                    }
                 }
-                .disabled(updaterService.isDownloading)
             }
 
             // Pause / Continue toggle

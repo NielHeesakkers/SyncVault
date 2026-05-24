@@ -107,34 +107,80 @@ struct GeneralTab: View {
                 Toggle("Automatically check for updates", isOn: $updaterService.automaticallyChecksForUpdates)
 
                 if let version = updaterService.availableVersion {
-                    HStack(spacing: 10) {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.system(size: 15))
-                            .foregroundColor(.orange)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("v\(version) available")
-                                .font(.system(size: 12, weight: .medium))
+                    // 3 states: not-yet-downloaded → downloading → ready to install.
+                    if updaterService.downloadedDMG != nil {
+                        // Ready: prompt user to quit & install on their schedule.
+                        HStack(spacing: 10) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 15))
+                                .foregroundColor(.green)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("v\(version) ready to install")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.green)
+                                Text("App will quit and relaunch automatically")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button("Quit & Install") {
+                                updaterService.quitAndInstall()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
+                    } else if updaterService.isDownloading {
+                        // Downloading: live progress bar + percentage + cancel.
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 10) {
+                                Image(systemName: "arrow.down.circle")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(.accentColor)
+                                Text("Downloading v\(version)…")
+                                    .font(.system(size: 12, weight: .medium))
+                                Spacer()
+                                Text("\(Int(updaterService.downloadProgress * 100))%")
+                                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                                    .foregroundColor(.secondary)
+                                Button("Cancel") {
+                                    updaterService.cancelDownload()
+                                }
+                                .controlSize(.small)
+                            }
+                            ProgressView(value: updaterService.downloadProgress)
+                                .progressViewStyle(.linear)
+                        }
+                    } else {
+                        // Available but not yet downloaded.
+                        HStack(spacing: 10) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 15))
                                 .foregroundColor(.orange)
-                            Text("A new version is ready to download")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("v\(version) available")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.orange)
+                                Text("A new version is ready to download")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button("Download") {
+                                updaterService.downloadUpdate(version: version)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
                         }
-                        Spacer()
-                        Button("Download") {
-                            updaterService.downloadAndInstallUpdate(version: version)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(updaterService.isDownloading)
                     }
                 }
 
-                if updaterService.isDownloading {
+                if let err = updaterService.downloadError {
                     HStack(spacing: 8) {
-                        ProgressView().scaleEffect(0.7)
-                        Text("Downloading update...")
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.red)
+                        Text(err)
                             .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.red)
                     }
                 }
             } header: {

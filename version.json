@@ -1,9 +1,20 @@
 {
-  "version": "3.1.1",
+  "version": "3.1.2",
   "min_version": "1.0",
-  "release_date": "2026-05-22",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.1.1/SyncVault-3.1.1.dmg",
+  "release_date": "2026-05-24",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.1.2/SyncVault-3.1.2.dmg",
   "history": [
+    {
+      "version": "3.1.2",
+      "date": "2026-05-24",
+      "changes": [
+        "Auto-update actually installs now: kill FileProvider + FinderSync extensions first so the bundle isn't locked",
+        "Download progress bar with live percentage in Settings and menu bar",
+        "Quit & Install button: separates download from install so the app no longer quits mid-action",
+        "Install script logs to /tmp/syncvault_update.log for debuggability",
+        "Cancel button for in-progress downloads"
+      ]
+    },
     {
       "version": "3.1.1",
       "date": "2026-05-22",

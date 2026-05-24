@@ -1,3 +1,9 @@
+## [3.1.2] — 2026-05-24
+- **Auto-update actually installs now**: the old install script silently failed because the FileProvider and FinderSync extensions kept the bundle locked after the main app quit. The new script kills both extensions first, retries the bundle replace 3× with mv-aside fallback, and logs everything to `/tmp/syncvault_update.log` instead of `/dev/null` so failures are debuggable.
+- **Download progress bar**: live percentage + linear ProgressView while the DMG is streaming, both in Settings → Updates and as a compact row in the menu bar.
+- **"Quit & Install" button**: download and install are now two separate user-controlled steps. The app no longer quits mid-action — when the DMG is done downloading, you see a green "Quit & Install" prompt and click when ready.
+- **Cancel download**: in-progress download can be cancelled from Settings.
+
 ## [3.1.1] — 2026-05-22
 - **Manual update check**: Settings → General → Updates now has a "Check Now" button so you don't have to relaunch the app to pick up a new release.
 
