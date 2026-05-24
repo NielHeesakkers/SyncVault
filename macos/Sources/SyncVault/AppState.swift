@@ -1282,6 +1282,23 @@ struct ActivityItem: Identifiable {
     var relativePath: String = ""  // path relative to task root (e.g. "subdir/file.mov")
 }
 
+extension AppState {
+    /// Drives the menu bar icon. Maps the existing state flags onto MenuBarState
+    /// per priority order in spec §3.
+    ///
+    /// `availableVersion` is passed in by the call site (SyncVaultApp) because the
+    /// updater lives in a separate @StateObject (`UpdaterService`) — keeping AppState
+    /// unaware of it avoids cross-service coupling. `.error` and `.recentlyCompleted`
+    /// branches are wired in a later phase.
+    func menuBarState(availableVersion: String? = nil) -> MenuBarState {
+        if !isConnected { return .offline }
+        if availableVersion != nil { return .updateAvailable }
+        if isSyncing { return .syncing }
+        if isPaused { return .paused }
+        return .synced
+    }
+}
+
 struct TaskResponse: Codable {
     let id: String
     let name: String

@@ -1,44 +1,58 @@
 import SwiftUI
 
+/// Seven menu bar states. Drives glyph + badge overlay choice.
+enum MenuBarState: Hashable {
+    case synced
+    case syncing
+    case paused
+    case offline
+    case error
+    case updateAvailable
+    case recentlyCompleted
+}
+
 struct MenuBarIcon: View {
-    let isSyncing: Bool
-    let isConnected: Bool
-    var syncProgress: SyncProgress? = nil
+    let state: MenuBarState
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: iconName)
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(iconColor)
-            if isSyncing, let progress = syncProgress, progress.bytesPerSecond > 100 {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 2) {
-                        Text("↑")
-                            .foregroundColor(.green)
-                        Text(formatSpeed(progress.bytesPerSecond))
-                            .foregroundColor(.green)
-                    }
-                    .font(.system(size: 8, weight: .medium, design: .monospaced))
-                }
+        ZStack(alignment: .bottomTrailing) {
+            Image(systemName: glyph)
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.primary.opacity(state == .offline ? 0.35 : 1.0))
+            if let badge {
+                SVBadge(color: badge.color, pulse: badge.pulse)
+                    .offset(x: 3, y: 3)
             }
         }
     }
 
-    private func formatSpeed(_ bps: Double) -> String {
-        if bps > 1_000_000 { return String(format: "%.1f MB/s", bps / 1_000_000) }
-        if bps > 1_000 { return String(format: "%.0f KB/s", bps / 1_000) }
-        return String(format: "%.0f B/s", bps)
+    private var glyph: String {
+        switch state {
+        case .paused: return "pause.fill"
+        default:      return "arrow.triangle.2.circlepath.icloud"
+        }
     }
 
-    private var iconName: String {
-        if !isConnected { return "icloud.slash" }
-        if isSyncing { return "arrow.triangle.2.circlepath.icloud" }
-        return "checkmark.icloud"
-    }
+    private struct BadgeSpec { let color: SVBadge.Color; let pulse: Bool }
 
-    private var iconColor: Color {
-        if !isConnected { return .gray }
-        if isSyncing { return .blue }
-        return .green
+    private var badge: BadgeSpec? {
+        // Priority order from spec §3: error > update > syncing > completed
+        switch state {
+        case .error:             return .init(color: .red,    pulse: false)
+        case .updateAvailable:   return .init(color: .orange, pulse: false)
+        case .syncing:           return .init(color: .blue,   pulse: true)
+        case .recentlyCompleted: return .init(color: .green,  pulse: true)
+        case .synced, .paused, .offline: return nil
+        }
     }
+}
+
+#Preview {
+    HStack(spacing: 18) {
+        ForEach([MenuBarState.synced, .syncing, .paused, .offline, .error, .updateAvailable, .recentlyCompleted], id: \.self) { s in
+            MenuBarIcon(state: s)
+        }
+    }
+    .padding()
+    .background(Color.black)
 }
