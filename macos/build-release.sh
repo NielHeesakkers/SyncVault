@@ -21,6 +21,12 @@ echo "=== Building SyncVault v$VERSION ==="
 # 1. Clean build
 echo "→ Building..."
 cd "$SCRIPT_DIR"
+GIT_SHA=$(git -C "$SCRIPT_DIR/.." rev-parse --short HEAD)
+BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+/usr/libexec/PlistBuddy -c "Set :GitSHA $GIT_SHA" "$SCRIPT_DIR/Sources/SyncVault/Info.plist" 2>/dev/null || \
+    /usr/libexec/PlistBuddy -c "Add :GitSHA string $GIT_SHA" "$SCRIPT_DIR/Sources/SyncVault/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :BuildDate $BUILD_DATE" "$SCRIPT_DIR/Sources/SyncVault/Info.plist" 2>/dev/null || \
+    /usr/libexec/PlistBuddy -c "Add :BuildDate string $BUILD_DATE" "$SCRIPT_DIR/Sources/SyncVault/Info.plist"
 xcodebuild -scheme SyncVault -configuration Release -derivedDataPath build clean build 2>&1 | tail -3
 
 # 2. Fix Sparkle framework structure (remove unsealed symlinks + resource forks)

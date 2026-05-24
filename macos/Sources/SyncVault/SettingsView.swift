@@ -49,7 +49,7 @@ struct SettingsView: View {
                 case .connection: ConnectionTab(appState: appState)
                 case .syncTasks:  SyncTasksTab(appState: appState)
                 case .changelog:  ChangelogTab()
-                case .info:       InfoTab()
+                case .info:       InfoTab(appState: appState)
                 }
             }
             .frame(minWidth: 520, minHeight: 460)
