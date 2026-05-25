@@ -273,6 +273,45 @@ func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// CRITICAL: if a non-deleted file with this parent+name already exists,
+	// treat the upload as a NEW VERSION instead of a fresh create. The old
+	// code path always called CreateFile, which renamed the existing record
+	// to "<name>_DELETED_<ts>_<id>" and shoved it into trash — every
+	// subsequent re-upload of the same file created another trash entry, so
+	// active dev folders accumulated thousands of conflict markers in a day.
+	// Versioning is what we wanted all along.
+	existing, _ := s.db.FindFileByName(parentID, claims.UserID, filename)
+	if existing != nil && !existing.DeletedAt.Valid && !existing.IsDir {
+		// Same content already? no-op (idempotent re-upload).
+		if existing.ContentHash.Valid && existing.ContentHash.String == contentHash {
+			writeJSON(w, http.StatusOK, toFileResponse(*existing))
+			return
+		}
+		// Content differs → create the next version + update the file row.
+		nextNum := 1
+		if latest, lerr := s.db.GetLatestVersion(existing.ID); lerr == nil && latest != nil {
+			nextNum = latest.VersionNum + 1
+		}
+		if _, err := s.db.CreateVersion(existing.ID, nextNum, contentHash, "", size, claims.UserID); err != nil {
+			log.Printf("version: %v", err)
+		}
+		if err := s.db.UpdateFileContent(existing.ID, contentHash, size); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update file"})
+			return
+		}
+		if err := s.db.LogActivity(claims.UserID, "upload", "file", existing.ID,
+			filename+" v"+strconv.Itoa(nextNum)+" ("+formatSize(size)+")", r.RemoteAddr); err != nil {
+			log.Printf("activity: %v", err)
+		}
+		if updated, gerr := s.db.GetFileByID(existing.ID); gerr == nil {
+			writeJSON(w, http.StatusOK, toFileResponse(*updated))
+			return
+		}
+		writeJSON(w, http.StatusOK, toFileResponse(*existing))
+		return
+	}
+
+	// No existing file (or it was deleted) → fresh create + initial version.
 	f, err := s.db.CreateFile(parentID, claims.UserID, filename, false, size, contentHash, mimeType)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create file"})
