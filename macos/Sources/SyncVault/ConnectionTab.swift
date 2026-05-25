@@ -3,19 +3,37 @@ import SwiftUI
 struct ConnectionTab: View {
     @ObservedObject var appState: AppState
 
+    // Inline sign-in form state. Shown whenever the app is offline. URL and
+    // username are editable too so you can switch servers or fix a typo without
+    // resetting config. Defaults hydrate from whatever AppState has on disk.
+    @State private var signInURL: String = ""
+    @State private var signInUsername: String = ""
+    @State private var signInPassword: String = ""
+    @State private var signInError: String? = nil
+    @State private var signingIn: Bool = false
+    @State private var hydratedFields = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Connection")
-                    .font(SVFont.bodyBold(17))
-                    .padding(.bottom, SVSpacing.xl)
+                // Page title + inline meta — replaces the 3 fat health cards.
+                // Same data (status / latency / uptime) in one line on the right.
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Connection")
+                        .font(SVFont.bodyBold(17))
+                    Spacer()
+                    headerMeta
+                }
+                .padding(.bottom, SVSpacing.l)
 
-                // 3 LIVE HEALTH CARDS
-                healthCards.padding(.bottom, SVSpacing.xl)
-
-                // SERVER
+                // SERVER — online: readonly URL + "Signed in as" + Sign Out.
+                // Offline: editable URL + Username + Password + Sign In.
                 SVSectionLabel(text: "Server")
-                serverCard.padding(.bottom, SVSpacing.l)
+                if appState.isConnected {
+                    serverCard.padding(.bottom, SVSpacing.l)
+                } else {
+                    signInCard.padding(.bottom, SVSpacing.l)
+                }
 
                 // VERSIONS
                 SVSectionLabel(text: "Versions")
@@ -40,71 +58,156 @@ struct ConnectionTab: View {
         .background(SVColor.windowBg)
     }
 
-    private var healthCards: some View {
-        HStack(spacing: SVSpacing.l) {
-            healthCard(label: "Status",
-                       value: appState.isConnected ? "Online" : "Offline",
-                       color: appState.isConnected ? SVColor.accentGreen : SVColor.accentRed,
-                       sub: appState.isConnected ? "Connected" : "Disconnected")
-            healthCard(label: "Latency",
-                       value: appState.latencyMs.map(String.init) ?? "—",
-                       unit: " ms", color: SVColor.textPrimary,
-                       sub: "Avg last 60s")
-            healthCard(label: "Up since",
-                       value: appState.serverUptimeShort,
-                       color: SVColor.textPrimary,
-                       sub: "Server uptime")
-        }
-    }
-
-    private func healthCard(label: String, value: String, unit: String = "",
-                            color: Color, sub: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label.uppercased())
-                .font(SVFont.sectionLabel)
-                .foregroundStyle(SVColor.textTertiary)
-            HStack(alignment: .lastTextBaseline, spacing: 4) {
-                if color == SVColor.accentGreen || color == SVColor.accentRed {
-                    Circle().fill(color).frame(width: 8, height: 8)
-                        .shadow(color: color.opacity(0.6), radius: 4)
-                }
-                Text(value)
-                    .font(SVFont.monoBold(18))
-                    .foregroundStyle(color)
-                Text(unit)
-                    .font(SVFont.body(13))
-                    .foregroundStyle(SVColor.textSecondary)
+    /// Inline status / latency / uptime row that replaces the old healthCards.
+    /// Lives in the page-title row, right-aligned, mono numbers, middle-dot separators.
+    private var headerMeta: some View {
+        HStack(spacing: SVSpacing.m) {
+            // Status dot + label
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(appState.isConnected ? SVColor.accentGreen : SVColor.accentRed)
+                    .frame(width: 7, height: 7)
+                Text(appState.isConnected ? "Online" : "Offline")
+                    .font(SVFont.body(12))
+                    .foregroundStyle(SVColor.textPrimary)
             }
-            Text(sub)
-                .font(SVFont.mono(10.5))
-                .foregroundStyle(SVColor.textSecondary)
+            Text("·").foregroundStyle(SVColor.textSecondary.opacity(0.5))
+            Text(appState.latencyMs.map { "\($0) ms" } ?? "— ms")
+                .font(SVFont.mono(12))
+                .foregroundStyle(SVColor.textPrimary)
+            Text("·").foregroundStyle(SVColor.textSecondary.opacity(0.5))
+            Text("\(appState.serverUptimeShort) uptime")
+                .font(SVFont.mono(12))
+                .foregroundStyle(SVColor.textPrimary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(SVSpacing.xl)
-        .background(SVColor.cardBg)
-        .clipShape(RoundedRectangle(cornerRadius: SVRadius.card))
     }
 
+    /// Shown when online — read-only URL + username + Sign Out.
     private var serverCard: some View {
         SVCard {
             infoRow(label: "URL", value: appState.serverURL.isEmpty ? "—" : appState.serverURL, action: nil)
-            infoRow(label: "Signed in as", value: appState.username.isEmpty ? "—" : appState.username, action: "Sign Out") {
+            infoRow(label: "Signed in as",
+                    value: appState.username.isEmpty ? "—" : appState.username,
+                    action: "Sign Out", isLast: true) {
                 Task { await appState.signOut() }
             }
-            infoRow(label: "TLS certificate", value: "—", action: nil, isLast: true)
         }
     }
 
+    /// Shown when offline — editable URL + Username + Password + Sign In button.
+    /// All three are editable so the user can switch servers, fix a typo, or
+    /// recover after a Sign Out without going through onboarding again.
+    private var signInCard: some View {
+        SVCard {
+            fieldRow(label: "URL",
+                     text: $signInURL,
+                     placeholder: "https://sync.example.com",
+                     isSecure: false)
+            fieldRow(label: "Username",
+                     text: $signInUsername,
+                     placeholder: "username",
+                     isSecure: false)
+            fieldRow(label: "Password",
+                     text: $signInPassword,
+                     placeholder: "password",
+                     isSecure: true,
+                     submit: performSignIn)
+
+            SVCardRow(isLast: true) {
+                HStack {
+                    if let err = signInError {
+                        Text(err)
+                            .font(SVFont.body(11))
+                            .foregroundStyle(SVColor.accentRed)
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                    Button(signingIn ? "Signing in…" : "Sign In") {
+                        performSignIn()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(SVColor.accentBlue)
+                    .disabled(signingIn
+                              || signInPassword.isEmpty
+                              || signInURL.isEmpty
+                              || signInUsername.isEmpty)
+                }
+            }
+        }
+        .onAppear {
+            // Hydrate once with whatever's already in config (typically the URL +
+            // username from the last successful login). Don't reset on every appear
+            // or we'd wipe what the user typed when switching tabs.
+            guard !hydratedFields else { return }
+            signInURL = appState.serverURL
+            signInUsername = appState.username
+            hydratedFields = true
+        }
+    }
+
+    /// Compact row matching the look of `infoRow`: label on the left, an inline
+    /// text field filling the rest of the row. Wraps in SVCardRow so the
+    /// auto-hairline divider between rows is consistent with the other cards.
+    private func fieldRow(label: String,
+                          text: Binding<String>,
+                          placeholder: String,
+                          isSecure: Bool,
+                          submit: @escaping () -> Void = {}) -> some View {
+        SVCardRow {
+            HStack(spacing: SVSpacing.xl) {
+                Text(label)
+                    .font(SVFont.body(12))
+                    .foregroundStyle(SVColor.textSecondary)
+                    .frame(width: 140, alignment: .leading)
+                Group {
+                    if isSecure {
+                        SecureField(placeholder, text: text)
+                    } else {
+                        TextField(placeholder, text: text)
+                            .textContentType(label == "URL" ? .URL : (label == "Username" ? .username : nil))
+                            .autocorrectionDisabled()
+                    }
+                }
+                .textFieldStyle(.plain)
+                .font(SVFont.mono(12))
+                .disabled(signingIn)
+                .onSubmit(submit)
+            }
+        }
+    }
+
+    private func performSignIn() {
+        let url = signInURL.trimmingCharacters(in: .whitespaces)
+        let user = signInUsername.trimmingCharacters(in: .whitespaces)
+        let pw = signInPassword
+        guard !pw.isEmpty, !url.isEmpty, !user.isEmpty, !signingIn else { return }
+        signingIn = true
+        signInError = nil
+        Task {
+            do {
+                try await appState.connect(url: url, username: user, password: pw)
+                await MainActor.run {
+                    signInPassword = ""
+                    signingIn = false
+                }
+            } catch {
+                await MainActor.run {
+                    signInError = error.localizedDescription
+                    signingIn = false
+                }
+            }
+        }
+    }
+
+    /// Server / Client version cards — push-protocol row removed; it lives in
+    /// the live-health "Status" card at the top of the page now.
     private var versionsCard: some View {
         SVCard {
             infoRow(label: "Server", value: appState.serverVersion ?? "—",
                     trailingPill: appState.serverVersion != nil ? "connected" : "—",
                     pillKind: appState.serverVersion != nil ? .live : .neutral)
-            infoRow(label: "Client (this Mac)", value: Bundle.main.shortVersion, trailingPill: "running")
-            infoRow(label: "Push protocol", value: "SSE · /api/events",
-                    trailingPill: appState.sseConnected ? "connected" : "disconnected",
-                    pillKind: appState.sseConnected ? .live : .neutral,
-                    isLast: true)
+            infoRow(label: "Client (this Mac)", value: Bundle.main.shortVersion,
+                    trailingPill: "running", isLast: true)
         }
     }
 

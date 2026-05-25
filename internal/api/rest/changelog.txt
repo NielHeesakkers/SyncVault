@@ -1,3 +1,14 @@
+## [3.2.2] — 2026-05-25
+- **Settings layout cleanup.** Replaced NavigationSplitView with a flat HStack so content starts flush under the standard window titlebar — no more 120pt empty void above the page title. Traffic lights + "SyncVault Settings" title bar stay native.
+- **Compact General tab.** Stripped subtitles from toggles (Launch at login, Hide dock icon, notifications, Updates rows). Bandwidth row now single-line with inline slider + MB/s. Matches the v3.2.0 mockup.
+- **Compact Connection header.** Replaced the three 150pt-tall health cards with an inline `●Online · 119 ms · 7h 54m uptime` strip next to the page title. Same data, ~110pt saved.
+- **Live health card data wired up.** `latencyMs`, `serverVersion`, `serverUptimeShort`, `sseConnected` populated from `/api/health` on connect + every 60s thereafter; SSE state mirrors the actual stream.
+- **Editable sign-in form on Connection.** When offline, the Server card flips to URL + Username + Password inputs with Sign In button — no need to re-onboard after a Sign Out.
+- **Menu bar.** Single dynamic Pause/Continue/Sync Now row (replaces two separate rows). Open on Server moved above sync action. Clicking Settings now dismisses the popover so you don't have both UIs at once.
+
+## [3.2.1] — 2026-05-24
+- **Sign In recovery flow on Connection tab**: after Sign Out (or whenever the cached password stops matching the server), Connection now shows an inline password field + Sign In button instead of leaving you stuck offline. Without this you had to delete config and re-onboard to get back in.
+
 ## [3.2.0] — 2026-05-24
 - **Major design refresh.** Complete visual overhaul of the macOS app: new design-system foundation (SVChip, SVStatusPill, SVCard, etc.), redesigned menu bar with CloudDrive pinning + live progress strips, restructured 5-tab settings window (General/Connection/Sync Tasks/Changelog/Info) with sidebar navigation.
 - **Dedicated update window.** Download + install moved out of Settings into its own three-state window (Available / Downloading / Ready). Auto-check on launch never opens a popup — only manual Check Now or clicking the banner opens it.

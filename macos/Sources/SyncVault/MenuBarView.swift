@@ -282,23 +282,7 @@ struct MenuBarView: View {
                 }
             }
 
-            // Pause / Continue toggle
-            actionRow(
-                icon: appState.isPaused ? "play.fill" : "pause.fill",
-                label: appState.isPaused ? "Continue Sync" : "Pause Sync",
-                color: appState.isPaused ? .blue : .primary
-            ) {
-                appState.togglePause()
-            }
-            .opacity(appState.isConnected ? 1 : 0.4)
-
-            // Sync Now
-            actionRow(icon: "arrow.triangle.2.circlepath", label: "Sync Now") {
-                Task { await appState.runSync() }
-            }
-            .opacity(appState.isConnected && !appState.isSyncing && !appState.isPaused ? 1 : 0.4)
-
-            // Open on Server
+            // Open on Server first — primary outbound action, sits closest to the eye.
             actionRow(icon: "globe", label: "Open on Server", color: .blue) {
                 let baseURL = appState.serverURL.isEmpty ? "https://sync.heesakkers.com" : appState.serverURL
                 if let token = KeychainHelper.load(key: "access_token"),
@@ -307,6 +291,26 @@ struct MenuBarView: View {
                 } else if let url = URL(string: "\(baseURL)/files") {
                     NSWorkspace.shared.open(url)
                 }
+            }
+
+            // Single dynamic row: Pause while syncing, Continue while paused,
+            // Sync Now when idle. Saves a row and tells the user exactly what
+            // tapping it will do right now.
+            if appState.isSyncing {
+                actionRow(icon: "pause.fill", label: "Pause Sync") {
+                    appState.togglePause()
+                }
+                .opacity(appState.isConnected ? 1 : 0.4)
+            } else if appState.isPaused {
+                actionRow(icon: "play.fill", label: "Continue Sync", color: .blue) {
+                    appState.togglePause()
+                }
+                .opacity(appState.isConnected ? 1 : 0.4)
+            } else {
+                actionRow(icon: "arrow.triangle.2.circlepath", label: "Sync Now") {
+                    Task { await appState.runSync() }
+                }
+                .opacity(appState.isConnected ? 1 : 0.4)
             }
 
             // Settings + version on same line
@@ -328,6 +332,18 @@ struct MenuBarView: View {
                     NSApp.activate(ignoringOtherApps: true)
                     for window in NSApp.windows where window.title.contains("Settings") || window.title.contains("SyncVault") {
                         if window.isVisible { window.makeKeyAndOrderFront(nil) }
+                    }
+                    // Hide (not close!) the MenuBarExtra popover so the user isn't
+                    // staring at two overlapping UIs. orderOut keeps the window
+                    // instance alive — close() permanently breaks future taps.
+                    // Match only the MenuBarExtra class so we never accidentally
+                    // hide settings or other system panels.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        for window in NSApp.windows {
+                            if window.className.contains("MenuBarExtra") {
+                                window.orderOut(nil)
+                            }
+                        }
                     }
                 })
 

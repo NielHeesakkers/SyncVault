@@ -30,7 +30,12 @@ struct SettingsView: View {
     @State private var selected: SettingsTab = .general
 
     var body: some View {
-        NavigationSplitView {
+        // HStack instead of NavigationSplitView — keeps the standard window
+        // chrome (traffic lights + "SyncVault Settings" title bar) while giving
+        // us a flat 2-column layout where content starts immediately under the
+        // titlebar, identical to the mockup.
+        HStack(spacing: 0) {
+            // Sidebar
             VStack(spacing: 1) {
                 ForEach(SettingsTab.allCases, id: \.self) { tab in
                     SVSidebarItem(title: tab.title, glyph: tab.glyph, isActive: selected == tab) {
@@ -40,9 +45,15 @@ struct SettingsView: View {
                 Spacer()
             }
             .padding(SVSpacing.s)
-            .frame(minWidth: 180, idealWidth: 180, maxWidth: 200)
+            .frame(width: 188)
             .background(Color(red: 0.137, green: 0.137, blue: 0.145))
-        } detail: {
+
+            // Hairline divider between sidebar and content
+            Rectangle()
+                .fill(Color.white.opacity(0.06))
+                .frame(width: 1)
+
+            // Detail
             Group {
                 switch selected {
                 case .general:    GeneralTab(appState: appState, updaterService: updaterService)
@@ -52,7 +63,7 @@ struct SettingsView: View {
                 case .info:       InfoTab(appState: appState)
                 }
             }
-            .frame(minWidth: 520, minHeight: 460)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(SVColor.windowBg)
         }
         .frame(width: 720, height: 540)

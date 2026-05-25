@@ -268,6 +268,15 @@ class AppState: ObservableObject {
 
         saveConfig()
 
+        // Populate Connection-tab health cards now + every 60s thereafter.
+        Task { await refreshServerHealth() }
+        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self, self.isConnected else { return }
+                await self.refreshServerHealth()
+            }
+        }
+
         // Start sync loop
         startSyncLoop()
 
@@ -562,8 +571,11 @@ class AppState: ObservableObject {
                     syncLog("Server push: \(event.type) \(event.name ?? event.file_id)")
                 }
             },
-            onConnected: {
+            onConnected: { [weak self] in
                 syncLog("Server event stream connected")
+                Task { @MainActor [weak self] in
+                    self?.sseConnected = true
+                }
             }
         )
         stream.start()
@@ -573,6 +585,43 @@ class AppState: ObservableObject {
     func stopServerEventStream() {
         serverEventStream?.stop()
         serverEventStream = nil
+        sseConnected = false
+    }
+
+    /// Probe /api/health, populate `latencyMs`, `serverVersion`, `serverUptimeShort`
+    /// for the Connection tab's live-health cards.
+    func refreshServerHealth() async {
+        guard !serverURL.isEmpty,
+              let url = URL(string: serverURL + "/api/health") else { return }
+        let started = Date()
+        var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        do {
+            let (data, _) = try await URLSession.shared.data(for: req)
+            let ms = Int(Date().timeIntervalSince(started) * 1000)
+            await MainActor.run { self.latencyMs = ms }
+            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let version = json["version"] as? String
+                let uptime = (json["uptime_seconds"] as? Double).map { Int($0) } ?? (json["uptime_seconds"] as? Int)
+                await MainActor.run {
+                    self.serverVersion = version
+                    if let s = uptime { self.serverUptimeShort = Self.formatShortUptime(seconds: s) }
+                }
+            }
+        } catch {
+            await MainActor.run { self.latencyMs = nil }
+        }
+    }
+
+    /// "3d 14h", "47m", "12s" — keeps the Up Since card narrow.
+    private static func formatShortUptime(seconds: Int) -> String {
+        let d = seconds / 86400
+        let h = (seconds % 86400) / 3600
+        let m = (seconds % 3600) / 60
+        if d > 0 { return "\(d)d \(h)h" }
+        if h > 0 { return "\(h)h \(m)m" }
+        if m > 0 { return "\(m)m" }
+        return "\(seconds)s"
     }
 
     /// Remove items from activeUploads that have been marked done for >3 seconds.

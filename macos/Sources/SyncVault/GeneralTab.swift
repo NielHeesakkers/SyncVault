@@ -8,20 +8,16 @@ struct GeneralTab: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("General").font(SVFont.bodyBold(17)).padding(.bottom, SVSpacing.xl)
+                Text("General")
+                    .font(SVFont.bodyBold(17))
+                    .padding(.bottom, SVSpacing.l)
 
-                // STARTUP
+                // STARTUP — single-line rows; mockup intentionally drops subtitles.
                 SVSectionLabel(text: "Startup")
                 SVCard {
-                    SVCardRow {
-                        rowToggle(title: "Launch SyncVault at login",
-                                  sub: "Sync resumes automatically when you log in",
-                                  binding: $appState.launchAtLogin)
-                    }
+                    SVCardRow { rowToggle(title: "Launch at login", binding: $appState.launchAtLogin) }
                     SVCardRow(isLast: true) {
-                        rowToggle(title: "Hide dock icon",
-                                  sub: "Menu bar only — saves Cmd-Tab space",
-                                  binding: $appState.hideDockIcon)
+                        rowToggle(title: "Hide dock icon", binding: $appState.hideDockIcon)
                     }
                 }
                 .padding(.bottom, SVSpacing.l)
@@ -29,16 +25,10 @@ struct GeneralTab: View {
                 // NOTIFICATIONS
                 SVSectionLabel(text: "Notifications")
                 SVCard {
-                    SVCardRow { rowToggle(title: "Banner when sync completes",
-                                          sub: "macOS notification after each task finishes",
-                                          binding: $appState.notifyOnComplete) }
-                    SVCardRow { rowToggle(title: "Banner on errors",
-                                          sub: "Always recommended",
-                                          binding: $appState.notifyOnError) }
+                    SVCardRow { rowToggle(title: "When sync completes", binding: $appState.notifyOnComplete) }
+                    SVCardRow { rowToggle(title: "When sync fails", binding: $appState.notifyOnError) }
                     SVCardRow(isLast: true) {
-                        rowToggle(title: "Sound",
-                                  sub: "Subtle chime on completion",
-                                  binding: $appState.notifySound)
+                        rowToggle(title: "Play sound", binding: $appState.notifySound)
                     }
                 }
                 .padding(.bottom, SVSpacing.l)
@@ -48,57 +38,46 @@ struct GeneralTab: View {
                 SVCard {
                     SVCardRow {
                         HStack(spacing: SVSpacing.xl) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Upload limit").font(SVFont.body(13))
-                                Text("Caps outgoing bandwidth — set to unlimited for LAN")
-                                    .font(SVFont.body(11)).foregroundStyle(SVColor.textSecondary)
-                            }
-                            Spacer()
-                            Slider(value: $appState.uploadLimitMBps, in: 0...50).frame(width: 140)
-                            Text(appState.uploadLimitMBps == 0 ? "∞" : String(format: "%.1f MB/s", appState.uploadLimitMBps))
-                                .font(SVFont.mono(11)).foregroundStyle(SVColor.textSecondary)
-                                .frame(width: 70, alignment: .trailing)
+                            Text("Upload limit").font(SVFont.body(13))
+                            Slider(value: $appState.uploadLimitMBps, in: 0...50)
+                            Text(appState.uploadLimitMBps == 0 ? "∞" : String(format: "%.1f", appState.uploadLimitMBps))
+                                .font(SVFont.mono(11))
+                                .foregroundStyle(SVColor.textSecondary)
+                                .frame(width: 32, alignment: .trailing)
+                            Text("MB/s").font(SVFont.body(11)).foregroundStyle(SVColor.textSecondary)
                         }
                     }
                     SVCardRow(isLast: true) {
                         HStack(spacing: SVSpacing.xl) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Concurrent uploads").font(SVFont.body(13))
-                                Text("More = faster on LAN, but uses more memory")
-                                    .font(SVFont.body(11)).foregroundStyle(SVColor.textSecondary)
-                            }
+                            Text("Concurrent uploads").font(SVFont.body(13))
                             Spacer()
                             Picker("", selection: $appState.concurrentUploads) {
                                 Text("1").tag(1); Text("2").tag(2); Text("4").tag(4); Text("8").tag(8)
                             }
-                            .pickerStyle(.segmented).frame(width: 160)
+                            .pickerStyle(.segmented).frame(width: 160).labelsHidden()
                         }
                     }
                 }
                 .padding(.bottom, SVSpacing.l)
 
-                // UPDATES — Check Now + auto-check + optional banner ONLY.
-                // No download/install UI here; that lives in the dedicated update window (Task 24).
+                // UPDATES
                 SVSectionLabel(text: "Updates")
                 SVCard {
                     SVCardRow {
                         HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Check for updates now").font(SVFont.body(13))
-                                Text("Compares this build to the latest published release")
-                                    .font(SVFont.body(11)).foregroundStyle(SVColor.textSecondary)
-                            }
+                            Text("Check for updates now").font(SVFont.body(13))
                             Spacer()
                             Button("Check Now") { updaterService.checkForUpdates() }.controlSize(.small)
                         }
                     }
                     SVCardRow(isLast: true) {
                         rowToggle(title: "Automatically check for updates",
-                                  sub: "Every launch + once per day",
                                   binding: $updaterService.automaticallyChecksForUpdates)
                     }
                 }
 
+                // Available-update banner stays — orange chip so it stands out from
+                // the configuration rows above.
                 if let version = updaterService.availableVersion {
                     HStack {
                         HStack(spacing: 8) {
@@ -125,13 +104,11 @@ struct GeneralTab: View {
         .background(SVColor.windowBg)
     }
 
+    /// Single-line toggle row: just title and switch. No subtitle.
     @ViewBuilder
-    private func rowToggle(title: String, sub: String, binding: Binding<Bool>) -> some View {
+    private func rowToggle(title: String, binding: Binding<Bool>) -> some View {
         HStack(alignment: .center, spacing: SVSpacing.xl) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(SVFont.body(13))
-                Text(sub).font(SVFont.body(11)).foregroundStyle(SVColor.textSecondary)
-            }
+            Text(title).font(SVFont.body(13))
             Spacer()
             Toggle("", isOn: binding).labelsHidden()
         }

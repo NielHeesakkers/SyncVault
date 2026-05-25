@@ -1,9 +1,28 @@
 {
-  "version": "3.2.0",
+  "version": "3.2.2",
   "min_version": "1.0",
-  "release_date": "2026-05-24",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.2.0/SyncVault-3.2.0.dmg",
+  "release_date": "2026-05-25",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.2.2/SyncVault-3.2.2.dmg",
   "history": [
+    {
+      "version": "3.2.2",
+      "date": "2026-05-25",
+      "changes": [
+        "Settings layout cleanup: NavigationSplitView replaced with flat HStack — content starts flush under titlebar (no more 120pt void)",
+        "Compact General tab: subtitles stripped, bandwidth row single-line",
+        "Compact Connection header: 3 health cards replaced with inline status/latency/uptime strip",
+        "Live health card data wired up (latency/server version/uptime from /api/health every 60s)",
+        "Editable sign-in form on Connection when offline (URL + Username + Password + Sign In)",
+        "Menu bar: single dynamic Pause/Continue/Sync Now row, Open on Server above, popover dismisses on Settings click"
+      ]
+    },
+    {
+      "version": "3.2.1",
+      "date": "2026-05-24",
+      "changes": [
+        "Sign In recovery flow on Connection tab: inline password field appears when offline so you can recover from a Sign Out without re-onboarding"
+      ]
+    },
     {
       "version": "3.2.0",
       "date": "2026-05-24",
