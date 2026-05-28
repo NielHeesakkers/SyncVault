@@ -17,15 +17,13 @@
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
 	<key>CFBundleShortVersionString</key>
-	<string>3.2.2</string>
+	<string>3.4.0</string>
 	<key>CFBundleVersion</key>
-	<string>3.2.2</string>
+	<string>3.4.0</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionAttributes</key>
@@ -35,5 +33,7 @@
 		<key>NSExtensionPrincipalClass</key>
 		<string>FinderSyncExtension</string>
 	</dict>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
 </dict>
 </plist>

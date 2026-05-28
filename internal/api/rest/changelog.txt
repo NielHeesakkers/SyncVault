@@ -1,3 +1,29 @@
+## [3.4.0] — 2026-05-28
+**Restore Files browser + on-demand sync fix.**
+
+Client:
+- **Restore Files window** — Synology-style point-in-time browser: folder tree, snapshot file list, and a bottom timeline that auto-fits from the first version to "Now" with per-day version dots. Resizable split, instant folder switching via an in-memory snapshot cache, and a single Download button that streams a folder or selected files into a chosen local directory.
+- **On-demand sync no longer re-uploads dataless placeholders** — the catch-up scan used to feed every placeholder (server content with no local bytes) into the uploader, which forced a pointless materialization and, when a path didn't match or the server record was gone, failed with ESTALE/ETIMEDOUT and retried the same files every cycle forever. The scan now skips dataless placeholders; only genuinely-local files are upload candidates.
+
+## [3.3.0] — 2026-05-25
+**Robustness & sync-engine batch — 10 improvements.**
+
+Server:
+- **Singleflight on tree cache** — N concurrent SSE-triggered tree fetches now dedupe to 1 CTE; saturates a single SQLite read instead of N parallel ones.
+
+Client (data layer):
+- **Disk-space pre-check** — AppState exposes `serverAvailableBytes` / `serverDiskFreePercent` populated from `/api/health` every 60s; `hasDiskSpaceFor(_:)` helper for upload-path guards.
+- **Smart retry visibility** — `stuckFiles` published list of files in permanent cooldown with reason + last attempt; `retryStuckFile()` clears + re-queues.
+- **Conflict detection** — `conflictCount` published from trash scan of `_DELETED_` markers.
+- **Bandwidth limit** — slider persists (full byte-throttling is a follow-up; URLSession lacks native rate-limit).
+
+Client (visible features):
+- **Pause on metered network** — `NetworkMonitor` watches NWPathMonitor for cellular / hotspot / Low Data Mode; auto-pauses sync and auto-resumes when back on Wi-Fi / Ethernet.
+- **In-app Trash window** — `Open Trash…` from menu bar opens a full window with multi-select, Restore, Delete Permanently, and Empty Trash. No more web-app detour.
+- **Selective sync per task** — edit task → Excludes editor (one glob per line: `*.tmp`, `node_modules`, `build/`). FileWatcher honours these on enqueue.
+- **Version history sheet** — `VersionDiffView` renders the per-file timeline with size / hash / date / author, Restore button per version.
+- **Better auto-install** — install script now unregisters the FileProvider domain before swapping the bundle, so the new extension loads from `/Applications` instead of stale DerivedData.
+
 ## [3.2.2] — 2026-05-25
 - **Settings layout cleanup.** Replaced NavigationSplitView with a flat HStack so content starts flush under the standard window titlebar — no more 120pt empty void above the page title. Traffic lights + "SyncVault Settings" title bar stay native.
 - **Compact General tab.** Stripped subtitles from toggles (Launch at login, Hide dock icon, notifications, Updates rows). Bandwidth row now single-line with inline slider + MB/s. Matches the v3.2.0 mockup.

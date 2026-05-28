@@ -293,6 +293,18 @@ struct MenuBarView: View {
                 }
             }
 
+            // Point-in-time restore browser — Synology Drive-style window with
+            // folder tree, snapshot file list, and a strip of restore points
+            // along the bottom.
+            actionRow(icon: "clock.arrow.circlepath", label: "Restore Files…") {
+                NotificationCenter.default.post(name: .openRestoreFilesWindow, object: nil)
+            }
+            // NOTE: TrashView, the "trash" Window scene, and the API methods
+            // are kept (cheap to retain, occasionally useful). Only the menu
+            // bar row is removed — once the versioning bug was fixed the trash
+            // stopped filling up with garbage and routine cleanup isn't needed
+            // anymore. Web UI handles the rare restore case.
+
             // Single dynamic row: Pause while syncing, Continue while paused,
             // Sync Now when idle. Saves a row and tells the user exactly what
             // tapping it will do right now.

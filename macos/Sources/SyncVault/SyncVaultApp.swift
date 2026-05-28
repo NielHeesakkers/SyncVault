@@ -24,6 +24,14 @@ struct SyncVaultApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: .openOnboardingWindow)) { _ in
                     openWindow(id: "onboarding")
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .openTrashWindow)) { _ in
+                    openWindow(id: "trash")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .openRestoreFilesWindow)) { _ in
+                    openWindow(id: "restore-files")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
                 .onAppear {
                     // First-launch gate: show onboarding once if the user has
                     // never finished the wizard.
@@ -80,6 +88,22 @@ struct SyncVaultApp: App {
         }
         .windowResizability(.contentSize)
         .windowStyle(.hiddenTitleBar)
+
+        // Trash window — opened from the menu bar's "Open Trash…" row. Standard
+        // window chrome (resizable, traffic lights) so power users can keep it
+        // open while they triage many deletions.
+        Window("Trash", id: "trash") {
+            TrashView(appState: appState)
+        }
+        .windowResizability(.contentMinSize)
+
+        // Restore Files window — Synology-style point-in-time browser opened
+        // from the menu bar's "Restore Files…" row. Lets the user pick a
+        // restore point per folder and roll the contents back to that snapshot.
+        Window("Restore Files", id: "restore-files") {
+            RestoreFilesView(appState: appState)
+        }
+        .windowResizability(.contentMinSize)
     }
 
     private func dismissOnboardingWindow() {
@@ -89,6 +113,8 @@ struct SyncVaultApp: App {
 
 extension Notification.Name {
     static let openOnboardingWindow = Notification.Name("openOnboardingWindow")
+    static let openTrashWindow = Notification.Name("openTrashWindow")
+    static let openRestoreFilesWindow = Notification.Name("openRestoreFilesWindow")
 }
 
 // MARK: - App Delegate for file open events

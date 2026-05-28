@@ -234,6 +234,7 @@ struct EditSyncTaskView: View {
     @State private var retentionWeekly: Int = 24
     @State private var retentionMonthly: Int = 12
     @State private var retentionMax: Int = 10
+    @State private var excludePatternsText: String = ""
 
     init(appState: AppState, task: SyncTask, isPresented: Binding<SyncTask?>) {
         self.appState = appState
@@ -242,6 +243,8 @@ struct EditSyncTaskView: View {
         self._localPath = State(initialValue: task.localPath)
         self._mode = State(initialValue: task.mode)
         self._isEnabled = State(initialValue: task.isEnabled)
+        // Pre-fill the exclude editor with current patterns, one per line.
+        self._excludePatternsText = State(initialValue: task.excludePatterns.joined(separator: "\n"))
     }
 
     var body: some View {
@@ -284,6 +287,24 @@ struct EditSyncTaskView: View {
                 LabeledField("Enabled") {
                     Toggle("", isOn: $isEnabled)
                         .labelsHidden()
+                }
+
+                // Exclude patterns — one per line, glob-style (*.tmp, build/,
+                // node_modules). FileWatcher honours these when enqueuing
+                // changes so selective sync per subfolder works without a tree
+                // picker; power users can just type paths.
+                Divider()
+                Text("Excludes")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    TextEditor(text: $excludePatternsText)
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(minHeight: 80, maxHeight: 140)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.3)))
+                    Text("One pattern per line — e.g. *.tmp, node_modules, build/")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
                 }
 
                 // Retention Policy
@@ -346,6 +367,12 @@ struct EditSyncTaskView: View {
                     updated.localPath = localPath
                     updated.mode = mode
                     updated.isEnabled = isEnabled
+                    // Parse one-per-line excludes; trim + drop empties so empty
+                    // lines don't accidentally become "match-everything" patterns.
+                    updated.excludePatterns = excludePatternsText
+                        .components(separatedBy: .newlines)
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                        .filter { !$0.isEmpty }
                     appState.updateSyncTask(updated)
                     if mode == .onDemand {
                         Task { try? await appState.setupOnDemandSync(folderID: updated.remoteFolderID) }

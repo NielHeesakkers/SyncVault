@@ -117,6 +117,89 @@ actor APIClient {
         try await delete("/api/files/\(id)")
     }
 
+    // MARK: - Trash
+
+    /// All trashed files visible to the current user (admin sees everyone).
+    /// Drives the in-app Trash window so users can restore / permanently
+    /// delete without leaving the menu bar app.
+    func listTrash() async throws -> [TrashedFile] {
+        struct Wrapper: Decodable { let files: [TrashedFile] }
+        let w: Wrapper = try await get("/api/trash")
+        return w.files
+    }
+
+    /// Restore a single trashed file by ID (moves it out of trash, makes it
+    /// visible to clients again, fires file_created SSE event).
+    func restoreFromTrash(id: String) async throws {
+        let _: EmptyResponse = try await post("/api/files/\(id)/restore", body: [:] as [String: String])
+    }
+
+    /// Permanently delete one trashed file — frees disk space, cannot be undone.
+    /// Server endpoint already exists at DELETE /api/trash/{id}.
+    func permanentlyDelete(id: String) async throws {
+        try await delete("/api/trash/\(id)")
+    }
+
+    /// Empty trash for the current user — server walks ListTrashedFiles and
+    /// removes each. Big operation; show confirm.
+    func purgeTrash() async throws {
+        try await delete("/api/trash")
+    }
+
+    // MARK: - Point-in-time history (Restore Files window)
+
+    /// Files as they existed at `at` (UTC) inside `parentID`. Drives the
+    /// Synology-style restore window where the user picks a moment in time
+    /// and sees the folder contents from that snapshot.
+    func filesAtTime(parentID: String, at: Date) async throws -> [FileAtTime] {
+        struct Wrapper: Decodable { let files: [FileAtTime] }
+        let iso = ISO8601DateFormatter().string(from: at)
+        let q = "parent_id=\(parentID)&at=\(iso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? iso)"
+        let w: Wrapper = try await get("/api/files/history?\(q)")
+        return w.files
+    }
+
+    /// Distinct dates on which any version inside `parentID`'s subtree was
+    /// created. Used to populate the bottom strip of restore points.
+    func changeDates(parentID: String) async throws -> [String] {
+        struct Wrapper: Decodable { let dates: [String] }
+        let q = parentID.isEmpty ? "" : "?parent_id=\(parentID)"
+        let w: Wrapper = try await get("/api/files/history/dates\(q)")
+        return w.dates
+    }
+
+    /// Restore the entire folder to its state at `at`. Server creates new
+    /// versions for every file as a side effect so the restore itself is
+    /// recoverable. Returns the count of restored files.
+    func restoreFolderAtTime(parentID: String, at: Date) async throws -> Int {
+        struct Wrapper: Decodable { let restored: Int }
+        let iso = ISO8601DateFormatter().string(from: at)
+        let body: [String: String] = ["parent_id": parentID, "at": iso]
+        let w: Wrapper = try await post("/api/files/history/restore", body: body)
+        return w.restored
+    }
+
+    // MARK: - File versions
+
+    /// List all stored versions of a file (newest first). Returns the version
+    /// number, size, content hash, and timestamp — enough for the in-app
+    /// timeline picker. Server endpoint: GET /api/files/{id}/versions.
+    func listVersions(fileID: String) async throws -> [FileVersion] {
+        struct Wrapper: Decodable { let versions: [FileVersion] }
+        let w: Wrapper = try await get("/api/files/\(fileID)/versions")
+        return w.versions
+    }
+
+    /// Restore a specific version of a file. The current version is preserved
+    /// as a new version first so the restore itself is reversible.
+    /// POST /api/files/{id}/versions/{n}/restore
+    func restoreVersion(fileID: String, versionNum: Int) async throws {
+        let _: EmptyResponse = try await post(
+            "/api/files/\(fileID)/versions/\(versionNum)/restore",
+            body: [:] as [String: String]
+        )
+    }
+
     func markFileRemovedLocally(id: String, removed: Bool) async throws {
         let body: [String: Any] = ["removed": removed]
         let _: EmptyResponse = try await put("/api/files/\(id)/removed-locally", body: body)

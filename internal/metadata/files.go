@@ -1455,6 +1455,54 @@ func (d *DB) ListFilesRecursive(folderID, ownerID string, isAdmin bool) ([]FileT
 	}
 	d.treeCacheMu.RUnlock()
 
+	// Cache miss — dedupe concurrent callers via singleflight. When N requests
+	// arrive at the same time for the same cacheKey (very common: SSE bursts,
+	// many sync clients), only ONE runs the CTE; the rest wait for that result.
+	// Without this dedupe each request grabs its own DB connection and runs the
+	// full recursive query in parallel — the SQLite pool saturates and reads
+	// queue up to many minutes even though the answer is identical.
+	result, err, _ := d.treeSF.Do(cacheKey, func() (interface{}, error) {
+		// Re-check cache inside the singleflight: a concurrent caller may have
+		// just populated it while we were waiting to enter the function.
+		d.treeCacheMu.RLock()
+		if entry, ok := d.treeCache[cacheKey]; ok && entry.rank == currentRank {
+			out := make([]FileTreeEntry, len(entry.files))
+			copy(out, entry.files)
+			d.treeCacheMu.RUnlock()
+			return out, nil
+		}
+		d.treeCacheMu.RUnlock()
+
+		entries, err := d.runListFilesRecursive(folderID, ownerID, isAdmin)
+		if err != nil {
+			return nil, err
+		}
+
+		// Store using the rank we read BEFORE the query so we don't accidentally
+		// cache against a mutation that happened mid-query.
+		d.treeCacheMu.Lock()
+		d.treeCache[cacheKey] = cachedTree{files: entries, rank: currentRank}
+		d.treeCacheMu.Unlock()
+
+		return entries, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	entries := result.([]FileTreeEntry)
+
+	// Return defensive copy — singleflight hands the same slice to every
+	// waiter, so each caller needs its own copy to sort/filter safely.
+	out := make([]FileTreeEntry, len(entries))
+	copy(out, entries)
+	return out, nil
+}
+
+// runListFilesRecursive executes the CTE without any caching or deduplication
+// — the singleflight wrapper above handles both. Split out so the main path
+// reads as a clear three-step flow (cache → singleflight → query) instead of
+// an 80-line function with nested locks.
+func (d *DB) runListFilesRecursive(folderID, ownerID string, isAdmin bool) ([]FileTreeEntry, error) {
 	ownerFilter := ""
 	args := []interface{}{folderID}
 	if !isAdmin {
@@ -1502,17 +1550,7 @@ func (d *DB) ListFilesRecursive(folderID, ownerID string, isAdmin bool) ([]FileT
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-
-	// Store the freshly-computed tree for next time. Use the rank we read BEFORE the
-	// query so we don't accidentally cache against a mutation that happened mid-query.
-	d.treeCacheMu.Lock()
-	d.treeCache[cacheKey] = cachedTree{files: entries, rank: currentRank}
-	d.treeCacheMu.Unlock()
-
-	// Return defensive copy too — caller owns the slice.
-	out := make([]FileTreeEntry, len(entries))
-	copy(out, entries)
-	return out, nil
+	return entries, nil
 }
 
 // currentChangeRank reads the global _change_rank counter. O(1) primary-key lookup.

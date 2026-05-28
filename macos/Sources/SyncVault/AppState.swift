@@ -74,6 +74,32 @@ class AppState: ObservableObject {
     @Published var sseConnected: Bool = false
     @Published var deviceID: String = ""             // 36-char UUID
 
+    // Server-side disk capacity — refreshed by refreshServerHealth. Used by the
+    // pre-upload disk-space guard so we don't queue a 50 GB transfer onto a
+    // 90%-full server and then get HTTP 507 mid-upload.
+    @Published var serverAvailableBytes: Int64 = 0
+    @Published var serverTotalBytes: Int64 = 0
+    /// Stop uploading new files when free space drops below this. 1 GB is a
+    /// safety margin so concurrent uploads + the WAL checkpoint don't OOM the
+    /// disk.
+    static let diskFreeBufferBytes: Int64 = 1 * 1024 * 1024 * 1024
+
+    /// Files currently in permanent retry cooldown — surfaced in the menu bar
+    /// as "N files stuck" so the user can see + retry them. Refreshed after
+    /// every sync cycle by SyncEngine.
+    @Published var stuckFiles: [SyncDatabase.StuckFile] = []
+
+    /// True when sync was paused automatically due to a metered network — used
+    /// to distinguish from a user-initiated pause so we can auto-resume when
+    /// the network goes back to Wi-Fi / Ethernet.
+    @Published var autoPausedReason: String? = nil
+
+    /// Network monitor — exposes isMetered + status text. AppState observes
+    /// and pauses sync on metered transitions; the Connection tab shows the
+    /// current link type.
+    let networkMonitor = NetworkMonitor()
+    private var networkObserver: AnyCancellable?
+
     var deviceRegisteredDateFormatted: String {
         UserDefaults.standard.string(forKey: "deviceRegisteredDate") ?? "—"
     }
@@ -151,6 +177,11 @@ class AppState: ObservableObject {
     private var wakeObserver: NSObjectProtocol?
 
     init() {
+        // v3.3.0: app left the sandbox so /bin/bash can launch the update
+        // installer. That moves the data dir from ~/Library/Containers/.../
+        // to ~/Library/Application Support/. Carry old config + sync DB over
+        // on first launch so users don't lose their setup.
+        Self.migrateFromSandboxedContainerIfNeeded()
         loadConfig()
         // Hydrate General-tab preferences from UserDefaults. Assignments here
         // trigger didSet, which writes the value back — harmless one-time write
@@ -274,8 +305,30 @@ class AppState: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self = self, self.isConnected else { return }
                 await self.refreshServerHealth()
+                self.refreshStuckFiles()
+                await self.refreshConflicts()
             }
         }
+        refreshStuckFiles()
+        Task { await refreshConflicts() }
+
+        // Auto-pause on metered network transitions, auto-resume when Wi-Fi /
+        // Ethernet comes back. Only acts on AppState that hasn't been manually
+        // paused (autoPausedReason carries the pause-source intent).
+        networkObserver = networkMonitor.$isMetered
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] metered in
+                guard let self = self else { return }
+                if metered && !self.isPaused {
+                    self.autoPausedReason = "Paused — \(self.networkMonitor.statusText) detected"
+                    self.isPaused = true
+                } else if !metered && self.autoPausedReason != nil {
+                    // Network went back to unmetered — auto-resume.
+                    self.autoPausedReason = nil
+                    self.isPaused = false
+                    Task { await self.runSync() }
+                }
+            }
 
         // Start sync loop
         startSyncLoop()
@@ -356,6 +409,60 @@ class AppState: ObservableObject {
     static var configDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("SyncVault")
+    }
+
+    /// One-time migration when an old sandboxed install transitions to v3.3.0
+    /// (no sandbox). The sandboxed app's data lives in
+    ///     ~/Library/Containers/com.syncvault.app/Data/Library/Application Support/SyncVault/
+    /// and the new app looks at
+    ///     ~/Library/Application Support/SyncVault/
+    /// so without this everyone would log in to an empty app. We carry the
+    /// whole SyncVault/ subtree across — config.json, sync.db, bookmarks,
+    /// known-state cache, the lot. Safe to call every launch: it's a no-op if
+    /// the destination already has config.json (so we never overwrite live data).
+    static func migrateFromSandboxedContainerIfNeeded() {
+        let fm = FileManager.default
+        let dest = configDirectory
+        let home = fm.homeDirectoryForCurrentUser
+        let container = home
+            .appendingPathComponent("Library/Containers/com.syncvault.app/Data/Library/Application Support/SyncVault", isDirectory: true)
+        let containerConfig = container.appendingPathComponent("config.json")
+
+        // --- Config dir migration ---
+        // Skip if dest config.json exists; otherwise copy the whole SyncVault/
+        // subtree (config.json, sync.db, bookmarks, known-state cache).
+        let destConfig = dest.appendingPathComponent("config.json")
+        if !fm.fileExists(atPath: destConfig.path) && fm.fileExists(atPath: containerConfig.path) {
+            do {
+                try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                if fm.fileExists(atPath: dest.path) { try? fm.removeItem(at: dest) }
+                try fm.copyItem(at: container, to: dest)
+                logger.info("Migrated SyncVault data from sandboxed container to \(dest.path, privacy: .public)")
+            } catch {
+                logger.error("Container migration failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        // --- UserDefaults migration ---
+        // Independent of config migration so users who already have a partially
+        // migrated install (data moved earlier, prefs lost) recover automatically.
+        // Tempting to just copyItem the plist file, but cfprefsd holds its own
+        // cached view of the domain — file-on-disk changes are NOT picked up
+        // until the values are re-written through the standard API. We read
+        // the container plist and rewrite each key via UserDefaults.standard
+        // so cfprefsd sees them immediately. Gate on onboardingComplete being
+        // unset (the sandboxed install always set it after the wizard, so its
+        // absence is a reliable "prefs need migration" signal).
+        let prefsSrc = home.appendingPathComponent("Library/Containers/com.syncvault.app/Data/Library/Preferences/com.syncvault.app.plist")
+        let onboardingAlreadyTrue = UserDefaults.standard.bool(forKey: "onboardingComplete")
+        if !onboardingAlreadyTrue && fm.fileExists(atPath: prefsSrc.path) {
+            if let dict = NSDictionary(contentsOf: prefsSrc) as? [String: Any] {
+                for (key, value) in dict {
+                    UserDefaults.standard.set(value, forKey: key)
+                }
+                logger.info("Migrated \(dict.count) preference keys from sandboxed container")
+            }
+        }
     }
 
     // MARK: - Security-Scoped Bookmarks
@@ -603,14 +710,71 @@ class AppState: ObservableObject {
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 let version = json["version"] as? String
                 let uptime = (json["uptime_seconds"] as? Double).map { Int($0) } ?? (json["uptime_seconds"] as? Int)
+                // Disk capacity lives under top-level keys; both shapes seen across
+                // server versions so be lenient.
+                let avail = (json["available_bytes"] as? NSNumber)?.int64Value
+                    ?? (json["storage"] as? [String: Any]).flatMap { ($0["available_bytes"] as? NSNumber)?.int64Value }
+                let total = (json["total_bytes"] as? NSNumber)?.int64Value
+                    ?? (json["storage"] as? [String: Any]).flatMap { ($0["total_bytes"] as? NSNumber)?.int64Value }
                 await MainActor.run {
                     self.serverVersion = version
                     if let s = uptime { self.serverUptimeShort = Self.formatShortUptime(seconds: s) }
+                    if let a = avail { self.serverAvailableBytes = a }
+                    if let t = total { self.serverTotalBytes = t }
                 }
             }
         } catch {
             await MainActor.run { self.latencyMs = nil }
         }
+    }
+
+    /// Reload the list of stuck (permanently-failed) files from SyncDatabase.
+    /// Cheap query; safe to call on every sync cycle.
+    func refreshStuckFiles() {
+        stuckFiles = syncDatabase?.listStuckFiles() ?? []
+    }
+
+    /// Count of files currently in conflict state on the server. Detected by
+    /// scanning the trash for entries whose name still contains the `_DELETED_`
+    /// suffix (CreateFile renames colliders into trash with this marker, so a
+    /// non-zero count means "the server kept the cloud copy + saved yours to
+    /// trash for you to inspect"). Drives the orange "N conflicts" banner.
+    @Published var conflictCount: Int = 0
+
+    /// Re-scan trash for conflict-marker entries. Cheap (single API call).
+    func refreshConflicts() async {
+        guard let client = apiClient else { return }
+        do {
+            let trashed = try await client.listTrash()
+            let conflicts = trashed.filter { $0.name.contains("_DELETED_") }
+            await MainActor.run { self.conflictCount = conflicts.count }
+        } catch {
+            // Soft fail — don't surface trash-fetch errors as UI noise.
+        }
+    }
+
+    /// Clear retry cooldown for a single file so the next sync cycle picks it
+    /// up again. Called from the "Stuck files" menu when the user has fixed
+    /// whatever was blocking the upload.
+    func retryStuckFile(_ file: SyncDatabase.StuckFile) {
+        syncDatabase?.resetRetry(taskID: file.taskID, relativePath: file.relativePath)
+        refreshStuckFiles()
+        Task { await runSync() }
+    }
+
+    /// Pre-flight disk space check before queuing an upload.
+    /// Returns true when the server has room for `bytes` plus the safety buffer.
+    /// Callers should skip + notify rather than getting HTTP 507 mid-upload.
+    func hasDiskSpaceFor(_ bytes: Int64) -> Bool {
+        guard serverAvailableBytes > 0 else { return true }  // unknown ≠ blocked
+        return serverAvailableBytes - bytes > Self.diskFreeBufferBytes
+    }
+
+    /// Server free space as a percentage 0..100 (or nil when unknown). Drives
+    /// the low-disk banner in the menu bar.
+    var serverDiskFreePercent: Int? {
+        guard serverTotalBytes > 0 else { return nil }
+        return Int((Double(serverAvailableBytes) / Double(serverTotalBytes)) * 100)
     }
 
     /// "3d 14h", "47m", "12s" — keeps the Up Since card narrow.
@@ -1232,8 +1396,15 @@ class AppState: ObservableObject {
             do {
                 // Get server file tree
                 let remoteTree = try await client.getFileTree(folderID: task.remoteFolderID)
-                let remoteNames = Set(remoteTree.filter { !$0.isDir }.map { $0.name })
-                let remoteDirs = Set(remoteTree.filter { $0.isDir }.map { $0.relativePath })
+                // O(1) lookup set instead of O(N) array.first { ... } per file —
+                // that scan was eating the main thread for 700+ ms on each call
+                // because Swift's String == does full NFC normalization per
+                // comparison. With 10K remote entries × thousands of locals it
+                // multiplied to seconds of unresponsive UI.
+                let remoteFilePaths: Set<String> = Set(
+                    remoteTree.filter { !$0.isDir }.map { $0.relativePath }
+                )
+                _ = remoteFilePaths // (referenced below)
 
                 // Build folder ID cache from remote tree
                 var folderCache: [String: String] = [:]
@@ -1269,9 +1440,27 @@ class AppState: ObservableObject {
                             }
                         }
                     } else {
-                        // Check if file needs uploading by checking relative path in remote tree
-                        let remoteMatch = remoteTree.first { $0.relativePath == relPath && !$0.isDir }
-                        if remoteMatch == nil {
+                        // CRITICAL: never upload a dataless placeholder. In on-demand
+                        // mode almost every local file is a stub whose bytes live on
+                        // the server (size > 0 but 0 allocated blocks). Such a file is
+                        // by definition NOT "a local file the server is missing" — it
+                        // IS server content. Feeding it to the uploader forces macOS to
+                        // materialize it just to push identical bytes back, and when the
+                        // path doesn't match the server tree (name round-trip diffs, or
+                        // a server-side deletion → 404) the read fails with ESTALE/
+                        // ETIMEDOUT and the same files retry every cycle forever. Reading
+                        // these resource keys does NOT trigger materialization.
+                        let url = URL(fileURLWithPath: fullPath)
+                        let rv = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey])
+                        let allocated = rv?.totalFileAllocatedSize ?? 0
+                        let logical = rv?.fileSize ?? 0
+                        if allocated == 0 && logical > 0 {
+                            continue   // placeholder = server content, skip
+                        }
+
+                        // O(1) set lookup; see remoteFilePaths construction above
+                        // for why this used to scan the whole tree per file.
+                        if !remoteFilePaths.contains(relPath) {
                             let parentRel = (relPath as NSString).deletingLastPathComponent
                             toUpload.append((fullPath, relPath, parentRel))
                         }

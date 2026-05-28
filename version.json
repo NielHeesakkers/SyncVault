@@ -1,9 +1,32 @@
 {
-  "version": "3.2.2",
+  "version": "3.4.0",
   "min_version": "1.0",
-  "release_date": "2026-05-25",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.2.2/SyncVault-3.2.2.dmg",
+  "release_date": "2026-05-28",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.4.0/SyncVault-3.4.0.dmg",
   "history": [
+    {
+      "version": "3.4.0",
+      "date": "2026-05-28",
+      "changes": [
+        "Restore Files window: Synology-style point-in-time browser (folder tree + snapshot list + auto-fit timeline) with resizable split, instant cached folder switching, and a single streaming Download button",
+        "On-demand sync no longer re-uploads dataless placeholders: the catch-up scan skips server-content stubs, fixing the endless re-upload loop of untouched files (ESTALE/ETIMEDOUT)"
+      ]
+    },
+    {
+      "version": "3.3.0",
+      "date": "2026-05-25",
+      "changes": [
+        "Singleflight tree cache: N concurrent SSE-triggered fetches dedupe to 1 CTE query",
+        "Disk-space pre-check helpers: serverAvailableBytes from /api/health every 60s",
+        "Smart retry visibility: stuckFiles list with reason + retry-now action",
+        "Auto-pause on metered network (NWPathMonitor); auto-resume on Wi-Fi/Ethernet",
+        "In-app Trash window: list + Restore + Delete Permanently + Empty Trash",
+        "Selective sync per task: Excludes editor in Edit Sync Task sheet (glob patterns)",
+        "Version history sheet: timeline with size/hash/date/author + per-version Restore",
+        "Conflict detection: conflictCount from trash scan for _DELETED_ markers",
+        "Auto-update install script unregisters FileProvider domain to avoid stale DerivedData"
+      ]
+    },
     {
       "version": "3.2.2",
       "date": "2026-05-25",

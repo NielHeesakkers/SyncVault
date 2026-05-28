@@ -1617,8 +1617,12 @@ actor SyncEngine {
         var index = 0
 
         while true {
-            let data = handle.readData(ofLength: blockSize)
-            if data.isEmpty { break }
+            // readData(ofLength:) raises an Obj-C NSException when the underlying
+            // file is gone or unreadable (e.g. user moved it mid-upload, on-demand
+            // sync triggered for a path that no longer exists). Swift can't catch
+            // those — the process aborts. read(upToCount:) is the modern Swift
+            // API that throws a normal Swift error we can handle cleanly.
+            guard let data = try handle.read(upToCount: blockSize), !data.isEmpty else { break }
             fileHasher.update(data: data)
             let blockHash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
             blocks.append((index: index, hash: blockHash, size: data.count, offset: UInt64(index) * UInt64(blockSize)))

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite"
+	"golang.org/x/sync/singleflight"
 )
 
 //go:embed schema.sql
@@ -25,6 +26,12 @@ type DB struct {
 	// (cached.rank != current rank) — no explicit invalidation needed.
 	treeCacheMu sync.RWMutex
 	treeCache   map[string]cachedTree
+
+	// treeSF dedupes concurrent ListFilesRecursive cache misses: when 5 SSE
+	// events fire within 1s and each triggers a tree fetch, singleflight makes
+	// sure only ONE CTE runs and all 5 callers share its result. Without this
+	// the thundering herd starved the SQLite connection pool under load.
+	treeSF singleflight.Group
 
 	// OnFileChange is invoked after every successful file mutation (create,
 	// update content, soft delete, restore, move, permanent delete). The REST

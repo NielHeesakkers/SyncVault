@@ -246,9 +246,15 @@ class UpdaterService: ObservableObject {
         # (FileProvider and FinderSync run as system-managed child processes)
         pkill -f "SyncVaultFileProvider" 2>/dev/null || true
         pkill -f "SyncVaultFinderSync"  2>/dev/null || true
+        # Tell macOS to forget the FileProvider domain so it stops reusing the
+        # stale DerivedData extension path. The fresh bundle re-registers the
+        # domain from /Applications on next launch.
+        if [ -d ~/Library/Application\\ Support/FileProvider/com.syncvault.app.fileprovider ]; then
+            /usr/bin/fileproviderctl remove com.syncvault.app.fileprovider 2>/dev/null || true
+        fi
         # Give launchd a moment to actually reap them
         sleep 1
-        echo "Extensions killed"
+        echo "Extensions killed + FileProvider domain unregistered"
 
         DMG="\(dmgPath.path)"
         APP_DEST="/Applications/SyncVault.app"

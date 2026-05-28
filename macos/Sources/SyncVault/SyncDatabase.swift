@@ -329,6 +329,46 @@ class SyncDatabase {
         )) ?? 0
     }
 
+    /// One row per file currently in retry cooldown — drives the "Stuck files"
+    /// banner in the menu bar so the user can SEE which uploads are jammed
+    /// instead of just a silent counter.
+    struct StuckFile {
+        let taskID: String
+        let relativePath: String
+        let retryCount: Int
+        let lastError: String
+        let lastAttempt: Date
+    }
+
+    /// All files currently in cooldown across all tasks. Sorted by most recent
+    /// attempt first so the menu shows the freshest failures at the top.
+    func listStuckFiles() -> [StuckFile] {
+        let query = fileRetries
+            .filter(colRetryCount >= Self.maxRetries)
+            .order(colRetryLastAttempt.desc)
+        guard let rows = try? db.prepare(query) else { return [] }
+        return rows.map {
+            StuckFile(
+                taskID: $0[colRetryTaskID],
+                relativePath: $0[colRetryRelPath],
+                retryCount: $0[colRetryCount],
+                lastError: $0[colRetryLastError],
+                lastAttempt: Date(timeIntervalSince1970: $0[colRetryLastAttempt])
+            )
+        }
+    }
+
+    /// Reset retry state for a specific file so the next sync cycle tries again.
+    /// Called by the user from the "Stuck files" UI when they've fixed the
+    /// underlying problem (auth, network, permissions) and want to retry now.
+    func resetRetry(taskID: String, relativePath: String) {
+        tryRun("resetRetry") {
+            try db.run(fileRetries.filter(
+                colRetryTaskID == taskID && colRetryRelPath == relativePath
+            ).delete())
+        }
+    }
+
     // MARK: - Resumable Upload Sessions
 
     /// Look up an existing resumable upload session for (task, path). Returns the upload_id
