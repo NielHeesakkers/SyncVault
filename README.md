@@ -2,6 +2,14 @@
 
 Open-source file sync and backup platform. A self-hosted alternative to Synology Drive.
 
+## Download
+
+[![Latest release](https://img.shields.io/github/v/release/NielHeesakkers/SyncVault?label=macOS%20app&color=0a84ff)](https://github.com/NielHeesakkers/SyncVault/releases/latest)
+
+**macOS** — [Download SyncVault-3.4.0.dmg](https://github.com/NielHeesakkers/SyncVault/releases/download/v3.4.0/SyncVault-3.4.0.dmg) · [All releases](https://github.com/NielHeesakkers/SyncVault/releases) · [Changelog](internal/api/rest/changelog.txt)
+
+Developer ID-signed and notarized by Apple. Requires macOS 13 or later. Auto-updates via Sparkle once installed.
+
 ## Coming in v3.2.0 — Design preview
 
 A complete visual overhaul of the macOS app, a dedicated update window, a
