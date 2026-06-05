@@ -10,11 +10,9 @@ Open-source file sync and backup platform. A self-hosted alternative to Synology
 
 Developer ID-signed and notarized by Apple. Requires macOS 13 or later. Auto-updates via Sparkle once installed.
 
-## Coming in v3.2.0 — Design preview
+## Inside the macOS app
 
-A complete visual overhaul of the macOS app, a dedicated update window, a
-guided first-launch wizard, and three new features: conflict resolution,
-Finder integration, and rich notifications + widgets.
+A native menu bar app: redesigned UI, dedicated update window, guided first-launch wizard, conflict resolution, Finder integration, and rich notifications.
 
 <table>
 <tr>
@@ -42,6 +40,9 @@ Finder integration, and rich notifications + widgets.
 - **Delta Sync** — Only changed bytes are uploaded (rsync-style block comparison)
 - **Per-folder Cache** — Tree listings return in microseconds; only the touched subtree invalidates on a mutation
 - **File Versioning** — Up to 32 versions per file with retention policies
+- **Restore Files Browser** — Synology-style point-in-time browser: pick a folder, scrub a timeline of restore points, download or restore the snapshot
+- **Trash & Recovery** — In-app trash window with one-click Restore, Permanent Delete and Empty Trash
+- **Conflict Resolution** — Detects sync conflicts and resolves them side-by-side in the app
 - **File Preview** — Inline preview for images, video, audio, PDF, and code with syntax highlighting
 - **Team Folders** — Shared folders with per-user read/write permissions
 - **Share Links** — Password-protected download links with expiration and download limits
@@ -291,6 +292,8 @@ Native menu bar app with:
 - Streaming upload (no temp files, no memory pressure)
 - Unified sync task overview (backup + on-demand)
 - Recently changed files with task attribution
+- Restore Files window — point-in-time browser with per-folder timeline and streaming download
+- Trash window — restore or permanently delete from inside the app
 - Auto-skip of dev directories (node_modules, DerivedData, build, etc.)
 - 24-hour integrity check
 - Sparkle auto-update
