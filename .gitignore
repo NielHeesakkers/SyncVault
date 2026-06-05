@@ -5,3 +5,7 @@ tmp/
 .DS_Store
 /server
 macos/build/
+
+# Release build artifacts — these are attached to the GitHub release, not committed.
+macos/*.dmg
+macos/*.zip
