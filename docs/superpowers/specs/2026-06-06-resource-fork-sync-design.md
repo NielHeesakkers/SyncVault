@@ -51,12 +51,27 @@ The packed stream is uploaded as the file's normal content. Detection on the way
 back uses the AppleDouble **magic number** in the first 4 bytes
 (`0x00 0x05 0x16 0x07`), so the server needs no flag and stays a dumb byte store.
 
-### Trigger (narrow)
+### Trigger (narrow) — verified against `copyfile` behaviour
 
-Pack **only** when the source file's resource fork is non-empty
-(`getxattr(com.apple.ResourceFork)` length > 0, or the `..namedfork/rsrc` size >
-0). Normal files (no resource fork) take the existing kale data-fork path. PACK
-includes FinderInfo + xattrs automatically, so we do not need to trigger on
+Pack **only** when the source file has a non-empty resource fork **and a 0-byte
+data fork** (`AppleDoubleCodec.shouldPack`).
+
+The data-fork condition is not cosmetic. Codec round-trip tests revealed that
+`copyfile(COPYFILE_PACK)` writes an AppleDouble carrying the resource fork +
+FinderInfo but **NOT the data fork** (AppleDouble's design assumes the data fork
+stays in the main file). Packing a file that has a non-empty data fork would
+therefore silently drop it. So:
+
+- 0-byte data fork + resource fork (classic Mac fonts — the entire real use
+  case) → pack. Round-trip preserves resource fork + FinderInfo; data fork stays
+  legitimately 0. ✓ (verified end-to-end: a 4096-byte resource fork uploads as a
+  4216-byte AppleDouble starting with the magic, and unpacks back to 4096 bytes.)
+- No resource fork → plain data-fork upload (fast path). ✓
+- Non-empty data fork **and** resource fork (rare — some legacy app docs) → NOT
+  packed; plain data-fork upload (preserves the data fork, resource fork not
+  synced — same as before, no regression). Logged.
+
+PACK includes FinderInfo + xattrs automatically, so we don't trigger on
 FinderInfo alone.
 
 ### Upload — `createItem` and `modifyItem` (FileProviderExtension.swift)

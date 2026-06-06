@@ -1,9 +1,18 @@
 {
-  "version": "3.5.0",
+  "version": "3.6.0",
   "min_version": "1.0",
   "release_date": "2026-06-06",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.5.0/SyncVault-3.5.0.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.6.0/SyncVault-3.6.0.dmg",
   "history": [
+    {
+      "version": "3.6.0",
+      "date": "2026-06-06",
+      "changes": [
+        "Classic Mac resource forks now sync for on-demand files: old fonts (suitcases, .suit, .fam, FFIL) kept their content in the resource fork with a 0-byte data fork, so it was lost; uploads now pack resource fork + FinderInfo into an AppleDouble blob and unpack on download",
+        "Files with both a data fork and a resource fork stay on the plain upload path (no regression)",
+        "Server version bumped for parity; no server behaviour change"
+      ]
+    },
     {
       "version": "3.5.0",
       "date": "2026-06-06",

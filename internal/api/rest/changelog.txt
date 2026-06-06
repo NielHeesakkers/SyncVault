@@ -1,3 +1,12 @@
+## [3.6.0] — 2026-06-06
+**Resource-fork preservation for on-demand files.**
+
+Client:
+- **Classic Mac resource forks now sync.** Old fonts (suitcases, .suit, .fam, FFIL, …) keep their content in the resource fork with a 0-byte data fork; SyncVault uploaded only the data fork, so that content was lost. On-demand uploads now pack {resource fork + FinderInfo} into an AppleDouble blob (via the OS `copyfile` primitive) when a file has a resource fork and an empty data fork, and unpack it on download — so these files round-trip with their content + type/creator intact. Detected via the AppleDouble magic number; no server change.
+- Files with both a non-empty data fork and a resource fork are left on the plain upload path (no regression).
+
+(Server version bumped to 3.6.0 for parity; no server behaviour change this release.)
+
 ## [3.5.0] — 2026-06-06
 **On-demand sync reliability overhaul — server + client.**
 

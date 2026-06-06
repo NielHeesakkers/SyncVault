@@ -161,13 +161,21 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 let item = FileProviderItem(serverFile: serverFile, isDownloaded: true)
                 logger.info("Downloaded: \(serverFile.name, privacy: .public) (\(serverFile.size) bytes)")
 
+                // If the stored bytes are an AppleDouble archive (a resource-forked
+                // file packed on upload), reconstruct the real file with both forks.
+                var contentURL = tempURL
+                if AppleDoubleCodec.isAppleDouble(tempURL) {
+                    contentURL = try AppleDoubleCodec.unpack(tempURL)
+                    logger.info("Unpacked resource fork for \(serverFile.name, privacy: .public)")
+                }
+
                 // Update cache with download state
                 await cache?.upsert(serverFile, downloaded: true)
 
                 SharedConfig.setProgress(action: "Downloaded", filename: serverFile.name, bytesTransferred: serverFile.size, totalBytes: serverFile.size)
                 SharedConfig.addRecentFile(filename: serverFile.name, action: "downloaded")
                 SharedConfig.clearProgress()
-                completionHandler(tempURL, item, nil)
+                completionHandler(contentURL, item, nil)
                 progress.completedUnitCount = 100
 
                 signalChange(for: item.parentItemIdentifier)
@@ -253,17 +261,27 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     let item = FileProviderItem(serverFile: result)
                     completionHandler(item, [], false, nil)
                 } else if let url = url {
-                    // Consume resource fork (Fase 8)
-                    let rsrcUrl = url.appendingPathComponent("..namedfork/rsrc")
-                    let _ = try? Data(contentsOf: rsrcUrl, options: .alwaysMapped)
+                    // If the file carries a resource fork (classic Mac fonts etc.),
+                    // pack {data + resource fork + FinderInfo} into an AppleDouble
+                    // blob and upload THAT, so the content survives. Otherwise the
+                    // data-fork-only upload would store 0 bytes. uploadURL is the
+                    // bytes we actually send; clean up the temp pack afterwards.
+                    var uploadURL = url
+                    var packedTemp: URL? = nil
+                    if AppleDoubleCodec.shouldPack(url) {
+                        packedTemp = try AppleDoubleCodec.pack(url)
+                        uploadURL = packedTemp!
+                        logger.info("Packed resource fork for \(itemTemplate.filename, privacy: .public)")
+                    }
+                    defer { if let t = packedTemp { try? FileManager.default.removeItem(at: t) } }
 
-                    let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+                    let attrs = try FileManager.default.attributesOfItem(atPath: uploadURL.path)
                     let fileSize = (attrs[.size] as? Int64) ?? 0
 
                     SharedConfig.setProgress(action: "Uploading", filename: itemTemplate.filename, bytesTransferred: 0, totalBytes: fileSize)
                     progress.totalUnitCount = fileSize > 0 ? fileSize : 100
 
-                    let result = try await client.uploadFileFromDisk(fileURL: url, filename: itemTemplate.filename, parentID: parentID) { bytesUploaded, totalBytes in
+                    let result = try await client.uploadFileFromDisk(fileURL: uploadURL, filename: itemTemplate.filename, parentID: parentID) { bytesUploaded, totalBytes in
                         progress.completedUnitCount = bytesUploaded
                     }
 
@@ -332,20 +350,25 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     try await client.moveFile(id: item.itemIdentifier.rawValue, name: item.filename, parentID: newParentID)
                 }
 
-                // Consume resource fork (Fase 8)
-                if let url = newContents {
-                    let rsrcUrl = url.appendingPathComponent("..namedfork/rsrc")
-                    let _ = try? Data(contentsOf: rsrcUrl, options: .alwaysMapped)
-                }
-
                 if changedFields.contains(.contents), let url = newContents {
                     let parentID = item.parentItemIdentifier == .rootContainer ? SharedConfig.onDemandFolderID() : item.parentItemIdentifier.rawValue
+                    // Pack the resource fork into an AppleDouble blob if present,
+                    // otherwise upload the data fork as-is (see createItem).
+                    var uploadURL = url
+                    var packedTemp: URL? = nil
+                    if AppleDoubleCodec.shouldPack(url) {
+                        packedTemp = try AppleDoubleCodec.pack(url)
+                        uploadURL = packedTemp!
+                        logger.info("Packed resource fork for \(item.filename, privacy: .public)")
+                    }
+                    defer { if let t = packedTemp { try? FileManager.default.removeItem(at: t) } }
                     // expectedSize = what macOS says the new content should be.
                     // uploadFileFromDisk refuses to push 0 bytes when this is > 0,
                     // so a half-materialized placeholder can't clobber the server copy.
-                    // documentSize is an optional protocol member → double optional.
-                    let expected = (item.documentSize ?? nil)?.int64Value ?? 0
-                    let _ = try await client.uploadFileFromDisk(fileURL: url, filename: item.filename, parentID: parentID, expectedSize: expected)
+                    // A packed file's data fork may be 0 but its AppleDouble is not,
+                    // so guard on the bytes we actually upload, not documentSize.
+                    let expected = packedTemp == nil ? ((item.documentSize ?? nil)?.int64Value ?? 0) : 0
+                    let _ = try await client.uploadFileFromDisk(fileURL: uploadURL, filename: item.filename, parentID: parentID, expectedSize: expected)
                 }
 
                 let serverFile = try await client.getFile(id: item.itemIdentifier.rawValue)
