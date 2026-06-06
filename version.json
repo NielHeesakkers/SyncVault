@@ -1,9 +1,17 @@
 {
-  "version": "3.6.1",
+  "version": "3.6.2",
   "min_version": "1.0",
   "release_date": "2026-06-06",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.6.1/SyncVault-3.6.1.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.6.2/SyncVault-3.6.2.dmg",
   "history": [
+    {
+      "version": "3.6.2",
+      "date": "2026-06-06",
+      "changes": [
+        "Branded Finder sidebar icon for the on-demand location (lock.icloud.fill) instead of the generic folder, via the File Provider extension's CFBundleIcons symbol",
+        "Server version bumped for parity; no server behaviour change"
+      ]
+    },
     {
       "version": "3.6.1",
       "date": "2026-06-06",

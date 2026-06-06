@@ -1,3 +1,11 @@
+## [3.6.2] — 2026-06-06
+**Branded Finder sidebar icon.**
+
+- The on-demand location in the Finder sidebar now shows a SyncVault glyph
+  (`lock.icloud.fill`) instead of the generic folder icon, via the File
+  Provider extension's `CFBundleIcons` symbol. (Server version bumped for
+  parity; no server behaviour change.)
+
 ## [3.6.1] — 2026-06-06
 **Hotfix: restore unsandboxed entitlements.**
 

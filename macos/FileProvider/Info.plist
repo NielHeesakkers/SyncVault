@@ -6,6 +6,14 @@
 	<string>SyncVault File Provider</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIcons</key>
+	<dict>
+		<key>CFBundlePrimaryIcon</key>
+		<dict>
+			<key>CFBundleSymbolName</key>
+			<string>lock.icloud.fill</string>
+		</dict>
+	</dict>
 	<key>CFBundleIdentifier</key>
 	<string>com.syncvault.app.fileprovider</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -15,9 +23,9 @@
 	<key>CFBundlePackageType</key>
 	<string>XPC!</string>
 	<key>CFBundleShortVersionString</key>
-	<string>3.6.1</string>
+	<string>3.6.2</string>
 	<key>CFBundleVersion</key>
-	<string>3.6.1</string>
+	<string>3.6.2</string>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionFileProviderAllowsProvidingData</key>
