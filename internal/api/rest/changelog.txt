@@ -1,3 +1,14 @@
+## [3.6.1] — 2026-06-06
+**Hotfix: restore unsandboxed entitlements.**
+
+- 3.6.0 was accidentally built with the macOS app sandbox ENABLED — `xcodegen`
+  regenerated the entitlements from a stale `project.yml` that still said
+  `app-sandbox: true`. A sandboxed main app can't launch the auto-update install
+  script, read the backup-task folders, or scan the on-demand CloudStorage
+  folder. 3.6.1 restores the correct unsandboxed entitlements and makes
+  `project.yml` the single source of truth so `xcodegen` can't reintroduce it.
+- (Server version bumped to 3.6.1 for parity; no server behaviour change.)
+
 ## [3.6.0] — 2026-06-06
 **Resource-fork preservation for on-demand files.**
 

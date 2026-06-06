@@ -1,9 +1,18 @@
 {
-  "version": "3.6.0",
+  "version": "3.6.1",
   "min_version": "1.0",
   "release_date": "2026-06-06",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.6.0/SyncVault-3.6.0.dmg",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.6.1/SyncVault-3.6.1.dmg",
   "history": [
+    {
+      "version": "3.6.1",
+      "date": "2026-06-06",
+      "changes": [
+        "Hotfix: 3.6.0 was accidentally built with the macOS app sandbox enabled (xcodegen regenerated entitlements from a stale project.yml), breaking auto-update, backup sync and the on-demand scan; 3.6.1 restores the correct unsandboxed entitlements",
+        "project.yml is now the single source of truth for entitlements so xcodegen can't reintroduce the sandbox",
+        "Server version bumped for parity; no server behaviour change"
+      ]
+    },
     {
       "version": "3.6.0",
       "date": "2026-06-06",

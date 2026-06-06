@@ -42,10 +42,15 @@ targets:
           - "@executable_path/../Frameworks"
     entitlements:
       path: Sources/SyncVault/SyncVault.entitlements
+      # App sandbox DISABLED on purpose — do NOT add com.apple.security.app-sandbox
+      # here. The auto-update flow launches /bin/bash to run the install script,
+      # and the main app reads arbitrary local folders (backup tasks + the
+      # on-demand CloudStorage scan). A sandbox breaks all of that. Extensions
+      # (FileProvider, FinderSync) keep their own sandboxes. This block is the
+      # source of truth — xcodegen regenerates the .entitlements file from it,
+      # so a sandbox key added here silently re-breaks the app on the next
+      # `xcodegen generate` (this happened in 3.6.0).
       properties:
-        com.apple.security.app-sandbox: true
-        com.apple.security.network.client: true
-        com.apple.security.files.user-selected.read-write: true
         com.apple.security.application-groups:
           - DE59N86W33.com.syncvault.shared
     info:
@@ -54,8 +59,8 @@ targets:
         CFBundleDisplayName: SyncVault
         CFBundleName: SyncVault
         CFBundleIdentifier: com.syncvault.app
-        CFBundleVersion: "3.6.0"
-        CFBundleShortVersionString: "3.6.0"
+        CFBundleVersion: "3.6.1"
+        CFBundleShortVersionString: "3.6.1"
         CFBundlePackageType: APPL
         LSMinimumSystemVersion: "13.0"
         LSUIElement: true
