@@ -36,7 +36,7 @@ A native menu bar app: redesigned UI, dedicated update window, guided first-laun
 - **Real-time Push Sync** — Server pushes file events to clients via SSE; changes propagate in under 100 ms without polling (Synology Drive-style)
 - **File Sync** — Two-way sync between your devices and the server
 - **Backup** — One-way backup with real-time file change detection (FSEvents)
-- **On-Demand Sync** — Files appear in Finder via FileProvider, download only when opened
+- **On-Demand Sync** — Files appear in Finder via FileProvider, download only when opened. Classic Mac resource forks (old fonts etc.) are preserved via AppleDouble packing
 - **Delta Sync** — Only changed bytes are uploaded (rsync-style block comparison)
 - **Per-folder Cache** — Tree listings return in microseconds; only the touched subtree invalidates on a mutation
 - **File Versioning** — Up to 32 versions per file with retention policies
@@ -158,10 +158,14 @@ services:
     environment:
       - SYNCVAULT_JWT_SECRET=change-this-to-a-long-random-string
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/api/health"]
+      # Fails when storage is unreachable (e.g. a stale mount) OR the server is
+      # down — not just on a non-200, so an orchestrator restarts the container
+      # to re-establish storage instead of leaving it silently degraded.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health | grep -q '\"storage_ok\":true'"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 15s
     restart: unless-stopped
 
 volumes:
@@ -294,6 +298,7 @@ Native menu bar app with:
 - Recently changed files with task attribution
 - Restore Files window — point-in-time browser with per-folder timeline and streaming download
 - Trash window — restore or permanently delete from inside the app
+- On-demand resource-fork preservation (classic Mac fonts via AppleDouble)
 - Auto-skip of dev directories (node_modules, DerivedData, build, etc.)
 - 24-hour integrity check
 - Sparkle auto-update
