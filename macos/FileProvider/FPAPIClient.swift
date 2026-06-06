@@ -81,12 +81,21 @@ actor FPAPIClient {
         SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: 0, totalBytes: fileSize)
         defer { SharedConfig.clearProgress() }
 
-        let pid = parentID ?? ""
-        let encName = filename.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? filename
-        let encPid = pid.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? pid
+        // Build the query with URLComponents and force-escape '+'. `.urlQueryAllowed`
+        // does NOT escape '+', '&' or '#': the server decodes '+' as a space (so
+        // "a+b.zip" is stored as "a b.zip" → name never matches → infinite re-upload)
+        // and '&' injects a query-param boundary (truncating the filename / corrupting
+        // parent_id). The sync engine's uploadFileStreaming already learned this; match it.
+        var comps = URLComponents(string: "\(baseURL)/api/files/put")!
+        comps.queryItems = [
+            URLQueryItem(name: "parent_id", value: parentID ?? ""),
+            URLQueryItem(name: "filename", value: filename),
+        ]
+        comps.percentEncodedQuery = comps.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+        let putURL = comps.url!
 
         func doPut() async throws -> (Data, URLResponse) {
-            var request = URLRequest(url: URL(string: "\(baseURL)/api/files/put?parent_id=\(encPid)&filename=\(encName)")!)
+            var request = URLRequest(url: putURL)
             request.httpMethod = "PUT"
             request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             if let token = accessToken {

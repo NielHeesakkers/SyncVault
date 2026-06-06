@@ -1404,7 +1404,6 @@ class AppState: ObservableObject {
                 let remoteFilePaths: Set<String> = Set(
                     remoteTree.filter { !$0.isDir }.map { $0.relativePath }
                 )
-                _ = remoteFilePaths // (referenced below)
 
                 // Build folder ID cache from remote tree
                 var folderCache: [String: String] = [:]

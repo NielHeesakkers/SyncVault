@@ -67,7 +67,11 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
             let files = try await client.listFiles(parentID: folderID)
             guard let cache = cache else { return }
 
-            let cachedItems = await cache.allItems()
+            // Reconcile only the ROOT level: `files` is a single-level listing of
+            // the on-demand folder, so compare it against the root's cached
+            // children — NOT cache.allItems(), which spans every nested folder and
+            // would soft-delete every item inside subfolders on each poll.
+            let cachedItems = await cache.listChildren(parentID: folderID)
             let serverIDs = Set(files.map { $0.id })
             let cachedIDs = Set(cachedItems.map { $0.id })
 
@@ -163,9 +167,12 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
                 // If the stored bytes are an AppleDouble archive (a resource-forked
                 // file packed on upload), reconstruct the real file with both forks.
+                // Delete the downloaded blob once unpacked — macOS only takes
+                // ownership of the URL we return, so the original temp would leak.
                 var contentURL = tempURL
                 if AppleDoubleCodec.isAppleDouble(tempURL) {
                     contentURL = try AppleDoubleCodec.unpack(tempURL)
+                    try? FileManager.default.removeItem(at: tempURL)
                     logger.info("Unpacked resource fork for \(serverFile.name, privacy: .public)")
                 }
 

@@ -12,8 +12,13 @@ import Foundation
 ///
 /// No dependency on the API client, cache, or FileProvider types: just files.
 enum AppleDoubleCodec {
-    /// AppleDouble v2 magic number (first 4 bytes of every AppleDouble file).
-    static let magic: [UInt8] = [0x00, 0x05, 0x16, 0x07]
+    /// AppleDouble v2 signature: magic 0x00051607 + version 0x00020000 (8 bytes).
+    /// We check all 8 (not just the 4-byte magic) on download so a plain data-fork
+    /// file that coincidentally starts with the magic isn't mistaken for an
+    /// AppleDouble and run through UNPACK → corruption. There is no server-side
+    /// "packed" flag (by design), so this signature is the only discriminator;
+    /// 8 bytes makes a false positive effectively impossible.
+    static let signature: [UInt8] = [0x00, 0x05, 0x16, 0x07, 0x00, 0x02, 0x00, 0x00]
 
     enum CodecError: Error { case packFailed(Int32), unpackFailed(Int32) }
 
@@ -42,12 +47,12 @@ enum AppleDoubleCodec {
         return dataForkSize == 0
     }
 
-    /// True if `url`'s first 4 bytes are the AppleDouble magic.
+    /// True if `url` begins with the full 8-byte AppleDouble signature.
     static func isAppleDouble(_ url: URL) -> Bool {
         guard let fh = try? FileHandle(forReadingFrom: url) else { return false }
         defer { try? fh.close() }
-        guard let head = try? fh.read(upToCount: 4), head.count == 4 else { return false }
-        return Array(head) == magic
+        guard let head = try? fh.read(upToCount: 8), head.count == 8 else { return false }
+        return Array(head) == signature
     }
 
     /// PACK {data fork + resource fork + FinderInfo + xattrs} of `url` into a new
