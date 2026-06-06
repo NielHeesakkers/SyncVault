@@ -9,12 +9,17 @@ services:
       - syncvault-data:/data
     environment:
       - SYNCVAULT_JWT_SECRET=${SYNCVAULT_JWT_SECRET:-change-me-in-production}
+    # Storage-aware: fails when /api/health reports storage_ok:false (e.g. the
+    # storage volume/mount went stale) OR the server is down — not just on a
+    # non-200. A mere "--spider" 200 check passes even when storage is degraded,
+    # so an orchestrator/monitor never restarts the container to re-establish the
+    # mount. This check goes unhealthy on a storage stall so it can be auto-healed.
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/api/health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/api/health | grep -q '\"storage_ok\":true'"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     restart: unless-stopped
 volumes:
   syncvault-data:
