@@ -49,8 +49,17 @@ class FileProviderItem: NSObject, NSFileProviderItem {
     }
 
     var itemVersion: NSFileProviderItemVersion {
-        let hash = (contentHashValue ?? id).data(using: .utf8) ?? Data()
-        return NSFileProviderItemVersion(contentVersion: hash, metadataVersion: hash)
+        // contentVersion must change when the BYTES change so macOS re-downloads.
+        // Fall back to size (not id!) when there's no hash — the old id-fallback
+        // never changed, so a server-side content update was invisible and the
+        // local copy stayed stale forever.
+        let contentKey = contentHashValue ?? "size:\(fileSize)"
+        let content = contentKey.data(using: .utf8) ?? Data()
+        // metadataVersion must change when name/parent/mtime change so renames
+        // and moves propagate independently of content.
+        let metaKey = "\(name)|\(parentID ?? "")|\(modifiedDate.timeIntervalSince1970)|\(fileSize)"
+        let meta = metaKey.data(using: .utf8) ?? Data()
+        return NSFileProviderItemVersion(contentVersion: content, metadataVersion: meta)
     }
 
     // Declare xattr support so Finder accepts files with resource forks.

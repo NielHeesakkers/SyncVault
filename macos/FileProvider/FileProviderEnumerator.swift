@@ -121,8 +121,20 @@ class FileProviderEnumerator: NSObject, NSFileProviderEnumerator {
 
             for file in files {
                 let existing = await cache.getItem(file.id)
-                if existing == nil || existing?.updatedAt != file.updatedAt || existing?.name != file.name {
-                    await cache.upsert(file, downloaded: existing?.isDownloaded ?? false)
+                // Compare size + contentHash too — not just updatedAt + name. A
+                // stale 0-byte cache row (from the old broken upload path) kept
+                // the same updatedAt/name as the server, so it never self-healed
+                // and Finder kept showing 0 KB. Now any size/hash drift refreshes.
+                let contentChanged = existing?.size != file.size || existing?.contentHash != file.contentHash
+                let metaChanged = existing == nil
+                    || existing?.updatedAt != file.updatedAt
+                    || existing?.name != file.name
+                    || contentChanged
+                if metaChanged {
+                    // If the bytes identity changed, any local copy is stale →
+                    // mark not-downloaded so macOS re-fetches real content.
+                    let stillDownloaded = (existing?.isDownloaded ?? false) && !contentChanged
+                    await cache.upsert(file, downloaded: stillDownloaded)
                     changed = true
                 }
             }

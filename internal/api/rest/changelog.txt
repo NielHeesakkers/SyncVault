@@ -1,4 +1,16 @@
-## [3.4.0] — 2026-05-28
+## [3.5.0] — 2026-06-06
+**On-demand sync reliability overhaul — server + client.**
+
+Server:
+- **Fix SQLITE_BUSY 500s under concurrent uploads** — DB pragmas (incl. `busy_timeout`) are now set in the connection DSN so EVERY pooled connection gets them. Previously they were `Exec`'d after `SetMaxOpenConns(8)`, so only one connection had a busy timeout; a burst of concurrent uploads collided on the WAL writer lock and failed instantly with "database is locked" → HTTP 500. Now writers wait out the lock.
+
+Client (FileProvider / on-demand):
+- **Uploads use raw PUT** (`/api/files/put`) instead of the multipart endpoint that created a duplicate server record on every save.
+- **Never overwrite a good file with 0 bytes** — uploads of a half-materialized placeholder are refused and retried, instead of silently committing an empty file (the cause of pinned files turning into 0 KB).
+- **SSE auto-recovers** — a finite 90s inactivity timeout means a dead-but-open stream (Wi-Fi change, sleep/wake) reconnects instead of silently stalling (the "connection lost / icon became a folder" feeling).
+- **Cache self-heals** on size/hash drift and purges 404 ghost placeholders; **rename/move no longer reported as failed** (response decode fix); re-auth added to all write calls.
+
+
 **Restore Files browser + on-demand sync fix.**
 
 Client:

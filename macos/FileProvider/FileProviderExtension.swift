@@ -73,11 +73,14 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
             var changed = false
 
-            // New or updated items
+            // New or updated items. Compare size + contentHash too so a stale
+            // 0-byte cache row self-heals when the server has real content.
             for file in files {
                 let existing = await cache.getItem(file.id)
-                if existing == nil || existing?.updatedAt != file.updatedAt {
-                    await cache.upsert(file)
+                let contentChanged = existing?.size != file.size || existing?.contentHash != file.contentHash
+                if existing == nil || existing?.updatedAt != file.updatedAt || contentChanged {
+                    let stillDownloaded = (existing?.isDownloaded ?? false) && !contentChanged
+                    await cache.upsert(file, downloaded: stillDownloaded)
                     changed = true
                 }
             }
@@ -169,6 +172,14 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
                 signalChange(for: item.parentItemIdentifier)
             } catch {
+                // 404 = the file no longer exists on the server. Purge the dead
+                // placeholder from the cache and signal the root so Finder stops
+                // showing a ghost item that can never be downloaded. (These were
+                // the recurring "Download failed … 404" entries in the logs.)
+                if case FPAPIError.serverError(404) = error {
+                    await cache?.markDeleted(itemIdentifier.rawValue)
+                    signalChange(for: .rootContainer)
+                }
                 logger.error("Download failed for \(itemIdentifier.rawValue, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 completionHandler(nil, nil, toFileProviderError(error))
             }
@@ -193,6 +204,12 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                               userInfo: [NSLocalizedDescriptionKey: "Server error (\(code))"])
             case .invalidResponse:
                 return NSError(domain: NSFileProviderErrorDomain, code: NSFileProviderError.serverUnreachable.rawValue)
+            case .truncatedUpload:
+                // The local file wasn't fully materialized. Report a retryable
+                // error so macOS keeps the local copy dirty and tries again once
+                // the bytes are present — instead of us silently uploading 0 bytes.
+                return NSError(domain: NSFileProviderErrorDomain, code: NSFileProviderError.serverUnreachable.rawValue,
+                              userInfo: [NSLocalizedDescriptionKey: fpError.localizedDescription])
             }
         }
         return error as NSError
@@ -323,7 +340,12 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
                 if changedFields.contains(.contents), let url = newContents {
                     let parentID = item.parentItemIdentifier == .rootContainer ? SharedConfig.onDemandFolderID() : item.parentItemIdentifier.rawValue
-                    let _ = try await client.uploadFileFromDisk(fileURL: url, filename: item.filename, parentID: parentID)
+                    // expectedSize = what macOS says the new content should be.
+                    // uploadFileFromDisk refuses to push 0 bytes when this is > 0,
+                    // so a half-materialized placeholder can't clobber the server copy.
+                    // documentSize is an optional protocol member → double optional.
+                    let expected = (item.documentSize ?? nil)?.int64Value ?? 0
+                    let _ = try await client.uploadFileFromDisk(fileURL: url, filename: item.filename, parentID: parentID, expectedSize: expected)
                 }
 
                 let serverFile = try await client.getFile(id: item.itemIdentifier.rawValue)

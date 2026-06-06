@@ -1,9 +1,21 @@
 {
-  "version": "3.4.0",
+  "version": "3.5.0",
   "min_version": "1.0",
-  "release_date": "2026-05-28",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.4.0/SyncVault-3.4.0.dmg",
+  "release_date": "2026-06-06",
+  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.5.0/SyncVault-3.5.0.dmg",
   "history": [
+    {
+      "version": "3.5.0",
+      "date": "2026-06-06",
+      "changes": [
+        "On-demand sync reliability overhaul (server + client)",
+        "Server: fix SQLITE_BUSY 500s under concurrent uploads — DB busy_timeout now applies to every pooled connection via the DSN",
+        "Uploads use raw PUT (upsert + versioning) instead of the multipart path that duplicated every file",
+        "Never overwrite a good file with 0 bytes — half-materialized placeholders are refused and retried (fixes pinned files becoming 0 KB)",
+        "SSE auto-recovers from a dead connection (finite 90s timeout) instead of silently stalling",
+        "Cache self-heals on size/hash drift, purges 404 ghosts; rename/move no longer mis-reported as failed; re-auth on all write calls"
+      ]
+    },
     {
       "version": "3.4.0",
       "date": "2026-05-28",

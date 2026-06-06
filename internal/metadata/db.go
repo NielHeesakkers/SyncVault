@@ -66,7 +66,28 @@ func (d *DB) DB() *sql.DB { return d.db }
 // Open opens (or creates) the SQLite database at the given path, applies the schema,
 // and configures WAL mode, a 5-second busy timeout, and foreign key support.
 func Open(path string) (*DB, error) {
-	rawDB, err := sql.Open("sqlite", path)
+	// CRITICAL: pragmas MUST be in the DSN, not Exec'd after Open. With a
+	// connection pool (SetMaxOpenConns > 1), `rawDB.Exec("PRAGMA ...")` only
+	// configures whichever single pooled connection happens to serve that Exec.
+	// Connections are created lazily, so under concurrent load Go opens fresh
+	// connections that never ran the pragmas — leaving busy_timeout=0 on most of
+	// them. The result: a burst of concurrent uploads (e.g. the FileProvider
+	// replaying its queue) collides on the single WAL writer and the unconfigured
+	// connections fail INSTANTLY with "database is locked (SQLITE_BUSY)" → HTTP
+	// 500, instead of waiting out the lock. modernc.org/sqlite applies `_pragma=`
+	// DSN params to EVERY connection it opens, which is what we actually want.
+	dsn := "file:" + path + "?" + strings.Join([]string{
+		"_pragma=busy_timeout(5000)",        // wait up to 5s for the WAL writer lock
+		"_pragma=journal_mode(WAL)",         // readers don't block the writer
+		"_pragma=foreign_keys(1)",
+		"_pragma=synchronous(NORMAL)",       // safe in WAL, much faster writes
+		"_pragma=cache_size(-20000)",        // 20 MB page cache (negative = KB)
+		"_pragma=temp_store(MEMORY)",        // temp tables in RAM
+		"_pragma=mmap_size(268435456)",      // 256 MB memory-mapped I/O
+		"_pragma=wal_autocheckpoint(1000)",  // checkpoint after 1000 pages
+	}, "&")
+
+	rawDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("metadata: open db: %w", err)
 	}
@@ -75,22 +96,13 @@ func Open(path string) (*DB, error) {
 	rawDB.SetMaxOpenConns(8)
 	rawDB.SetMaxIdleConns(4)
 
-	// Configure pragmas for maximum performance in WAL mode.
-	pragmas := []string{
-		"PRAGMA journal_mode=WAL;",
-		"PRAGMA busy_timeout=5000;",
-		"PRAGMA foreign_keys=ON;",
-		"PRAGMA synchronous=NORMAL;",    // Safe in WAL mode, much faster writes
-		"PRAGMA cache_size=-20000;",     // 20 MB page cache (negative = KB)
-		"PRAGMA temp_store=MEMORY;",     // Temp tables in RAM
-		"PRAGMA mmap_size=268435456;",   // 256 MB memory-mapped I/O
-		"PRAGMA wal_autocheckpoint=1000;", // Checkpoint after 1000 pages
-	}
-	for _, p := range pragmas {
-		if _, err := rawDB.Exec(p); err != nil {
-			rawDB.Close()
-			return nil, fmt.Errorf("metadata: set pragma %q: %w", p, err)
-		}
+	// Belt-and-suspenders: also apply the persistent pragmas once. journal_mode
+	// is stored in the DB header so this guarantees WAL even on a brand-new file
+	// before the first pooled connection is handed out. The per-connection
+	// pragmas above (busy_timeout etc.) are what actually fix the SQLITE_BUSY.
+	if _, err := rawDB.Exec("PRAGMA journal_mode=WAL;"); err != nil {
+		rawDB.Close()
+		return nil, fmt.Errorf("metadata: set journal_mode: %w", err)
 	}
 
 	// Apply schema.

@@ -48,80 +48,79 @@ actor FPAPIClient {
         try await deleteWithReauth("/api/files/\(id)")
     }
 
-    /// Upload a file via block upload — same protocol as the sync engine.
-    /// No temp files, no memory pressure, with real network progress.
-    /// 1. Split file into 4MB blocks, compute SHA-256 per block
-    /// 2. Check which blocks server already has (dedup)
-    /// 3. Upload only missing blocks
-    /// 4. Create file on server from blocks
-    func uploadFileFromDisk(fileURL: URL, filename: String, parentID: String?, onProgress: ((Int64, Int64) -> Void)? = nil) async throws -> FPServerFile {
+    /// Upload a file via raw PUT — the SAME path the sync engine uses.
+    ///
+    /// Why not multipart? The old multipart path hit `/api/files/upload`, which
+    /// server-side always calls CreateFile → renames any existing record and
+    /// inserts a NEW one. Every re-save of an on-demand file therefore spawned a
+    /// duplicate (verified: thousands of "name.mp3" / "name.mp3.1" pairs in the
+    /// cache). It also buffered the whole body into a temp multipart file first
+    /// (memory + disk churn, and the documented hang-after-~20-requests failure
+    /// mode). Raw PUT to `/api/files/put` upserts by (parent, name): same hash →
+    /// no-op, different hash → new version on the SAME id. No duplicates, no
+    /// temp file, streamed straight from disk.
+    ///
+    /// `expectedSize`, when > 0, guards against uploading a half-materialized
+    /// placeholder: if the file on disk is smaller than what the caller knows it
+    /// should be, we refuse rather than overwrite the good server copy with
+    /// truncated/empty bytes.
+    func uploadFileFromDisk(fileURL: URL, filename: String, parentID: String?, expectedSize: Int64 = 0, onProgress: ((Int64, Int64) -> Void)? = nil) async throws -> FPServerFile {
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? 0
 
+        // Guard: never push an empty read over a good server copy. The observed
+        // corruption was exactly this — macOS hands us a placeholder URL that
+        // reads 0 bytes (failed/half materialization) while the item is known to
+        // have content, and we'd overwrite the server file with nothing. We only
+        // reject the strict 0-byte-vs-nonzero-expected case so a legitimate
+        // shrink/truncate by the user still goes through.
+        if expectedSize > 0 && fileSize == 0 {
+            SharedConfig.clearProgress()
+            throw FPAPIError.truncatedUpload(have: fileSize, want: expectedSize)
+        }
+
         SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: 0, totalBytes: fileSize)
+        defer { SharedConfig.clearProgress() }
 
-        // Streaming upload: single HTTP request, streamed from disk (like Synology Drive).
-        // No block protocol overhead — much faster on SMB/NFS storage.
-        let boundary = UUID().uuidString
         let pid = parentID ?? ""
+        let encName = filename.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? filename
+        let encPid = pid.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? pid
 
-        // Build multipart body as temp file (avoids loading file into memory)
-        let tempDir = FileManager.default.temporaryDirectory
-        let tempFile = tempDir.appendingPathComponent(UUID().uuidString + ".multipart")
-        defer { try? FileManager.default.removeItem(at: tempFile) }
-
-        FileManager.default.createFile(atPath: tempFile.path, contents: nil)
-        let writeHandle = try FileHandle(forWritingTo: tempFile)
-
-        // Write multipart header + parent_id
-        let header = "--\(boundary)\r\nContent-Disposition: form-data; name=\"parent_id\"\r\n\r\n\(pid)\r\n--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: application/octet-stream\r\n\r\n"
-        writeHandle.write(header.data(using: .utf8)!)
-
-        // Stream file content in 4MB chunks
-        let readHandle = try FileHandle(forReadingFrom: fileURL)
-        defer { readHandle.closeFile() }
-        let chunkSize = 4 * 1024 * 1024
-        var written: Int64 = 0
-        while true {
-            let chunk = readHandle.readData(ofLength: chunkSize)
-            if chunk.isEmpty { break }
-            writeHandle.write(chunk)
-            written += Int64(chunk.count)
-            SharedConfig.setProgress(action: "Uploading", filename: filename, bytesTransferred: written, totalBytes: fileSize)
-            onProgress?(written, fileSize)
-        }
-
-        // Write multipart footer
-        writeHandle.write("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-        writeHandle.closeFile()
-
-        // Upload via streaming (URLSession reads from disk)
-        var request = URLRequest(url: URL(string: "\(baseURL)/api/files/upload")!)
-        request.httpMethod = "POST"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        request.timeoutInterval = 3600
-
-        let (data, response): (Data, URLResponse) = try await withCheckedThrowingContinuation { continuation in
-            let task = URLSession(configuration: .ephemeral).uploadTask(with: request, fromFile: tempFile) { data, response, error in
-                if let error = error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                guard let data = data, let response = response else {
-                    continuation.resume(throwing: NSError(domain: "FPUpload", code: -1))
-                    return
-                }
-                continuation.resume(returning: (data, response))
+        func doPut() async throws -> (Data, URLResponse) {
+            var request = URLRequest(url: URL(string: "\(baseURL)/api/files/put?parent_id=\(encPid)&filename=\(encName)")!)
+            request.httpMethod = "PUT"
+            request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+            if let token = accessToken {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
-            task.resume()
+            // Finite, generous ceiling. Not .infinity — a stalled socket must
+            // eventually fail so the operation can be retried, not hang forever.
+            request.timeoutInterval = 3600
+
+            let session = URLSession(configuration: .ephemeral)
+            return try await withCheckedThrowingContinuation { continuation in
+                let task = session.uploadTask(with: request, fromFile: fileURL) { data, response, error in
+                    if let error = error { continuation.resume(throwing: error); return }
+                    guard let data = data, let response = response else {
+                        continuation.resume(throwing: FPAPIError.invalidResponse); return
+                    }
+                    continuation.resume(returning: (data, response))
+                }
+                task.resume()
+            }
+        }
+
+        var (data, response) = try await doPut()
+        if let http = response as? HTTPURLResponse, http.statusCode == 401 {
+            try await reAuthenticate()
+            (data, response) = try await doPut()
         }
         try checkResponse(response)
-        SharedConfig.clearProgress()
 
-        let result = try JSONDecoder().decode(FPServerFile.self, from: data)
-        return result
+        // Surface completion to caller's progress + the shared menu-bar state.
+        onProgress?(fileSize, fileSize)
+        SharedConfig.setProgress(action: "Uploaded", filename: filename, bytesTransferred: fileSize, totalBytes: fileSize)
+
+        return try JSONDecoder().decode(FPServerFile.self, from: data)
     }
 
     // MARK: - Block operations
@@ -156,11 +155,20 @@ actor FPAPIClient {
                     var request = URLRequest(url: url)
                     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-                    request.timeoutInterval = .infinity
+                    // 90s INACTIVITY timeout — NOT infinity. The server sends a
+                    // ": keepalive" comment every 30s, so a healthy stream resets
+                    // this timer on every keepalive and never trips. A dead-but-
+                    // open socket (Wi-Fi change, sleep/wake, server restart with no
+                    // FIN) stops sending bytes; after 90s (3 missed keepalives) the
+                    // request throws, which unblocks the for-await loop and lets
+                    // startSSEListener reconnect. With .infinity the loop hung
+                    // forever and real-time sync silently died — the root of the
+                    // "connection feels gone / icon turns into a plain folder".
+                    request.timeoutInterval = 90
 
                     let config = URLSessionConfiguration.default
-                    config.timeoutIntervalForRequest = .infinity
-                    config.timeoutIntervalForResource = .infinity
+                    config.timeoutIntervalForRequest = 90
+                    config.timeoutIntervalForResource = .infinity   // no cap on total stream lifetime
                     let session = URLSession(configuration: config)
 
                     let (bytes, response) = try await session.bytes(for: request)
@@ -217,12 +225,16 @@ actor FPAPIClient {
 
     func createFolder(name: String, parentID: String) async throws -> FPServerFile {
         let body: [String: Any] = ["name": name, "parent_id": parentID, "is_dir": true]
-        return try await post("/api/files", body: body)
+        return try await postWithReauth("/api/files", body: body)
     }
 
     func moveFile(id: String, name: String, parentID: String) async throws {
         let body: [String: Any] = ["name": name, "parent_id": parentID]
-        let _: [String: String] = try await put("/api/files/\(id)", body: body)
+        // The server returns the full updated file object (toFileResponse), NOT a
+        // string map. Decoding it as [String:String] threw a decode error
+        // ("data couldn't be read…") on EVERY successful rename/move — macOS then
+        // saw the op as failed and retried it forever. Decode the real shape.
+        let _: FPServerFile = try await putWithReauth("/api/files/\(id)", body: body)
     }
 
     // MARK: - Auto Re-Auth on 401
@@ -290,6 +302,24 @@ actor FPAPIClient {
         } catch FPAPIError.unauthorized {
             try await reAuthenticate()
             try await deleteRequest(path)
+        }
+    }
+
+    private func postWithReauth<T: Decodable>(_ path: String, body: Any) async throws -> T {
+        do {
+            return try await post(path, body: body)
+        } catch FPAPIError.unauthorized {
+            try await reAuthenticate()
+            return try await post(path, body: body)
+        }
+    }
+
+    private func putWithReauth<T: Decodable>(_ path: String, body: Any) async throws -> T {
+        do {
+            return try await put(path, body: body)
+        } catch FPAPIError.unauthorized {
+            try await reAuthenticate()
+            return try await put(path, body: body)
         }
     }
 
@@ -426,11 +456,14 @@ enum FPAPIError: Error, LocalizedError {
     case unauthorized
     case serverError(Int)
     case invalidResponse
+    case truncatedUpload(have: Int64, want: Int64)
     var errorDescription: String? {
         switch self {
         case .unauthorized: return "Authentication failed"
         case .serverError(let code): return "Server error (\(code))"
         case .invalidResponse: return "Invalid server response"
+        case .truncatedUpload(let have, let want):
+            return "Refusing to upload truncated file (\(have) of \(want) bytes) — placeholder not fully materialized"
         }
     }
 }
