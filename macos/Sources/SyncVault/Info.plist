@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>BuildDate</key>
-	<string>2026-06-06T12:52:33Z</string>
+	<string>2026-06-06T13:45:52Z</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -23,7 +23,7 @@
 	<key>CFBundleVersion</key>
 	<string>3.6.2</string>
 	<key>GitSHA</key>
-	<string>1c25038</string>
+	<string>0a08f6f</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>
