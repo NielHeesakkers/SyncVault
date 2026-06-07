@@ -1,9 +1,9 @@
 name: Build and Push Docker Image
 
-# Codeberg-hosted Forgejo Actions. The runner is a rootless Podman container
-# inside LXC — no Docker/buildx — so images are built with buildah using
-# --storage-driver=vfs (no FUSE/overlay) and --isolation=chroot (no privileged
-# namespaces). Image is pushed to the Codeberg container registry.
+# Runs on the self-hosted Forgejo runner on the Mac mini (label "docker").
+# Job container is docker:27-cli with the host Docker socket mounted, so
+# docker build/push run against the mini's Docker Desktop (with its layer
+# cache). No DinD. Image → Codeberg container registry.
 
 on:
   push:
@@ -12,38 +12,33 @@ on:
 
 jobs:
   build-and-push:
-    runs-on: codeberg-small
+    runs-on: docker
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install buildah
-        run: apt-get update -qq && apt-get install -y -qq buildah ca-certificates
-
-      - name: Compute tags
-        id: tags
+      - name: Build and push
+        env:
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
+          set -eu
+          apk add --no-cache git
           REPO=codeberg.org/nielheesakkers/syncvault
-          OUT="$REPO:latest"
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            V="${{ github.ref_name }}"; V="${V#v}"
-            OUT="$OUT $REPO:$V"
+
+          # Manual checkout (docker:27-cli has no node, so no actions/checkout).
+          git clone --quiet https://codeberg.org/NielHeesakkers/SyncVault.git src
+          cd src
+          git checkout --quiet "${GITHUB_SHA}"
+
+          # Tags: always :latest; on a vX.Y.Z tag also the bare version.
+          TAGFLAGS="-t ${REPO}:latest"
+          PUSH_TAGS="${REPO}:latest"
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+            TAGFLAGS="${TAGFLAGS} -t ${REPO}:${V}"
+            PUSH_TAGS="${PUSH_TAGS} ${REPO}:${V}"
           fi
-          echo "list=$OUT" >> "$GITHUB_OUTPUT"
-          echo "Tags: $OUT"
 
-      - name: Build image
-        run: |
-          TAGFLAGS=""
-          for t in ${{ steps.tags.outputs.list }}; do TAGFLAGS="$TAGFLAGS --tag $t"; done
-          buildah build \
-            --storage-driver=vfs --isolation=chroot \
-            --build-arg GIT_SHA="${{ github.sha }}" \
+          echo "${REGISTRY_TOKEN}" | docker login codeberg.org -u nielheesakkers --password-stdin
+          docker build \
+            --build-arg GIT_SHA="${GITHUB_SHA}" \
             --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            $TAGFLAGS .
-
-      - name: Push image
-        run: |
-          for t in ${{ steps.tags.outputs.list }}; do
-            buildah push --storage-driver=vfs \
-              --creds "nielheesakkers:${{ secrets.REGISTRY_TOKEN }}" "$t"
-          done
+            ${TAGFLAGS} .
+          for t in ${PUSH_TAGS}; do docker push "$t"; done
