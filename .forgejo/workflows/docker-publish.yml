@@ -12,7 +12,7 @@ on:
 
 jobs:
   build-and-push:
-    runs-on: codeberg-medium
+    runs-on: codeberg-small
     steps:
       - uses: actions/checkout@v4
 
