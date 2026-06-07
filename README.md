@@ -149,7 +149,7 @@ version: "3.8"
 
 services:
   syncvault:
-    image: ghcr.io/nielheesakkers/syncvault:latest
+    image: codeberg.org/nielheesakkers/syncvault:latest
     container_name: syncvault
     ports:
       - "8080:8080"
@@ -179,7 +179,7 @@ docker run -d \
   -p 8080:8080 \
   -v syncvault-data:/data \
   -e SYNCVAULT_JWT_SECRET=your-secret-here \
-  ghcr.io/nielheesakkers/syncvault:latest
+  codeberg.org/nielheesakkers/syncvault:latest
 ```
 
 ### Build from Source

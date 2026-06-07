@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   syncvault:
-    image: ghcr.io/nielheesakkers/syncvault:latest
+    image: codeberg.org/nielheesakkers/syncvault:latest
     container_name: syncvault
     restart: unless-stopped
     ports:
