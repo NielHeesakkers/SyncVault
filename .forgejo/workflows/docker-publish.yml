@@ -1,0 +1,49 @@
+name: Build and Push Docker Image
+
+# Codeberg-hosted Forgejo Actions. The runner is a rootless Podman container
+# inside LXC — no Docker/buildx — so images are built with buildah using
+# --storage-driver=vfs (no FUSE/overlay) and --isolation=chroot (no privileged
+# namespaces). Image is pushed to the Codeberg container registry.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+jobs:
+  build-and-push:
+    runs-on: codeberg-medium
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install buildah
+        run: apt-get update -qq && apt-get install -y -qq buildah ca-certificates
+
+      - name: Compute tags
+        id: tags
+        run: |
+          REPO=codeberg.org/nielheesakkers/syncvault
+          OUT="$REPO:latest"
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            V="${{ github.ref_name }}"; V="${V#v}"
+            OUT="$OUT $REPO:$V"
+          fi
+          echo "list=$OUT" >> "$GITHUB_OUTPUT"
+          echo "Tags: $OUT"
+
+      - name: Build image
+        run: |
+          TAGFLAGS=""
+          for t in ${{ steps.tags.outputs.list }}; do TAGFLAGS="$TAGFLAGS --tag $t"; done
+          buildah build \
+            --storage-driver=vfs --isolation=chroot \
+            --build-arg GIT_SHA="${{ github.sha }}" \
+            --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            $TAGFLAGS .
+
+      - name: Push image
+        run: |
+          for t in ${{ steps.tags.outputs.list }}; do
+            buildah push --storage-driver=vfs \
+              --creds "nielheesakkers:${{ secrets.REGISTRY_TOKEN }}" "$t"
+          done
