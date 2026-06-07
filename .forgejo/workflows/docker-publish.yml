@@ -15,6 +15,9 @@ jobs:
     runs-on: docker
     steps:
       - name: Build and push
+        # docker:27-cli is Alpine — it has no bash, and Forgejo runs `run:` with
+        # bash by default (exit 127). Use sh.
+        shell: sh
         env:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
