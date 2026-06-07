@@ -7,9 +7,11 @@ app's auto-update feed all served from Codeberg.
 ## Decisions (made with Niel)
 
 - **CI + container registry:** Forgejo Actions on Codeberg, image pushed to the
-  Codeberg container registry (`codeberg.org/nielheesakkers/syncvault`). Codeberg's
-  hosted runners are limited, so we run a **self-hosted Forgejo runner on the Mac
-  mini** (it already runs Docker).
+  Codeberg container registry (`codeberg.org/nielheesakkers/syncvault`).
+  **Use Codeberg's HOSTED Forgejo Actions runner** (open alpha, limited resources
+  — fine for a small Go arm64 image built ~monthly). No daemon to maintain.
+  Fallback only if the alpha proves too constrained: a self-hosted Forgejo runner
+  on the Mac mini.
 - **App update feed:** Codeberg. `version.json` via Codeberg raw; the `.dmg`/`.zip`
   via Codeberg Releases.
 
@@ -47,11 +49,11 @@ GITHUB RELEASE, and only after that release is installed may GitHub be retired.
 ## Phased plan (in order)
 
 ### Phase 1 — Codeberg CI + registry (no app changes)
-1. Re-stage the Codeberg token (file `~/.codeberg-token`, deleted after).
-2. Enable Actions on the Codeberg repo; create a Forgejo Actions **secret** holding a Codeberg package-write token.
-3. Install + register a **Forgejo runner on the Mac mini** (scoped to this repo), labelled e.g. `docker`. Verify it shows online.
-4. Add `.forgejo/workflows/docker-publish.yml` (port of the GH workflow): build linux/arm64, push to `codeberg.org/nielheesakkers/syncvault:latest` + `:vX.Y.Z`.
-5. Verify: a push to Codeberg triggers the workflow → image appears in the Codeberg container registry. Make the package **public** (so the mini pulls without auth).
+1. Re-stage the Codeberg token (file `~/.codeberg-token`, deleted after). Scopes needed: `write:package`, `write:repository`, `read:user`.
+2. Enable Actions on the Codeberg repo (repo Settings → Actions). Opt the repo into Codeberg's **hosted** Forgejo Actions runner (open alpha). Create a Forgejo Actions **secret** with a Codeberg package-write token for the registry push.
+3. Add `.forgejo/workflows/docker-publish.yml` (port of the GH workflow): build linux/arm64, push to `codeberg.org/nielheesakkers/syncvault:latest` + `:vX.Y.Z`. Runs on the Codeberg hosted runner (label `docker`/`ubuntu-latest` per Codeberg's runner).
+4. Verify: a push to Codeberg triggers the workflow → image appears in the Codeberg container registry. Make the package **public** (so the mini pulls without auth).
+5. Fallback (only if the hosted alpha is too constrained): register a self-hosted Forgejo runner on the mini and re-run.
 
 ### Phase 2 — Server deploy off ghcr
 6. Update the **mini deploy compose** to `image: codeberg.org/nielheesakkers/syncvault:latest`; `docker pull` + recreate; verify `/api/health` 3.6.2 + storage_ok.
