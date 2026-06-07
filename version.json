@@ -1,9 +1,17 @@
 {
-  "version": "3.6.2",
+  "version": "3.7.0",
   "min_version": "1.0",
-  "release_date": "2026-06-06",
-  "dmg_url": "https://github.com/NielHeesakkers/SyncVault/releases/download/v3.6.2/SyncVault-3.6.2.dmg",
+  "release_date": "2026-06-07",
+  "dmg_url": "https://codeberg.org/NielHeesakkers/SyncVault/releases/download/v3.7.0/SyncVault-3.7.0.dmg",
   "history": [
+    {
+      "version": "3.7.0",
+      "date": "2026-06-07",
+      "changes": [
+        "App updates and the Docker image now ship from Codeberg instead of GitHub — SyncVault has moved off GitHub. This update arrives one final time over the old channel; from 3.7.0 on, the app checks Codeberg for new versions.",
+        "Faster, more reliable server startup: the stale-temp-file cleanup now runs in the background after the server is already listening, instead of blocking startup. On network-mounted (SMB) storage that scan could take about a minute and delayed the health check; the container now reports healthy in seconds."
+      ]
+    },
     {
       "version": "3.6.2",
       "date": "2026-06-06",

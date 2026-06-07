@@ -1,3 +1,17 @@
+## [3.7.0] — 2026-06-07
+**Moved off GitHub to Codeberg + faster server startup.**
+
+- **Updates now come from Codeberg.** SyncVault's code, container image, and the
+  app's auto-update feed have moved off GitHub to Codeberg. This release ships one
+  last time through the old GitHub channel so installed copies see it; from 3.7.0
+  on, the app checks Codeberg (`codeberg.org/NielHeesakkers/SyncVault`) for updates.
+- **Server startup no longer blocks on temp-file cleanup.** The stale-upload scan
+  ran synchronously at boot and, on network-mounted (SMB) storage, could take about
+  a minute — long enough to delay the health check and flap the container. It now
+  runs in the background after the server is listening, so the server reports
+  healthy in seconds, and still only removes files past the 24 h cutoff so it never
+  touches in-flight uploads.
+
 ## [3.6.2] — 2026-06-06
 **Branded Finder sidebar icon.**
 

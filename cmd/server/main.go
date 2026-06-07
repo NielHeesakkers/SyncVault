@@ -100,14 +100,10 @@ func main() {
 		return err
 	})
 
-	// 5. Cleanup stale incoming temp files (can be slow on populated filesystems).
-	stepLog("cleanup stale incoming/ temp files", func() error {
-		removed, freed := store.CleanupIncoming(24 * time.Hour)
-		if removed > 0 {
-			log.Printf("[startup]   cleaned %d stale temp files (%d bytes freed)", removed, freed)
-		}
-		return nil
-	})
+	// 5. Stale-temp-file cleanup runs async after the server is listening (see below).
+	//    Scanning the uploads dir on SMB-mounted storage can take a minute, which
+	//    previously blocked HTTP-ready past the healthcheck grace and flapped the
+	//    container. It only removes files past the cutoff, so it never races uploads.
 
 	// 6. Setup JWT.
 	jwtSecret := cfg.JWTSecret
@@ -205,6 +201,17 @@ func main() {
 		warmed, total := db.WarmTreeCache()
 		if warmed > 0 {
 			log.Printf("Tree cache warmed: %d folders / %d rows in %s", warmed, total, time.Since(started).Round(time.Millisecond))
+		}
+	}()
+
+	// Stale-temp-file cleanup (see step 5). Async for the same reason as the warmup:
+	// on SMB storage the scan can take a minute and must not delay HTTP-ready. Only
+	// removes files older than the cutoff, so it never touches in-flight uploads.
+	go func() {
+		started := time.Now()
+		removed, freed := store.CleanupIncoming(24 * time.Hour)
+		if removed > 0 {
+			log.Printf("Cleaned %d stale temp files (%d bytes freed) in %s", removed, freed, time.Since(started).Round(time.Millisecond))
 		}
 	}()
 

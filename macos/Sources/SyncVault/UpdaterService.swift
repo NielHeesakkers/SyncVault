@@ -41,7 +41,7 @@ class UpdaterService: ObservableObject {
     /// Drives the download/install UI via callbacks bridged to this service.
     @Published var updateWindowController: UpdateWindowController? = nil
 
-    private let versionURL = "https://raw.githubusercontent.com/NielHeesakkers/SyncVault/main/version.json"
+    private let versionURL = "https://codeberg.org/NielHeesakkers/SyncVault/raw/branch/main/version.json"
 
     // Retain the session + delegate for the lifetime of the download.
     private var downloadSession: URLSession?
@@ -141,7 +141,7 @@ class UpdaterService: ObservableObject {
     func downloadUpdate(version: String) {
         guard !isDownloading else { return }
 
-        let dmgURLString = "https://github.com/NielHeesakkers/SyncVault/releases/download/v\(version)/SyncVault-\(version).dmg"
+        let dmgURLString = "https://codeberg.org/NielHeesakkers/SyncVault/releases/download/v\(version)/SyncVault-\(version).dmg"
         guard let url = URL(string: dmgURLString) else { return }
 
         isDownloading = true
