@@ -23,7 +23,9 @@ jobs:
           REPO=codeberg.org/nielheesakkers/syncvault
 
           # Manual checkout (docker:27-cli has no node, so no actions/checkout).
-          git clone --quiet https://codeberg.org/NielHeesakkers/SyncVault.git src
+          # Authenticated clone — Codeberg returns 401 for anonymous git even on
+          # a public repo, so embed the token (REGISTRY_TOKEN has repo read).
+          git clone --quiet "https://nielheesakkers:${REGISTRY_TOKEN}@codeberg.org/NielHeesakkers/SyncVault.git" src
           cd src
           git checkout --quiet "${GITHUB_SHA}"
 
